@@ -1,4 +1,4 @@
-# roam — Database tests
+# tab — Database tests
 
 pgTAP-based assertions covering schema integrity, constraints, triggers, RLS,
 and edge cases. Each `.sql` file is self-contained:

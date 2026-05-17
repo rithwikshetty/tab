@@ -1,8 +1,8 @@
-# CLAUDE.md — roam
+# CLAUDE.md — tab
 
 Project guidance for Claude Code. Read this before changing anything.
 
-## What roam is
+## What tab is
 
 A Splitwise replacement for tracking expenses on group trips. Private friend-group use, no monetisation, no ads. iOS-first (iOS 18+). Future direction: itinerary, analytics — explicitly out of scope for V1.
 
@@ -11,14 +11,14 @@ Pain points being solved: Splitwise's paywall, ads, and aggressive upsells.
 ## Architecture at a glance
 
 ```
-roam/
+tab/
 ├── PRD.md                      ← Source of truth for product scope, schema, decisions.
 ├── design/
 │   └── mockups.html            ← Three theme directions (Sage chosen). Source of truth for design tokens.
 ├── Packages/
-│   └── RoamCore/               ← Swift Package — pure-logic modules, fully unit-tested.
+│   └── TabCore/               ← Swift Package — pure-logic modules, fully unit-tested.
 │       ├── Package.swift
-│       ├── Sources/RoamCore/
+│       ├── Sources/TabCore/
 │       │   ├── Money.swift
 │       │   ├── SplitType.swift
 │       │   ├── Models.swift
@@ -26,13 +26,13 @@ roam/
 │       │   ├── BalanceEngine.swift       ← Pure: per-currency pairwise balances.
 │       │   ├── TripStateDeriver.swift    ← Pure: active vs completed derivation.
 │       │   └── ConflictResolver.swift    ← Pure: LWW with delete-wins + writeID tiebreaker.
-│       └── Tests/RoamCoreTests/
+│       └── Tests/TabCoreTests/
 └── supabase/                   ← Postgres schema + RLS + DB tests.
     ├── migrations/
     └── tests/
 ```
 
-The iOS app target will be added later under `Apps/` (or root) and depends on `RoamCore` via local SwiftPM. Supabase hosts auth + realtime + storage + edge functions; the app is offline-first with sync.
+The iOS app target will be added later under `Apps/` (or root) and depends on `TabCore` via local SwiftPM. Supabase hosts auth + realtime + storage + edge functions; the app is offline-first with sync.
 
 ## Tech stack — locked
 
@@ -48,7 +48,7 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `R
 
 ## Conventions
 
-- **Pure-logic modules go in `RoamCore`** with no UIKit/SwiftUI/Foundation-app imports beyond what's strictly needed. Everything in `RoamCore` is `Sendable`. Pure modules are `enum` (not `struct`) to make instantiation impossible.
+- **Pure-logic modules go in `TabCore`** with no UIKit/SwiftUI/Foundation-app imports beyond what's strictly needed. Everything in `TabCore` is `Sendable`. Pure modules are `enum` (not `struct`) to make instantiation impossible.
 - **Balance computation uses canonical pair-key** (sorted UUIDs, lo/hi): positive amount means `hi` owes `lo`. Always emit both mirrored `UserBalance` rows when surfacing to callers.
 - **Equal-split remainders** distribute 1 cent at a time to participants with lexicographically lowest UUIDs (deterministic, not random).
 - **Exact-split** validates: sum matches total, no missing participants, no extras. Throws on mismatch.
@@ -80,7 +80,7 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `R
 - **No V2 scope creep.** Itinerary, analytics, simplified debts (Splitwise's "balance simplification"), multi-payer per expense, percentage/shares splits, placeholder members, payment-app deep links (Venmo/PayPal links), activity-log UI, currency conversion, Android — all explicitly deferred per PRD. Don't implement them speculatively.
 - **No Double for money.** Decimal only. If you see a `Double` near money, fix it.
 - **No `XCTest` migrations.** Stay on Swift Testing.
-- **No mocking SwiftData or Supabase in unit tests.** RoamCore is pure — it doesn't need mocks. Integration tests use real Supabase (separate test schema or branch).
+- **No mocking SwiftData or Supabase in unit tests.** TabCore is pure — it doesn't need mocks. Integration tests use real Supabase (separate test schema or branch).
 - **No backwards-compat shims, no feature flags for in-flight work, no deprecated/legacy aliases.** Change the code; we have no prod users yet.
 - **No emojis in code or commits** unless the user explicitly asked for them. (Emojis in `mockups.html` are intentional — categories.)
 
@@ -88,7 +88,7 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `R
 
 ```bash
 # Swift tests
-cd Packages/RoamCore && swift test
+cd Packages/TabCore && swift test
 
 # Open mockups
 open design/mockups.html

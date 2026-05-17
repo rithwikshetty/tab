@@ -1,4 +1,4 @@
-# roam — PRD (v1)
+# tab — PRD (v1)
 
 > Status: greenfield project, no issue tracker set up yet. This PRD lives in-repo until project tooling exists.
 
@@ -8,7 +8,7 @@ Our friend group uses Splitwise to track shared expenses on trips. Over time, Sp
 
 ## Solution
 
-**roam** is an iOS-first, offline-first group expense tracker built for trips. Each Trip is a container for members and expenses. Anyone in the trip can log an expense (with payer, participants, amount, currency, category, optional receipt photo). The app computes per-currency pairwise balances and lets members record settlements when they pay each other back. Designed for a small private friend group: invite-only via deep link, distributed via TestFlight, free forever for us.
+**tab** is an iOS-first, offline-first group expense tracker built for trips. Each Trip is a container for members and expenses. Anyone in the trip can log an expense (with payer, participants, amount, currency, category, optional receipt photo). The app computes per-currency pairwise balances and lets members record settlements when they pay each other back. Designed for a small private friend group: invite-only via deep link, distributed via TestFlight, free forever for us.
 
 V1 is intentionally minimal: trip + expenses + splits + settlement. Future versions will add itinerary, analytics, simplified debts, and richer split types — but the data model is shaped to absorb those without rewrite.
 
@@ -16,7 +16,7 @@ V1 is intentionally minimal: trip + expenses + splits + settlement. Future versi
 
 ### Onboarding & identity
 1. As a new user, I want to sign in with my Apple ID, so that I can start using the app without creating yet another password.
-2. As a new user, I want to fall back to email magic link, so that I can still access roam if I don't want to use Apple Sign-In.
+2. As a new user, I want to fall back to email magic link, so that I can still access tab if I don't want to use Apple Sign-In.
 3. As a user, I want to set my display name and optional avatar, so that other trip members recognize me.
 4. As a user, I want to sign out of the app, so that I can switch accounts or hand off the device.
 
@@ -156,7 +156,7 @@ Notes:
 ### Auth & joining
 - Apple Sign-In is the primary path. Email magic link is the fallback.
 - A new user becomes a `users` row on first sign-in; identity is keyed by Apple user ID (preferred) or email.
-- Invite links are deep links: `roam://join/<trip_id>?invite=<invite_id>&token=<secret>`. Raw invite tokens are returned once by `create_trip_invite`, stored only as SHA-256 hashes in the private schema, expire after ~7 days by default, and are validated by `join_trip_with_invite`.
+- Invite links are deep links: `tab://join/<trip_id>?invite=<invite_id>&token=<secret>`. Raw invite tokens are returned once by `create_trip_invite`, stored only as SHA-256 hashes in the private schema, expire after ~7 days by default, and are validated by `join_trip_with_invite`.
 - Joining a trip is idempotent (re-tapping the link does not duplicate membership).
 
 ### Currency model
@@ -210,7 +210,7 @@ Explicitly NOT in v1 (deferred to v2 or later):
 
 ## Further Notes
 
-- **Reference, don't fork:** [Dime](https://github.com/rafsoh/dimeApp) is licensed GPL-3.0 and is a personal (single-user) finance tracker. Roam is a multi-user group expense splitter — the domain model is fundamentally different. Browse Dime locally for SwiftUI UI inspiration only; do not fork or copy code.
+- **Reference, don't fork:** [Dime](https://github.com/rafsoh/dimeApp) is licensed GPL-3.0 and is a personal (single-user) finance tracker. Tab is a multi-user group expense splitter — the domain model is fundamentally different. Browse Dime locally for SwiftUI UI inspiration only; do not fork or copy code.
 - **No issue tracker yet:** this PRD lives as `PRD.md` until project management tooling (GitHub Issues, Linear, etc.) is set up.
 - **Apple Developer account is a hard dependency** for TestFlight distribution and APNs ($99/yr).
 - **Auto-archive rule recap:** a trip is "Completed" when all pairwise balances across all currencies are zero AND no expense / settlement activity for 30 days. Any new expense or settlement reactivates it. State is derived, not stored.

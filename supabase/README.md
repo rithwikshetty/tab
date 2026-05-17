@@ -1,4 +1,4 @@
-# roam Supabase contract
+# tab Supabase contract
 
 `schema.sql` is the readable source of truth. This repo is pre-launch with no real users, so schema iteration is intentionally destructive by default.
 

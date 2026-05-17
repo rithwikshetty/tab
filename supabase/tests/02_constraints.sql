@@ -12,7 +12,7 @@ create temp table _r (line text);
 insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
 values (
   '00000000-0000-0000-0000-000000000001'::uuid,
-  'alice@test.roam',
+  'alice@test.tab',
   '00000000-0000-0000-0000-000000000000'::uuid,
   'authenticated', 'authenticated',
   '{"display_name":"Alice"}'::jsonb
@@ -104,10 +104,10 @@ insert into _r select throws_ok(
 -- ===== settlements.amount > 0 (CHECK constraint) =====
 -- Need Bob to exist first so we don't trip the FK before reaching the CHECK.
 insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
-values ('00000000-0000-0000-0000-000000000002'::uuid, 'bob@test.roam', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Bob"}'::jsonb);
+values ('00000000-0000-0000-0000-000000000002'::uuid, 'bob@test.tab', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Bob"}'::jsonb);
 
 insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
-values ('00000000-0000-0000-0000-000000000003'::uuid, 'carol@test.roam', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Carol"}'::jsonb);
+values ('00000000-0000-0000-0000-000000000003'::uuid, 'carol@test.tab', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Carol"}'::jsonb);
 
 insert into _r select throws_ok(
   $$insert into public.expenses (trip_id, payer_id, amount, currency, description, expense_date, created_by)

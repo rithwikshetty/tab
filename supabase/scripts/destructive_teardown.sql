@@ -1,4 +1,4 @@
--- Pre-launch destructive reset for roam.
+-- Pre-launch destructive reset for tab.
 -- Drops app-owned schema objects. Supabase blocks direct deletes from storage
 -- metadata tables, so receipt files/buckets are left to Storage API cleanup.
 

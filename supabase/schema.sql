@@ -1,5 +1,5 @@
 -- ============================================================================
--- roam — Supabase schema
+-- tab — Supabase schema
 -- ============================================================================
 -- One-shot setup for a fresh Postgres 17 / Supabase database. Apply via
 -- `mcp__supabase__apply_migration` (single migration named e.g. `schema`).

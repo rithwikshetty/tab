@@ -19,10 +19,10 @@ grant insert, select, update, delete on _invite to authenticated;
 -- ===== Fixture (runs as postgres / table owner — bypasses RLS) =====
 insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
 values
-  ('00000000-0000-0000-0000-000000000001'::uuid, 'alice@test.roam', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Alice"}'::jsonb),
-  ('00000000-0000-0000-0000-000000000002'::uuid, 'bob@test.roam',   '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Bob"}'::jsonb),
-  ('00000000-0000-0000-0000-000000000003'::uuid, 'carol@test.roam', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Carol"}'::jsonb),
-  ('00000000-0000-0000-0000-000000000004'::uuid, 'dave@test.roam',  '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Dave"}'::jsonb);
+  ('00000000-0000-0000-0000-000000000001'::uuid, 'alice@test.tab', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Alice"}'::jsonb),
+  ('00000000-0000-0000-0000-000000000002'::uuid, 'bob@test.tab',   '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Bob"}'::jsonb),
+  ('00000000-0000-0000-0000-000000000003'::uuid, 'carol@test.tab', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Carol"}'::jsonb),
+  ('00000000-0000-0000-0000-000000000004'::uuid, 'dave@test.tab',  '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Dave"}'::jsonb);
 
 -- Lisbon trip: Alice creates (auto-joined); Bob joined manually. Carol is not a member.
 insert into public.trips (id, name, created_by)

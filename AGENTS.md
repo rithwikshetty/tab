@@ -1,4 +1,4 @@
-# AGENTS.md — roam
+# AGENTS.md — tab
 
 Guidance for AI coding agents (Codex, Cursor, Copilot Workspace, etc.) working in this repo.
 
@@ -6,26 +6,26 @@ This file mirrors [`CLAUDE.md`](CLAUDE.md) — both are kept in sync. If they di
 
 ---
 
-## What roam is
+## What tab is
 
 A Splitwise replacement for tracking expenses on group trips. Private friend-group use, no monetisation. iOS-first (iOS 18+). Itinerary and analytics are out of scope for V1.
 
 ## Architecture at a glance
 
 ```
-roam/
+tab/
 ├── PRD.md                      ← Source of truth for product scope, schema, decisions.
 ├── design/mockups.html         ← Three theme directions (Sage chosen). Design-token source.
-├── Packages/RoamCore/          ← Swift Package — pure-logic modules.
-│   ├── Sources/RoamCore/       ← Money, SplitType, Models, SplitCalculator, BalanceEngine,
+├── Packages/TabCore/          ← Swift Package — pure-logic modules.
+│   ├── Sources/TabCore/       ← Money, SplitType, Models, SplitCalculator, BalanceEngine,
 │   │                              TripStateDeriver, ConflictResolver.
-│   └── Tests/RoamCoreTests/    ← Swift Testing (@Test/#expect), 44 tests.
+│   └── Tests/TabCoreTests/    ← Swift Testing (@Test/#expect), 44 tests.
 └── supabase/                   ← Postgres schema + RLS + DB tests.
     ├── migrations/
     └── tests/
 ```
 
-iOS app target lives at the repo root (or `Apps/`) and depends on `RoamCore` via local SwiftPM. Supabase hosts auth + realtime + storage + edge functions; client is offline-first.
+iOS app target lives at the repo root (or `Apps/`) and depends on `TabCore` via local SwiftPM. Supabase hosts auth + realtime + storage + edge functions; client is offline-first.
 
 ## Tech stack — locked
 
@@ -45,7 +45,7 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `RoamCore` via
 
 ## Conventions
 
-- **Pure-logic modules** live in `RoamCore` as `enum` (uninstantiable) with `Sendable` types.
+- **Pure-logic modules** live in `TabCore` as `enum` (uninstantiable) with `Sendable` types.
 - **Balance pair-key**: sort UUIDs `(lo, hi)`; positive amount means `hi` owes `lo`. Surface both mirrored `UserBalance` rows externally.
 - **Equal-split remainder**: distribute 1¢ at a time to participants with lexicographically lowest UUIDs. Deterministic.
 - **Exact-split**: validates sum, no missing/extra participants. Throws on mismatch.
@@ -74,14 +74,14 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `RoamCore` via
 - No V2 scope creep (itinerary, analytics, simplified debts, multi-payer, %/shares splits, payment-app links, currency conversion, Android).
 - No `Double` for money — only `Decimal`.
 - No XCTest — Swift Testing only.
-- No mocking SwiftData or Supabase in unit tests. RoamCore is pure; it doesn't need mocks.
+- No mocking SwiftData or Supabase in unit tests. TabCore is pure; it doesn't need mocks.
 - No backwards-compat shims, no in-flight feature flags, no deprecated aliases. Change the code — there are no prod users.
 - No emojis in code or commits unless the user explicitly asked.
 
 ## Running things
 
 ```bash
-cd Packages/RoamCore && swift test     # Swift tests
+cd Packages/TabCore && swift test     # Swift tests
 open design/mockups.html                # Mockups
 # Supabase: destructive reset/recreate (default for this project)
 # Agents: prefer Supabase MCP when available. CLI fallback:
