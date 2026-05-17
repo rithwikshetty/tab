@@ -127,7 +127,11 @@ struct InviteSheet: View {
                     .stroke(Sage.cardBorder, lineWidth: 1)
             )
 
-            ShareLink(item: link.url, subject: Text("Join \(tripName) on roam")) {
+            ShareLink(
+                item: link.url,
+                subject: Text("Join \(tripName) on roam"),
+                message: Text(Self.shareMessage(tripName: tripName, url: link.url))
+            ) {
                 HStack(spacing: 8) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 16, weight: .semibold))
@@ -166,5 +170,14 @@ struct InviteSheet: View {
         formatter.unitsStyle = .full
         let relative = formatter.localizedString(for: date, relativeTo: .now)
         return "Link expires \(relative)"
+    }
+
+    private static func shareMessage(tripName: String, url: URL) -> String {
+        """
+        You're invited to join \(tripName) on roam.
+
+        Tap the link to join the trip and split expenses together:
+        \(url.absoluteString)
+        """
     }
 }
