@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CategoryChip: View {
-    let category: DemoCategory
+    let category: CategoryOption
     let isActive: Bool
     var emojiOnly: Bool = false
     var action: () -> Void = {}

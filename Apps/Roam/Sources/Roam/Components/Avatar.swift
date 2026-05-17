@@ -42,7 +42,7 @@ struct AvatarAdd: View {
 }
 
 struct AvatarGroup: View {
-    let members: [DemoMember]
+    let members: [MemberCard]
     var size: CGFloat = 28
     var borderWidth: CGFloat = 2
     var showAddButton: Bool = false

@@ -1,6 +1,6 @@
 name: Roam
 options:
-  bundleIdPrefix: com.roam
+  bundleIdPrefix: com.rithwikshetty
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
@@ -19,6 +19,9 @@ settings:
 packages:
   RoamCore:
     path: ../../Packages/RoamCore
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: "2.46.0"
 
 targets:
   Roam:
@@ -40,16 +43,19 @@ targets:
         UIUserInterfaceStyle: Light
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.roam.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.rithwikshetty.roam
         PRODUCT_NAME: Roam
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_PREVIEWS: YES
         TARGETED_DEVICE_FAMILY: "1"
         IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+        CODE_SIGN_ENTITLEMENTS: Sources/Roam/Roam.entitlements
     dependencies:
       - package: RoamCore
         product: RoamCore
+      - package: Supabase
+        product: Supabase
 
 schemes:
   Roam:

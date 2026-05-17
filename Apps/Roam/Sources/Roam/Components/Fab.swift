@@ -8,7 +8,10 @@ struct Fab: View {
     private var isCircle: Bool { label == nil }
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            Haptics.medium()
+            action()
+        } label: {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
                     .font(.system(size: isCircle ? 22 : 18, weight: .medium))

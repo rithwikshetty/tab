@@ -4,7 +4,7 @@
 begin;
 set local search_path = extensions, public, pg_temp;
 
-select plan(51);
+select plan(53);
 
 create temp table _r (line text);
 
@@ -28,6 +28,7 @@ insert into _r select has_function('private', 'receipt_object_trip_id', array['t
 insert into _r select has_table('private', 'trip_invites', 'private.trip_invites exists');
 insert into _r select has_function('public', 'create_trip_invite', array['uuid', 'timestamp with time zone'], 'public.create_trip_invite(uuid, timestamptz) exists');
 insert into _r select has_function('public', 'join_trip_with_invite', array['uuid', 'uuid', 'text'], 'public.join_trip_with_invite(uuid, uuid, text) exists');
+insert into _r select has_function('public', 'create_expense_with_splits', array['jsonb', 'jsonb'], 'public.create_expense_with_splits(jsonb, jsonb) exists');
 insert into _r select has_function('public', 'purge_soft_deleted_records', array['timestamp with time zone'], 'public.purge_soft_deleted_records(timestamptz) exists');
 insert into _r select ok((select relrowsecurity from pg_class where oid='private.trip_invites'::regclass), 'RLS enabled: private.trip_invites');
 
@@ -74,6 +75,25 @@ insert into _r select is(
   (select count(*)::int from public.categories where is_default),
   6,
   'six built-in categories seeded'
+);
+
+insert into _r select is(
+  (
+    select count(*)::int
+    from public.categories
+    where is_default
+      and (id, name) in (
+        values
+          ('00000001-0000-0000-0000-000000000000'::uuid, 'Food & Drink'),
+          ('00000002-0000-0000-0000-000000000000'::uuid, 'Transport'),
+          ('00000003-0000-0000-0000-000000000000'::uuid, 'Lodging'),
+          ('00000004-0000-0000-0000-000000000000'::uuid, 'Activities'),
+          ('00000005-0000-0000-0000-000000000000'::uuid, 'Shopping'),
+          ('00000006-0000-0000-0000-000000000000'::uuid, 'Other')
+      )
+  ),
+  6,
+  'built-in categories use app-stable IDs'
 );
 
 insert into _r select ok(

@@ -10,6 +10,7 @@ struct RoamTabBar: View {
             tab(.trips, system: "suitcase", label: "Trips")
             tab(.settings, system: "gearshape", label: "Settings")
         }
+        .sensoryFeedback(.selection, trigger: selection)
         .padding(.top, 6)
         .padding(.bottom, 2)
         .background(alignment: .top) {

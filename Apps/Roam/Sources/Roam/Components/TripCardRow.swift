@@ -1,19 +1,20 @@
 import SwiftUI
 
 struct TripCardRow: View {
-    let trip: DemoTrip
+    let trip: TripCard
 
     private var statusColor: Color {
         switch trip.status {
         case .owed: Sage.accent
         case .owe: Sage.warning
-        case .settled: Sage.textSecondary
+        case .settled, .empty: Sage.textSecondary
         }
     }
 
     private var statusText: String {
         switch trip.status {
         case .owed(let s), .owe(let s), .settled(let s): s
+        case .empty: "no expenses yet"
         }
     }
 
@@ -29,6 +30,7 @@ struct TripCardRow: View {
                     .font(.tripStatus)
                     .tracking(-0.07)
                     .foregroundStyle(statusColor)
+                    .lineLimit(1)
             }
             Spacer(minLength: 8)
             AvatarGroup(members: trip.members, size: 28, borderWidth: 2)

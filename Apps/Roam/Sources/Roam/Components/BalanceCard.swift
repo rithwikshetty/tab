@@ -1,32 +1,30 @@
 import SwiftUI
 
 struct BalanceCard: View {
-    let label: String
-    let amount: String
-    let details: [DemoBalanceDetail]
+    let summary: BalanceSummary
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             VStack(alignment: .leading, spacing: 0) {
-                Text(label.uppercased())
+                Text(summary.label.uppercased())
                     .font(.balanceLabel)
                     .tracking(1.10)
                     .foregroundStyle(Sage.accentStrong.opacity(0.85))
-                Text(amount)
+                Text(summary.amount)
                     .font(.balanceAmount)
                     .tracking(-0.85)
                     .foregroundStyle(Sage.accentStrong)
                     .padding(.top, 4)
                     .monospacedDigit()
 
-                if !details.isEmpty {
+                if !summary.details.isEmpty {
                     Rectangle()
                         .fill(Sage.accentSoft)
                         .frame(height: 1)
                         .padding(.top, 10)
 
                     VStack(spacing: 4) {
-                        ForEach(details) { detail in
+                        ForEach(summary.details) { detail in
                             HStack {
                                 Text(detail.counterparty)
                                     .font(.balanceDetail)
@@ -45,7 +43,6 @@ struct BalanceCard: View {
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Glow ornament
             Circle()
                 .fill(
                     RadialGradient(
@@ -67,6 +64,29 @@ struct BalanceCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 18)
         .padding(.top, 4)
-        .padding(.bottom, 18)
+        .padding(.bottom, 12)
+    }
+}
+
+struct EmptyBalanceCard: View {
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("All settled")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Sage.text)
+            Text("Add an expense to start tracking")
+                .font(.system(size: 13))
+                .foregroundStyle(Sage.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
+        .background(Sage.accentTint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Sage.accentSoft, lineWidth: 1)
+        )
+        .padding(.horizontal, 18)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
     }
 }

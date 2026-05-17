@@ -1,51 +1,44 @@
 import SwiftUI
+import SwiftData
 
 struct TripDetailView: View {
-    let trip: DemoTrip
+    let tripID: UUID
     var onAddExpense: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AuthService.self) private var auth
+    @Environment(RealtimeService.self) private var realtime
+    @Environment(SyncService.self) private var sync
+
+    @Query private var trips: [TripEntity]
+    @Query private var profiles: [ProfileEntity]
+    @Query private var categories: [CategoryEntity]
+
     @State private var segment: Int = 0
 
-    private let days = SampleData.lisbonExpenseDays
-    private let balance = SampleData.lisbonBalance
+    init(tripID: UUID, onAddExpense: @escaping () -> Void = {}) {
+        self.tripID = tripID
+        self.onAddExpense = onAddExpense
+        _trips = Query(filter: #Predicate<TripEntity> { $0.id == tripID })
+    }
+
+    private var trip: TripEntity? { trips.first }
+
+    private var profilesByID: [UUID: ProfileEntity] {
+        Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+    }
+
+    private var categoriesByID: [UUID: CategoryEntity] {
+        Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+    }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            ScrollView {
-                LargeTitle(title: trip.name)
-
-                HStack(spacing: 0) {
-                    AvatarGroup(members: trip.members, size: 44, borderWidth: 3, showAddButton: true)
-                    Spacer()
-                }
-                .padding(.horizontal, 22)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
-
-                BalanceCard(
-                    label: balance.label,
-                    amount: balance.amount,
-                    details: balance.details
-                )
-
-                Segmented(options: ["Expenses", "Balances"], selection: $segment)
-                    .padding(.top, 2)
-                    .padding(.bottom, 16)
-
-                if segment == 0 {
-                    expensesSection
-                } else {
-                    balancesPlaceholder
-                }
-
-                Spacer(minLength: 160)
+        Group {
+            if let trip {
+                content(for: trip)
+            } else {
+                MissingTripView { dismiss() }
             }
-            .scrollIndicators(.hidden)
-
-            Fab(label: "Add expense", systemImage: "plus", action: onAddExpense)
-                .padding(.trailing, 18)
-                .padding(.bottom, 100)
         }
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -61,74 +54,188 @@ struct TripDetailView: View {
                     .foregroundStyle(Sage.accent)
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Edit") {}
-                    .font(.navLink)
-                    .foregroundStyle(Sage.accent)
-            }
         }
         .toolbarBackground(Sage.bg, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .task(id: tripID) {
+            await realtime.subscribe(to: tripID)
+        }
+        .onDisappear {
+            Task { await realtime.unsubscribe() }
+        }
     }
 
-    private var expensesSection: some View {
-        VStack(spacing: 0) {
-            ForEach(days) { day in
-                Text(day.dateLabel.uppercased())
-                    .font(.dateHeader)
-                    .tracking(1.32)
-                    .foregroundStyle(Sage.textSecondary)
-                    .padding(.horizontal, 26)
-                    .padding(.top, 18)
-                    .padding(.bottom, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    @ViewBuilder
+    private func content(for trip: TripEntity) -> some View {
+        let userID = auth.currentUser?.id ?? UUID()
+        let memberCards = trip.members.map { m -> MemberCard in
+            if m.userID == userID {
+                MemberCard(id: m.userID, displayName: "You")
+            } else {
+                MemberCard(id: m.userID, displayName: profilesByID[m.userID]?.displayName ?? "Member")
+            }
+        }
+        let summaries = BalancePresenter.summaries(
+            expenses: trip.expenses,
+            settlements: trip.settlements,
+            members: trip.members,
+            currentUserID: userID,
+            profileFor: { id in profilesByID[id] }
+        )
+        let activeExpenses = trip.expenses.filter { $0.deletedAt == nil }
+        let days = ExpenseListPresenter.days(
+            expenses: activeExpenses,
+            currentUserID: userID,
+            profileFor: { id in profilesByID[id] },
+            categoryFor: { id in id.flatMap { categoriesByID[$0] } }
+        )
 
-                VStack(spacing: 0) {
-                    ForEach(Array(day.expenses.enumerated()), id: \.element.id) { index, expense in
-                        ExpenseRow(expense: expense)
-                        if index < day.expenses.count - 1 { RowDivider() }
+        ZStack(alignment: .bottomTrailing) {
+            ScrollView {
+                LargeTitle(title: trip.name)
+
+                HStack(spacing: 0) {
+                    AvatarGroup(members: memberCards, size: 44, borderWidth: 3, showAddButton: true)
+                    Spacer()
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
+
+                if summaries.isEmpty {
+                    EmptyBalanceCard()
+                } else {
+                    ForEach(Array(summaries.enumerated()), id: \.offset) { _, summary in
+                        BalanceCard(summary: summary)
                     }
                 }
-                .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Sage.cardBorder, lineWidth: 1)
-                )
-                .padding(.horizontal, 18)
-                .padding(.bottom, 6)
+
+                Segmented(options: ["Expenses", "Balances"], selection: $segment)
+                    .padding(.top, 2)
+                    .padding(.bottom, 16)
+
+                if segment == 0 {
+                    expensesSection(days: days)
+                } else {
+                    balancesSection(summaries: summaries)
+                }
+
+                Spacer(minLength: 160)
+            }
+            .scrollIndicators(.hidden)
+            .refreshable { await sync.pullAll() }
+
+            Fab(label: "Add expense", systemImage: "plus", action: onAddExpense)
+                .padding(.trailing, 18)
+                .padding(.bottom, 24)
+        }
+    }
+
+    @ViewBuilder
+    private func expensesSection(days: [ExpenseDay]) -> some View {
+        if days.isEmpty {
+            VStack(spacing: 6) {
+                Text("No expenses yet")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Sage.text)
+                Text("Tap + to log your first one")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Sage.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 32)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(days) { day in
+                    Text(day.dateLabel.uppercased())
+                        .font(.dateHeader)
+                        .tracking(1.32)
+                        .foregroundStyle(Sage.textSecondary)
+                        .padding(.horizontal, 26)
+                        .padding(.top, 18)
+                        .padding(.bottom, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(day.expenses.enumerated()), id: \.element.id) { index, item in
+                            ExpenseRow(item: item)
+                            if index < day.expenses.count - 1 { RowDivider() }
+                        }
+                    }
+                    .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Sage.cardBorder, lineWidth: 1)
+                    )
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 6)
+                }
             }
         }
     }
 
-    private var balancesPlaceholder: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Per-currency balances coming next.")
-                .font(.system(size: 14))
-                .foregroundStyle(Sage.textSecondary)
+    @ViewBuilder
+    private func balancesSection(summaries: [BalanceSummary]) -> some View {
+        if summaries.isEmpty {
+            VStack(spacing: 6) {
+                Text("Everyone's settled")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Sage.text)
+                Text("Balances will appear here once you have expenses")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Sage.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(summaries.enumerated()), id: \.offset) { _, summary in
+                    Card {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(summary.label + " · " + summary.amount)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Sage.text)
+                                .padding(.bottom, 4)
+                            ForEach(summary.details) { detail in
+                                HStack {
+                                    Text(detail.counterparty)
+                                        .font(.balanceDetail)
+                                        .foregroundStyle(Sage.text.opacity(0.78))
+                                    Spacer()
+                                    Text(detail.amount)
+                                        .font(.balanceDetail.weight(.semibold))
+                                        .foregroundStyle(Sage.text)
+                                        .monospacedDigit()
+                                }
+                            }
+                        }
+                        .padding(16)
+                    }
+                }
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 26)
-        .padding(.top, 16)
     }
 }
 
 private struct ExpenseRow: View {
-    let expense: DemoExpense
+    let item: ExpenseRowItem
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(expense.icon)
+            Text(item.icon)
                 .font(.system(size: 17))
                 .frame(width: 36, height: 36)
                 .background(Sage.iconBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(expense.name)
+                Text(item.name)
                     .font(.expenseName)
                     .tracking(-0.07)
                     .foregroundStyle(Sage.text)
                     .lineLimit(1)
-                Text("Paid by \(expense.payerName) · your share \(expense.yourShare)")
+                Text("Paid by \(item.payerName) · your share \(item.yourShare)")
                     .font(.expenseMeta)
                     .tracking(-0.07)
                     .foregroundStyle(Sage.textSecondary)
@@ -136,7 +243,7 @@ private struct ExpenseRow: View {
                     .minimumScaleFactor(0.85)
             }
             Spacer(minLength: 8)
-            Text(expense.totalAmount)
+            Text(item.totalAmount)
                 .font(.expenseAmount)
                 .tracking(-0.07)
                 .foregroundStyle(Sage.text)
@@ -148,9 +255,23 @@ private struct ExpenseRow: View {
     }
 }
 
-#Preview {
-    NavigationStack {
-        TripDetailView(trip: SampleData.trips[0])
+private struct MissingTripView: View {
+    var onBack: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "questionmark.circle")
+                .font(.system(size: 40))
+                .foregroundStyle(Sage.textSecondary)
+            Text("Trip not found")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Sage.text)
+            Button("Back to trips") { onBack() }
+                .font(.system(size: 15))
+                .foregroundStyle(Sage.accent)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    .background(Sage.bg)
 }

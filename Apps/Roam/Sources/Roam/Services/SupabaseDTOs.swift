@@ -1,0 +1,275 @@
+import Foundation
+
+// MARK: - Profile
+
+struct ProfileDTO: Codable, Sendable {
+    let id: UUID
+    let displayName: String
+    let avatarURL: String?
+    let createdAt: Date
+    let updatedAt: Date
+    let writeID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+        case avatarURL = "avatar_url"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case writeID = "write_id"
+    }
+}
+
+// MARK: - Trip
+
+struct TripDTO: Codable, Sendable {
+    let id: UUID
+    let name: String
+    let createdBy: UUID
+    let lastActivityAt: Date
+    let createdAt: Date
+    let updatedAt: Date
+    let deletedAt: Date?
+    let writeID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case createdBy = "created_by"
+        case lastActivityAt = "last_activity_at"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+        case writeID = "write_id"
+    }
+}
+
+struct TripInsertDTO: Codable, Sendable {
+    let id: UUID
+    let name: String
+    let createdBy: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case createdBy = "created_by"
+    }
+}
+
+struct TripUpdateDTO: Codable, Sendable {
+    let name: String?
+    let deletedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case deletedAt = "deleted_at"
+    }
+}
+
+// MARK: - TripMember
+
+struct TripMemberDTO: Codable, Sendable {
+    let tripID: UUID
+    let userID: UUID
+    let joinedAt: Date
+    let createdAt: Date
+    let updatedAt: Date
+    let writeID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case tripID = "trip_id"
+        case userID = "user_id"
+        case joinedAt = "joined_at"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case writeID = "write_id"
+    }
+}
+
+// MARK: - Category
+
+struct CategoryDTO: Codable, Sendable {
+    let id: UUID
+    let tripID: UUID?
+    let name: String
+    let icon: String
+    let isDefault: Bool
+    let createdAt: Date
+    let updatedAt: Date
+    let deletedAt: Date?
+    let writeID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case tripID = "trip_id"
+        case name, icon
+        case isDefault = "is_default"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+        case writeID = "write_id"
+    }
+}
+
+struct CategoryInsertDTO: Codable, Sendable {
+    let id: UUID
+    let tripID: UUID?
+    let name: String
+    let icon: String
+    let isDefault: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case tripID = "trip_id"
+        case name, icon
+        case isDefault = "is_default"
+    }
+}
+
+// MARK: - Expense
+
+struct ExpenseDTO: Codable, Sendable {
+    let id: UUID
+    let tripID: UUID
+    let payerID: UUID
+    let amount: Decimal
+    let currency: String
+    let categoryID: UUID?
+    let description: String
+    let expenseDate: Date
+    let receiptStoragePath: String?
+    let createdBy: UUID
+    let createdAt: Date
+    let updatedAt: Date
+    let deletedAt: Date?
+    let writeID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case tripID = "trip_id"
+        case payerID = "payer_id"
+        case amount, currency
+        case categoryID = "category_id"
+        case description
+        case expenseDate = "expense_date"
+        case receiptStoragePath = "receipt_storage_path"
+        case createdBy = "created_by"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+        case writeID = "write_id"
+    }
+}
+
+struct ExpenseInsertDTO: Codable, Sendable {
+    let id: UUID
+    let tripID: UUID
+    let payerID: UUID
+    let amount: Decimal
+    let currency: String
+    let categoryID: UUID?
+    let description: String
+    let expenseDate: Date
+    let receiptStoragePath: String?
+    let createdBy: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case tripID = "trip_id"
+        case payerID = "payer_id"
+        case amount, currency
+        case categoryID = "category_id"
+        case description
+        case expenseDate = "expense_date"
+        case receiptStoragePath = "receipt_storage_path"
+        case createdBy = "created_by"
+    }
+}
+
+// MARK: - ExpenseSplit
+
+struct ExpenseSplitDTO: Codable, Sendable {
+    let expenseID: UUID
+    let userID: UUID
+    let amountOwed: Decimal
+    let splitType: String
+    let createdAt: Date
+    let updatedAt: Date
+    let writeID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case expenseID = "expense_id"
+        case userID = "user_id"
+        case amountOwed = "amount_owed"
+        case splitType = "split_type"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case writeID = "write_id"
+    }
+}
+
+struct ExpenseSplitInsertDTO: Codable, Sendable {
+    let expenseID: UUID
+    let userID: UUID
+    let amountOwed: Decimal
+    let splitType: String
+
+    enum CodingKeys: String, CodingKey {
+        case expenseID = "expense_id"
+        case userID = "user_id"
+        case amountOwed = "amount_owed"
+        case splitType = "split_type"
+    }
+}
+
+// MARK: - Settlement
+
+struct SettlementDTO: Codable, Sendable {
+    let id: UUID
+    let tripID: UUID
+    let fromUser: UUID
+    let toUser: UUID
+    let amount: Decimal
+    let currency: String
+    let note: String?
+    let settledAt: Date
+    let createdBy: UUID
+    let createdAt: Date
+    let updatedAt: Date
+    let deletedAt: Date?
+    let writeID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case tripID = "trip_id"
+        case fromUser = "from_user"
+        case toUser = "to_user"
+        case amount, currency, note
+        case settledAt = "settled_at"
+        case createdBy = "created_by"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+        case writeID = "write_id"
+    }
+}
+
+struct SettlementInsertDTO: Codable, Sendable {
+    let id: UUID
+    let tripID: UUID
+    let fromUser: UUID
+    let toUser: UUID
+    let amount: Decimal
+    let currency: String
+    let note: String?
+    let settledAt: Date
+    let createdBy: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case tripID = "trip_id"
+        case fromUser = "from_user"
+        case toUser = "to_user"
+        case amount, currency, note
+        case settledAt = "settled_at"
+        case createdBy = "created_by"
+    }
+}
