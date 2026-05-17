@@ -33,11 +33,15 @@ struct RootView: View {
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .trip(let tripID):
-                    TripDetailView(tripID: tripID) {
-                        path.append(Route.newExpense(tripID))
-                    }
+                    TripDetailView(
+                        tripID: tripID,
+                        onAddExpense: { path.append(Route.newExpense(tripID)) },
+                        onOpenExpense: { expenseID in path.append(Route.expense(expenseID)) }
+                    )
                 case .newExpense(let tripID):
                     ExpenseEntryView(tripID: tripID) { path.removeLast() }
+                case .expense(let expenseID):
+                    ExpenseDetailView(expenseID: expenseID)
                 }
             }
         }
@@ -129,6 +133,7 @@ struct RootView: View {
 enum Route: Hashable {
     case trip(UUID)
     case newExpense(UUID)
+    case expense(UUID)
 }
 
 struct SettingsPlaceholderView: View {

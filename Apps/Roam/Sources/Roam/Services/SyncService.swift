@@ -619,6 +619,8 @@ final class SyncService {
     }
 
     /// Expenses + splits via the create_expense_with_splits RPC (transactional).
+    /// Soft-deletes (deletedAt != nil) bypass the RPC and use a direct UPDATE,
+    /// since the RPC upserts the row + splits but ignores deleted_at.
     private func pushExpensesAndSplits() async throws {
         let ctx = container.mainContext
         let dirtyExpenses = try ctx
@@ -628,6 +630,24 @@ final class SyncService {
 
         for expense in dirtyExpenses {
             guard let tripID = expense.trip?.id else { continue }
+
+            if expense.deletedAt != nil {
+                if expense.pushedWriteID == nil {
+                    ctx.delete(expense)
+                } else {
+                    do {
+                        try await client
+                            .from("expenses")
+                            .update(ExpenseDeleteUpdateDTO(deletedAt: expense.deletedAt))
+                            .eq("id", value: expense.id.uuidString)
+                            .execute()
+                        expense.pushedWriteID = expense.writeID
+                    } catch {
+                        syncLog.error("expense delete push failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+                continue
+            }
 
             let expensePayload: [String: AnyJSON] = [
                 "id": .string(expense.id.uuidString),

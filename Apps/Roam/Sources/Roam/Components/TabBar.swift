@@ -28,7 +28,7 @@ struct RoamTabBar: View {
     private func tab(_ value: RootTab, system: String, label: String) -> some View {
         let isActive = selection == value
         return Button {
-            selection = value
+            withAnimation(.snappy(duration: 0.2)) { selection = value }
         } label: {
             VStack(spacing: 2) {
                 Image(systemName: system)
@@ -39,6 +39,7 @@ struct RoamTabBar: View {
             }
             .foregroundStyle(isActive ? Sage.accent : Sage.textSecondary)
             .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

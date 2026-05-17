@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 import RoamCore
 
 struct ExpenseEntryView: View {
@@ -29,7 +30,18 @@ struct ExpenseEntryView: View {
     @State private var participantSet: Set<UUID> = []
     @State private var currency: String = "EUR"
     @State private var expenseDate: Date = .now
-    @FocusState private var amountFocused: Bool
+
+    @FocusState private var descriptionFocused: Bool
+
+    private enum Layout {
+        static let hPad: CGFloat = 18
+        static let cardHPad: CGFloat = 18
+        static let cardInnerHPad: CGFloat = 16
+        static let rowVPad: CGFloat = 14
+        static let sectionGap: CGFloat = 22
+        static let sectionLabelTop: CGFloat = 8
+        static let sectionLabelBottom: CGFloat = 10
+    }
 
     init(tripID: UUID, onDone: @escaping () -> Void = {}) {
         self.tripID = tripID
@@ -154,18 +166,7 @@ struct ExpenseEntryView: View {
                     .font(.navLinkBold)
                     .foregroundStyle(canSave ? Sage.accent : Sage.accent.opacity(0.4))
                     .disabled(!canSave)
-            }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    amountFocused = false
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil, from: nil, for: nil
-                    )
-                }
-                .font(.navLinkBold)
-                .foregroundStyle(Sage.accent)
+                    .animation(.snappy(duration: 0.15), value: canSave)
             }
         }
         .toolbarBackground(Sage.bg, for: .navigationBar)
@@ -177,7 +178,6 @@ struct ExpenseEntryView: View {
             if selectedSplitType == .exact {
                 seedMissingExactAmountsFromEqual()
             }
-            amountFocused = true
         }
         .onChange(of: splitMode) { _, newValue in
             if newValue == 1 {
@@ -195,53 +195,62 @@ struct ExpenseEntryView: View {
         ScrollView {
             VStack(spacing: 0) {
                 amountBlock
+                hairline
+                descriptionRow
 
-                TextField("Description", text: $description)
-                    .textInputAutocapitalization(.sentences)
-                    .submitLabel(.done)
-                    .font(.formRow)
-                    .tracking(-0.07)
-                    .foregroundStyle(Sage.text)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 13)
-                    .overlay(alignment: .bottom) {
-                        Rectangle().fill(Sage.rowDivider).frame(height: 1)
-                    }
-
-                sectionLabel("Category")
                 categoryChips
+                    .padding(.top, Layout.sectionGap)
 
-                sectionLabel("Details").padding(.top, 22)
-                paidByRow
-                splitRow
+                Card(horizontalPadding: Layout.cardHPad) {
+                    paidByRow
+                    RowDivider()
+                    splitRow
+                    RowDivider()
+                    dateRow
+                }
+                .padding(.top, Layout.sectionGap)
 
+                sectionLabel("Split between")
                 participantsCard
 
-                dateRow
-
-                Spacer(minLength: 32)
+                Spacer(minLength: 24)
             }
         }
         .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .contentShape(Rectangle())
+        .onTapGesture { descriptionFocused = false }
+    }
+
+    private var hairline: some View {
+        Rectangle()
+            .fill(Sage.rowDivider)
+            .frame(height: 1)
     }
 
     private var amountBlock: some View {
         HStack(alignment: .lastTextBaseline, spacing: 14) {
-            TextField("0.00", text: $amountText)
-                .keyboardType(.decimalPad)
-                .focused($amountFocused)
-                .font(.amountValue)
-                .tracking(-2.08)
-                .foregroundStyle(Sage.text)
-                .monospacedDigit()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .onChange(of: amountText) { _, new in
-                    amountText = sanitizeAmount(new)
-                }
+            DecimalTextField(
+                text: $amountText,
+                placeholder: "0.00",
+                font: .systemFont(ofSize: 52, weight: .light),
+                textColor: UIColor(Sage.text),
+                placeholderColor: UIColor(Sage.textSecondary.opacity(0.55)),
+                alignment: .left,
+                tintColor: UIColor(Sage.accent),
+                becomeFirstResponderOnAppear: true
+            )
+            .frame(height: 62)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onChange(of: amountText) { _, new in
+                amountText = sanitizeAmount(new)
+            }
 
             Menu {
                 ForEach(["EUR", "USD", "GBP", "JPY", "CHF"], id: \.self) { code in
-                    Button(action: { currency = code }) {
+                    Button(action: {
+                        withAnimation(.snappy(duration: 0.18)) { currency = code }
+                    }) {
                         Label(code, systemImage: code == currency ? "checkmark" : "")
                     }
                 }
@@ -249,12 +258,9 @@ struct ExpenseEntryView: View {
                 CurrencyPill(code: currency, symbol: MoneyFormatter.currencySymbol(currency))
             }
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .padding(.bottom, 18)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(Sage.rowDivider).frame(height: 1)
-        }
+        .padding(.horizontal, Layout.hPad)
+        .padding(.top, 14)
+        .padding(.bottom, 14)
     }
 
     private func sanitizeAmount(_ input: String) -> String {
@@ -288,9 +294,23 @@ struct ExpenseEntryView: View {
             .font(.sectionLabel)
             .tracking(1.32)
             .foregroundStyle(Sage.textSecondary)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 8)
+            .padding(.horizontal, Layout.hPad)
+            .padding(.top, Layout.sectionLabelTop)
+            .padding(.bottom, Layout.sectionLabelBottom)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var descriptionRow: some View {
+        TextField("Description", text: $description)
+            .focused($descriptionFocused)
+            .textInputAutocapitalization(.sentences)
+            .submitLabel(.done)
+            .onSubmit { descriptionFocused = false }
+            .font(.formRow)
+            .tracking(-0.07)
+            .foregroundStyle(Sage.text)
+            .padding(.horizontal, Layout.hPad)
+            .padding(.vertical, Layout.rowVPad)
     }
 
     private var categoryChips: some View {
@@ -304,11 +324,13 @@ struct ExpenseEntryView: View {
                         emojiOnly: !isActive
                     ) {
                         Haptics.light()
-                        selectedCategoryID = category.id
+                        withAnimation(.snappy(duration: 0.22)) {
+                            selectedCategoryID = category.id
+                        }
                     }
                 }
             }
-            .padding(.horizontal, 22)
+            .padding(.horizontal, Layout.hPad)
             .padding(.bottom, 4)
         }
     }
@@ -328,11 +350,8 @@ struct ExpenseEntryView: View {
                 Chevron(size: 9)
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 13)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(Sage.rowDivider).frame(height: 1)
-        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, Layout.rowVPad)
     }
 
     private var splitRow: some View {
@@ -350,11 +369,22 @@ struct ExpenseEntryView: View {
             )
             .frame(maxWidth: 180)
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 13)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(Sage.rowDivider).frame(height: 1)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private var dateRow: some View {
+        HStack(spacing: 12) {
+            Text("Date")
+                .font(.formRowLabel)
+                .tracking(-0.07)
+                .foregroundStyle(Sage.text)
+            Spacer()
+            DatePicker("", selection: $expenseDate, displayedComponents: .date)
+                .labelsHidden()
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
     }
 
     private var participantsCard: some View {
@@ -373,6 +403,7 @@ struct ExpenseEntryView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
+                    .transition(.opacity)
             }
         }
         .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -380,15 +411,18 @@ struct ExpenseEntryView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Sage.cardBorder, lineWidth: 1)
         )
-        .padding(.horizontal, 18)
-        .padding(.top, 6)
-        .padding(.bottom, 12)
+        .padding(.horizontal, Layout.cardHPad)
+        .padding(.bottom, 14)
+        .animation(.snappy(duration: 0.2), value: selectedSplitType)
     }
 
     private func participantRow(_ row: ParticipantRow) -> some View {
         HStack(spacing: 12) {
             Button {
-                toggleParticipant(row.userID)
+                Haptics.light()
+                withAnimation(.snappy(duration: 0.18)) {
+                    toggleParticipant(row.userID)
+                }
             } label: {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .bold))
@@ -398,6 +432,8 @@ struct ExpenseEntryView: View {
                         row.isOn ? Sage.accent : Sage.textSecondary.opacity(0.4),
                         in: Circle()
                     )
+                    .scaleEffect(row.isOn ? 1.0 : 0.92)
+                    .animation(.snappy(duration: 0.18), value: row.isOn)
             }
             .buttonStyle(.plain)
 
@@ -409,19 +445,21 @@ struct ExpenseEntryView: View {
             Spacer()
 
             if selectedSplitType == .exact, row.isOn {
-                TextField("0.00", text: Binding(
-                    get: { exactAmountTextByUserID[row.userID, default: ""] },
-                    set: { exactAmountTextByUserID[row.userID] = sanitizeAmount($0) }
-                ))
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
-                .font(.system(size: 13))
-                .tracking(-0.07)
-                .foregroundStyle(Sage.text)
-                .monospacedDigit()
-                .frame(width: 88)
+                DecimalTextField(
+                    text: Binding(
+                        get: { exactAmountTextByUserID[row.userID, default: ""] },
+                        set: { exactAmountTextByUserID[row.userID] = sanitizeAmount($0) }
+                    ),
+                    placeholder: "0.00",
+                    font: .systemFont(ofSize: 13),
+                    textColor: UIColor(Sage.text),
+                    placeholderColor: UIColor(Sage.textSecondary.opacity(0.5)),
+                    alignment: .right,
+                    tintColor: UIColor(Sage.accent)
+                )
+                .frame(width: 88, height: 28)
                 .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.vertical, 4)
                 .background(Sage.surface2, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -433,14 +471,15 @@ struct ExpenseEntryView: View {
                     .tracking(-0.07)
                     .foregroundStyle(Sage.textSecondary)
                     .monospacedDigit()
+                    .contentTransition(.numericText())
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .contentShape(Rectangle())
     }
 
     private func toggleParticipant(_ userID: UUID) {
-        Haptics.light()
         if participantSet.contains(userID) {
             if participantSet.count > 1 {
                 participantSet.remove(userID)
@@ -464,23 +503,6 @@ struct ExpenseEntryView: View {
             if current.trimmingCharacters(in: .whitespaces).isEmpty {
                 exactAmountTextByUserID[split.participantID] = plainAmountString(split.amountOwed)
             }
-        }
-    }
-
-    private var dateRow: some View {
-        HStack(spacing: 12) {
-            Text("Date")
-                .font(.formRowLabel)
-                .tracking(-0.07)
-                .foregroundStyle(Sage.text)
-            Spacer()
-            DatePicker("", selection: $expenseDate, displayedComponents: .date)
-                .labelsHidden()
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 8)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(Sage.rowDivider).frame(height: 1)
         }
     }
 
@@ -526,4 +548,63 @@ private struct ParticipantRow: Hashable {
     let name: String
     let share: String
     let isOn: Bool
+}
+
+struct DecimalTextField: UIViewRepresentable {
+    @Binding var text: String
+    var placeholder: String = ""
+    var font: UIFont
+    var textColor: UIColor
+    var placeholderColor: UIColor
+    var alignment: NSTextAlignment = .left
+    var tintColor: UIColor
+    var becomeFirstResponderOnAppear: Bool = false
+
+    func makeUIView(context: Context) -> UITextField {
+        let tf = UITextField()
+        tf.keyboardType = .decimalPad
+        tf.font = font
+        tf.textColor = textColor
+        tf.textAlignment = alignment
+        tf.tintColor = tintColor
+        tf.attributedPlaceholder = NSAttributedString(
+            string: placeholder,
+            attributes: [.foregroundColor: placeholderColor, .font: font]
+        )
+        tf.delegate = context.coordinator
+        tf.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.editingChanged(_:)),
+            for: .editingChanged
+        )
+
+        if becomeFirstResponderOnAppear {
+            DispatchQueue.main.async {
+                tf.becomeFirstResponder()
+            }
+        }
+        return tf
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        if uiView.text != text {
+            uiView.text = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: DecimalTextField
+
+        init(parent: DecimalTextField) {
+            self.parent = parent
+        }
+
+        @objc func editingChanged(_ tf: UITextField) {
+            parent.text = tf.text ?? ""
+        }
+    }
 }

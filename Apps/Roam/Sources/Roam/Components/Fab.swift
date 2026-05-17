@@ -28,7 +28,17 @@ struct Fab: View {
             .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 8)
             .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
+    }
+}
+
+struct PressableButtonStyle: ButtonStyle {
+    var scale: CGFloat = 0.94
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1)
+            .animation(.snappy(duration: 0.12), value: configuration.isPressed)
     }
 }
 

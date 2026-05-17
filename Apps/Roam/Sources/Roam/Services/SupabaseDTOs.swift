@@ -196,6 +196,14 @@ struct ExpenseInsertDTO: Codable, Sendable {
     }
 }
 
+struct ExpenseDeleteUpdateDTO: Codable, Sendable {
+    let deletedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case deletedAt = "deleted_at"
+    }
+}
+
 // MARK: - ExpenseSplit
 
 struct ExpenseSplitDTO: Codable, Sendable {

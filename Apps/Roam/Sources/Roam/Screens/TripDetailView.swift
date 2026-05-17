@@ -4,6 +4,7 @@ import SwiftData
 struct TripDetailView: View {
     let tripID: UUID
     var onAddExpense: () -> Void = {}
+    var onOpenExpense: (UUID) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthService.self) private var auth
@@ -17,9 +18,14 @@ struct TripDetailView: View {
     @State private var segment: Int = 0
     @State private var showingInvite: Bool = false
 
-    init(tripID: UUID, onAddExpense: @escaping () -> Void = {}) {
+    init(
+        tripID: UUID,
+        onAddExpense: @escaping () -> Void = {},
+        onOpenExpense: @escaping (UUID) -> Void = { _ in }
+    ) {
         self.tripID = tripID
         self.onAddExpense = onAddExpense
+        self.onOpenExpense = onOpenExpense
         _trips = Query(filter: #Predicate<TripEntity> { $0.id == tripID })
     }
 
@@ -120,11 +126,16 @@ struct TripDetailView: View {
                     .padding(.top, 2)
                     .padding(.bottom, 16)
 
-                if segment == 0 {
-                    expensesSection(days: days)
-                } else {
-                    balancesSection(summaries: summaries)
+                ZStack {
+                    if segment == 0 {
+                        expensesSection(days: days)
+                            .transition(.opacity)
+                    } else {
+                        balancesSection(summaries: summaries)
+                            .transition(.opacity)
+                    }
                 }
+                .animation(.snappy(duration: 0.18), value: segment)
 
                 Spacer(minLength: 160)
             }
@@ -169,7 +180,13 @@ struct TripDetailView: View {
 
                     VStack(spacing: 0) {
                         ForEach(Array(day.expenses.enumerated()), id: \.element.id) { index, item in
-                            ExpenseRow(item: item)
+                            Button {
+                                Haptics.light()
+                                onOpenExpense(item.id)
+                            } label: {
+                                ExpenseRow(item: item)
+                            }
+                            .buttonStyle(.plain)
                             if index < day.expenses.count - 1 { RowDivider() }
                         }
                     }
@@ -227,49 +244,6 @@ struct TripDetailView: View {
                 }
             }
         }
-    }
-}
-
-private struct ExpenseRow: View {
-    let item: ExpenseRowItem
-
-    private var tone: Color {
-        guard let id = item.categoryID else { return Sage.text }
-        return DefaultCategories.tone(for: id)
-    }
-
-    var body: some View {
-        HStack(spacing: 14) {
-            phosphorIcon(named: item.icon)
-                .resizable()
-                .renderingMode(.template)
-                .scaledToFit()
-                .foregroundStyle(tone)
-                .frame(width: 32, height: 32)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .font(.expenseName)
-                    .tracking(-0.07)
-                    .foregroundStyle(Sage.text)
-                    .lineLimit(1)
-                Text("Paid by \(item.payerName) · your share \(item.yourShare)")
-                    .font(.expenseMeta)
-                    .tracking(-0.07)
-                    .foregroundStyle(Sage.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-            }
-            Spacer(minLength: 8)
-            Text(item.totalAmount)
-                .font(.expenseAmount)
-                .tracking(-0.07)
-                .foregroundStyle(Sage.text)
-                .monospacedDigit()
-            Chevron(size: 12)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
     }
 }
 
