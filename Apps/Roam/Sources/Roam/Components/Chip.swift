@@ -8,9 +8,13 @@ struct CategoryChip: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Text(category.icon)
-                    .font(.system(size: 14))
+            HStack(spacing: 6) {
+                phosphorIcon(named: category.icon)
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+                    .foregroundStyle(isActive ? .white : DefaultCategories.tone(for: category.id))
+                    .frame(width: 20, height: 20)
                 if !emojiOnly {
                     Text(category.name)
                         .font(.chip)
@@ -27,6 +31,10 @@ struct CategoryChip: View {
         }
         .buttonStyle(.plain)
     }
+}
+
+func phosphorIcon(named name: String) -> Image {
+    Image("Categories/\(name)")
 }
 
 struct CurrencyPill: View {
@@ -59,31 +67,46 @@ struct CurrencyPill: View {
     VStack(spacing: 20) {
         HStack(spacing: 8) {
             CategoryChip(
-                category: CategoryOption(id: UUID(), icon: "🍕", name: "Food"),
+                category: CategoryOption(id: DefaultCategories.food.id, icon: "bowl-food", name: "Food & Drink"),
                 isActive: true
             )
             CategoryChip(
-                category: CategoryOption(id: UUID(), icon: "🚌", name: "Transport"),
+                category: CategoryOption(id: DefaultCategories.transport.id, icon: "car-profile", name: "Transport"),
                 isActive: false
             )
             CategoryChip(
-                category: CategoryOption(id: UUID(), icon: "🏨", name: "Lodging"),
+                category: CategoryOption(id: DefaultCategories.lodging.id, icon: "bed", name: "Lodging"),
                 isActive: false
             )
         }
         HStack(spacing: 8) {
             CategoryChip(
-                category: CategoryOption(id: UUID(), icon: "🍕", name: "Food"),
+                category: CategoryOption(id: DefaultCategories.food.id, icon: "bowl-food", name: "Food"),
                 isActive: true,
                 emojiOnly: true
             )
             CategoryChip(
-                category: CategoryOption(id: UUID(), icon: "🚌", name: "Transport"),
+                category: CategoryOption(id: DefaultCategories.transport.id, icon: "car-profile", name: "Transport"),
                 isActive: false,
                 emojiOnly: true
             )
             CategoryChip(
-                category: CategoryOption(id: UUID(), icon: "🏨", name: "Lodging"),
+                category: CategoryOption(id: DefaultCategories.lodging.id, icon: "bed", name: "Lodging"),
+                isActive: false,
+                emojiOnly: true
+            )
+            CategoryChip(
+                category: CategoryOption(id: DefaultCategories.activities.id, icon: "mask-happy", name: "Activities"),
+                isActive: false,
+                emojiOnly: true
+            )
+            CategoryChip(
+                category: CategoryOption(id: DefaultCategories.shopping.id, icon: "shopping-bag", name: "Shopping"),
+                isActive: false,
+                emojiOnly: true
+            )
+            CategoryChip(
+                category: CategoryOption(id: DefaultCategories.other.id, icon: "tag", name: "Other"),
                 isActive: false,
                 emojiOnly: true
             )

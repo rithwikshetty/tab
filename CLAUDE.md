@@ -58,14 +58,19 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `R
 
 ## Database
 
-- Migrations live in `supabase/migrations/` named `NNNN_description.sql` (Supabase CLI convention); keep local migration files aligned with Supabase MCP-applied versions.
+- Pre-launch default: there are no real users. Prefer destructive schema evolution and full DB recreation/reset over compatibility-preserving migration chains.
+- Unless the user explicitly asks to preserve existing data, agents may drop and recreate tables, policies, functions, triggers, and related DB objects.
+- Dummy/seed data is disposable. Recreate and reseed freely when validating features.
+- Canonical schema lives in `supabase/schema.sql`. Update it directly for schema changes.
+- Migration strategy is baseline-first: rewrite/squash baseline files aggressively; do not create incremental migration chains unless the user explicitly asks.
+- Reset command (default workflow): `./supabase/scripts/recreate_db.sh` (uses `supabase db reset` non-interactively).
 - DB tests live in `supabase/tests/` as pgTAP `.sql` files.
 - **RLS is mandatory** on every public table. Every test must verify both the allow and deny path.
 - Mutable synced row-tables use `updated_at` + `write_id` (UUID), plus `deleted_at` where the row is soft-deleted.
 - Direct `trip_members` insert is forbidden for clients. Trip creation auto-adds the creator; invite joins go through `create_trip_invite` + `join_trip_with_invite`.
 - Expense + split writes must be transactional; the DB enforces split totals and trip-member references for payers, participants, settlements, categories, and mute prefs.
 - Trip access derives from membership in `trip_members` — RLS policies all read from it.
-- Apply migrations via Supabase MCP (`mcp__supabase__apply_migration`) — not via raw SQL execute.
+- Default reset/apply path is `./supabase/scripts/recreate_db.sh`. Use raw MCP migration application only when the user explicitly requests that workflow.
 
 ## What NOT to do
 
@@ -85,7 +90,8 @@ cd Packages/RoamCore && swift test
 # Open mockups
 open design/mockups.html
 
-# Supabase — via MCP only, no CLI for this workflow
+# Supabase — destructive reset/recreate (default for this project)
+./supabase/scripts/recreate_db.sh
 ```
 
 ## Where to find things

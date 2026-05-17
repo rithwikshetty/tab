@@ -447,12 +447,12 @@ create trigger trg_categories_validate
   for each row execute function public.validate_category_row();
 
 insert into public.categories (id, trip_id, name, icon, is_default) values
-  (gen_random_uuid(), null, 'Food & Drink', '🍽', true),
-  (gen_random_uuid(), null, 'Transport',    '🚗', true),
-  (gen_random_uuid(), null, 'Lodging',      '🏨', true),
-  (gen_random_uuid(), null, 'Activities',   '🎭', true),
-  (gen_random_uuid(), null, 'Shopping',     '🛍', true),
-  (gen_random_uuid(), null, 'Other',        '⋯', true);
+  (gen_random_uuid(), null, 'Food & Drink', 'bowl-food',    true),
+  (gen_random_uuid(), null, 'Transport',    'car-profile',  true),
+  (gen_random_uuid(), null, 'Lodging',      'bed',          true),
+  (gen_random_uuid(), null, 'Activities',   'mask-happy',   true),
+  (gen_random_uuid(), null, 'Shopping',     'shopping-bag', true),
+  (gen_random_uuid(), null, 'Other',        'tag',          true);
 
 
 -- ============================================================================

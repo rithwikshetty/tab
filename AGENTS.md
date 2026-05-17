@@ -54,7 +54,12 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `RoamCore` via
 
 ## Database
 
-- Migrations: `supabase/migrations/NNNN_description.sql`; keep local migration files aligned with Supabase MCP-applied versions.
+- Pre-launch default: there are no real users. Prefer destructive schema evolution and full DB recreation/reset over compatibility-preserving migration chains.
+- Unless the user explicitly says to preserve existing remote/local data, agents may drop and recreate tables, policies, functions, and related DB objects.
+- Dummy/seed data is disposable. Recreate and reseed freely to validate product behavior.
+- Canonical schema lives in `supabase/schema.sql`. Update it directly for schema changes.
+- Migration strategy is baseline-first: rewrite/squash baseline files aggressively; do not create incremental migration chains unless the user explicitly asks.
+- Reset command (default workflow): `./supabase/scripts/recreate_db.sh` (uses `supabase db reset` non-interactively).
 - Tests: pgTAP `.sql` files in `supabase/tests/`.
 - RLS mandatory on every public table; tests must verify both allow and deny.
 - Sync columns on mutable synced row-tables: `updated_at` (timestamptz), `write_id` (uuid), plus `deleted_at` where the row is soft-deleted.
@@ -75,7 +80,8 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `RoamCore` via
 ```bash
 cd Packages/RoamCore && swift test     # Swift tests
 open design/mockups.html                # Mockups
-# Supabase: use MCP tools, no CLI required for this workflow
+# Supabase: destructive reset/recreate (default for this project)
+./supabase/scripts/recreate_db.sh
 ```
 
 ## Pointers

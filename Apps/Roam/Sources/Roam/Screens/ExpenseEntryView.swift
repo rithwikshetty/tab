@@ -155,6 +155,18 @@ struct ExpenseEntryView: View {
                     .foregroundStyle(canSave ? Sage.accent : Sage.accent.opacity(0.4))
                     .disabled(!canSave)
             }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    amountFocused = false
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder),
+                        to: nil, from: nil, for: nil
+                    )
+                }
+                .font(.navLinkBold)
+                .foregroundStyle(Sage.accent)
+            }
         }
         .toolbarBackground(Sage.bg, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)

@@ -152,7 +152,8 @@ enum ExpenseListPresenter {
                     .first(where: { $0.userID == currentUserID })?.amountOwed ?? 0
                 return ExpenseRowItem(
                     id: e.id,
-                    icon: category?.icon ?? "🧾",
+                    categoryID: category?.id ?? e.categoryID,
+                    icon: category?.icon ?? "tag",
                     name: e.descriptionText,
                     payerName: payerName,
                     payerIsYou: payerIsYou,

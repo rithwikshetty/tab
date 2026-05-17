@@ -222,12 +222,19 @@ struct TripDetailView: View {
 private struct ExpenseRow: View {
     let item: ExpenseRowItem
 
+    private var tone: Color {
+        guard let id = item.categoryID else { return Sage.text }
+        return DefaultCategories.tone(for: id)
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            Text(item.icon)
-                .font(.system(size: 17))
-                .frame(width: 36, height: 36)
-                .background(Sage.iconBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        HStack(spacing: 14) {
+            phosphorIcon(named: item.icon)
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .foregroundStyle(tone)
+                .frame(width: 32, height: 32)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)

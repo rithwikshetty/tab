@@ -27,6 +27,7 @@ struct Segmented: View {
                             }
                         }
                         .fontWeight(isActive ? .semibold : .medium)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }

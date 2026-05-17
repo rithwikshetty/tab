@@ -183,11 +183,16 @@ struct RootView: View {
         let descriptor = FetchDescriptor<CategoryEntity>(predicate: #Predicate<CategoryEntity> { $0.isDefault })
         do {
             let existing = try context.fetch(descriptor)
-            let existingIDs = Set(existing.map(\.id))
-            for def in DefaultCategories.all where !existingIDs.contains(def.id) {
-                context.insert(CategoryEntity(
-                    id: def.id, tripID: nil, name: def.name, icon: def.icon, isDefault: true
-                ))
+            let byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+            for def in DefaultCategories.all {
+                if let entity = byID[def.id] {
+                    if entity.icon != def.icon { entity.icon = def.icon }
+                    if entity.name != def.name { entity.name = def.name }
+                } else {
+                    context.insert(CategoryEntity(
+                        id: def.id, tripID: nil, name: def.name, icon: def.icon, isDefault: true
+                    ))
+                }
             }
             try context.save()
         } catch { }

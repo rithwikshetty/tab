@@ -31,6 +31,7 @@ struct TripCard: Identifiable, Hashable, Sendable {
 
 struct ExpenseRowItem: Identifiable, Hashable, Sendable {
     let id: UUID
+    let categoryID: UUID?
     let icon: String
     let name: String
     let payerName: String

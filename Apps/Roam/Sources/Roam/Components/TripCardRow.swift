@@ -37,6 +37,7 @@ struct TripCardRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 16)
+        .contentShape(Rectangle())
         .opacity(trip.isCompleted ? 0.72 : 1)
         .saturation(trip.isCompleted ? 0.7 : 1)
     }

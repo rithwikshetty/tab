@@ -1,6 +1,12 @@
 # roam Supabase contract
 
-`schema.sql` is the readable source of truth. `migrations/20260517123815_schema.sql` is the current greenfield baseline for new databases. Later files with earlier remote versions are placeholders so local migration history mirrors the already-created Supabase project, and newer files apply incremental hardening to that project.
+`schema.sql` is the readable source of truth. This repo is pre-launch with no real users, so schema iteration is intentionally destructive by default.
+
+Default workflow:
+
+1. Edit `schema.sql` directly.
+2. Keep baseline migration files minimal (rewrite/squash aggressively).
+3. Recreate the target DB with `./scripts/recreate_db.sh`.
 
 ## Client write paths
 

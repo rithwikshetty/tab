@@ -39,6 +39,15 @@ enum Sage {
         static let slate = Color(0x6B8DA6)
     }
 
+    enum CategoryTone {
+        static let food       = Color(0xB97047)
+        static let transport  = Color(0x6B8DA6)
+        static let lodging    = Color(0x8B6B96)
+        static let activities = Color(0xC97A6B)
+        static let shopping   = Color(0xB98B59)
+        static let other      = Color(0x859E62)
+    }
+
     static let markStart = accentStrong
     static let markCurve = accentStrong
     static let markEnd = Color(0xB97047)
