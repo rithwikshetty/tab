@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>roam — design directions</title>
+<style>
+/* ============================================================
+   PAGE WRAPPER (theme-independent)
+   ============================================================ */
+:root {
+  --page-bg-top: #F6F2EA;
+  --page-bg-bot: #EFE9DD;
+  --page-surface: #FBFAF6;
+  --page-ink: #1B1A18;
+  --page-ink-2: #6B6863;
+  --page-ink-3: #A5A099;
+  --page-rule: rgba(20, 18, 14, 0.10);
+  --display: "New York", "Iowan Old Style", Charter, Georgia, "Times New Roman", serif;
+  --body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --ios: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: linear-gradient(180deg, var(--page-bg-top), var(--page-bg-bot));
+  background-attachment: fixed;
+  color: var(--page-ink);
+  font-family: var(--body);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  padding: 56px 48px 96px;
+  min-height: 100vh;
+}
+
+/* Subtle paper grain via SVG noise */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.5 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.07;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.page { max-width: 1280px; margin: 0 auto; position: relative; z-index: 1; }
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+.page-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  border-bottom: 1px solid var(--page-rule);
+  padding-bottom: 28px;
+  gap: 24px 64px;
+}
+.brand-block { display: flex; flex-direction: column; gap: 18px; }
+.brand-row { display: flex; align-items: baseline; gap: 14px; }
+.wordmark {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 44px;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  color: var(--page-ink);
+}
+.wordmark::first-letter { letter-spacing: -0.04em; }
+.meta-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--page-ink-2);
+  padding: 4px 10px;
+  border: 1px solid var(--page-rule);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.4);
+}
+.page-title {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 30px;
+  letter-spacing: -0.018em;
+  line-height: 1.18;
+  max-width: 560px;
+  color: var(--page-ink);
+}
+.page-title em { font-style: italic; color: var(--page-ink-2); }
+
+.header-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--page-ink-2);
+}
+.header-meta-row { display: flex; justify-content: flex-end; gap: 10px; align-items: center; }
+.header-meta-row b { color: var(--page-ink); font-weight: 500; }
+
+/* ============================================================
+   CONTROLS — THEME SWITCHER
+   ============================================================ */
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  margin: 64px 0 56px;
+}
+.section-eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--page-ink-2);
+}
+.section-eyebrow span { color: var(--page-ink); }
+
+.segmented-theme {
+  position: relative;
+  display: inline-flex;
+  padding: 5px;
+  background: var(--page-surface);
+  border: 1px solid var(--page-rule);
+  border-radius: 999px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset, 0 4px 10px -6px rgba(40, 30, 20, 0.15);
+}
+.segmented-theme .thumb {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  width: calc((100% - 10px) / 3);
+  border-radius: 999px;
+  background: var(--page-ink);
+  z-index: 1;
+  transition:
+    transform 460ms cubic-bezier(0.5, 0.0, 0.0, 1.0),
+    background 700ms ease;
+}
+.segmented-theme[data-active="sage"] .thumb { transform: translateX(0%);  background: #5E8557; }
+.segmented-theme[data-active="dusk"] .thumb { transform: translateX(100%); background: #5A60A0; }
+.segmented-theme[data-active="teal"] .thumb { transform: translateX(200%); background: #2E7878; }
+
+.segmented-theme button {
+  position: relative;
+  z-index: 2;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 11px 36px;
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--page-ink-2);
+  cursor: pointer;
+  transition: color 280ms ease;
+  min-width: 110px;
+}
+.segmented-theme button.active { color: #FFFFFF; }
+.segmented-theme button:hover:not(.active) { color: var(--page-ink); }
+
+.theme-vibe {
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--page-ink-2);
+  transition: opacity 400ms ease;
+  text-align: center;
+  max-width: 480px;
+  letter-spacing: -0.005em;
+}
+.theme-vibe::before { content: '“'; opacity: 0.5; margin-right: 2px; }
+.theme-vibe::after { content: '”'; opacity: 0.5; margin-left: 2px; }
+
+/* ============================================================
+   PHONES GRID
+   ============================================================ */
+.phones {
+  display: grid;
+  grid-template-columns: repeat(3, 320px);
+  gap: 56px;
+  justify-content: center;
+  margin: 0 auto;
+}
+@media (max-width: 1180px) {
+  .phones { grid-template-columns: repeat(2, 320px); gap: 48px; }
+}
+@media (max-width: 740px) {
+  .phones { grid-template-columns: 320px; gap: 64px; }
+  body { padding: 32px 16px 64px; }
+}
+
+.phone-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  opacity: 0;
+  transform: translateY(24px);
+  animation: fadeUp 760ms cubic-bezier(0.2, 0.0, 0.0, 1.0) forwards;
+}
+.phone-figure:nth-child(1) { animation-delay: 180ms; }
+.phone-figure:nth-child(2) { animation-delay: 320ms; }
+.phone-figure:nth-child(3) { animation-delay: 460ms; }
+@keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+
+figcaption {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--page-ink-2);
+  display: flex;
+  gap: 10px;
+}
+figcaption b { color: var(--page-ink); font-weight: 500; }
+figcaption .dot { color: var(--page-ink-3); }
+
+/* ============================================================
+   iPHONE FRAME
+   ============================================================ */
+.phone {
+  width: 320px;
+  height: 692px;
+  background: linear-gradient(160deg, #1F1F22, #0C0C0E);
+  border-radius: 48px;
+  padding: 8px;
+  position: relative;
+  box-shadow:
+    0 28px 60px -22px rgba(20, 20, 35, 0.30),
+    0 8px 18px -10px rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.04),
+    inset 0 0 0 5px #050507;
+}
+
+.phone-screen {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 40px;
+  overflow: hidden;
+  position: relative;
+  font-family: var(--ios);
+  display: flex;
+  flex-direction: column;
+  transition: background 600ms ease, color 600ms ease;
+}
+
+.dynamic-island {
+  position: absolute;
+  top: 8px; left: 50%;
+  transform: translateX(-50%);
+  width: 98px; height: 28px;
+  background: #000;
+  border-radius: 16px;
+  z-index: 90;
+}
+
+.home-indicator {
+  position: absolute;
+  bottom: 7px; left: 50%;
+  transform: translateX(-50%);
+  width: 110px; height: 4px;
+  background: var(--text);
+  opacity: 0.32;
+  border-radius: 100px;
+  z-index: 90;
+  transition: background 600ms ease;
+}
+
+/* ============================================================
+   STATUS BAR
+   ============================================================ */
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 28px 4px;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  z-index: 50;
+  position: relative;
+  transition: color 600ms ease;
+}
+.status-bar .time { letter-spacing: -0.01em; }
+.status-icons { display: flex; gap: 5px; align-items: center; }
+.status-icons svg { fill: currentColor; }
+
+/* ============================================================
+   SCREEN CONTENT (scrollable)
+   ============================================================ */
+.screen-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0 96px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.screen-content::-webkit-scrollbar { display: none; }
+
+/* ============================================================
+   COMMON iOS PATTERNS
+   ============================================================ */
+.large-title {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  padding: 14px 22px 12px;
+  color: var(--text);
+}
+.section-header {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 22px 26px 8px;
+}
+
+.nav-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 10px 18px 8px;
+  font-size: 14px;
+}
+.nav-bar .nav-left { justify-self: start; }
+.nav-bar .nav-right { justify-self: end; }
+.nav-bar .nav-title-center { justify-self: center; font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+.nav-link {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 4px 0;
+  letter-spacing: -0.005em;
+}
+.nav-link-bold { font-weight: 600; }
+.nav-link-muted { color: var(--text); }
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border-radius: 14px;
+  margin: 0 18px 14px;
+  box-shadow: 0 1px 2px var(--shadow);
+  border: 1px solid var(--card-border);
+  transition: background 600ms ease, border-color 600ms ease;
+  overflow: hidden;
+}
+.card-row {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  gap: 12px;
+  border-bottom: 1px solid var(--row-divider);
+}
+.card-row:last-child { border-bottom: 0; }
+
+/* Avatars */
+.avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  letter-spacing: 0.01em;
+  border: 2px solid var(--surface);
+  flex-shrink: 0;
+  transition: border-color 600ms ease;
+}
+.avatar-group { display: inline-flex; }
+.avatar-group .avatar { margin-left: -8px; }
+.avatar-group .avatar:first-child { margin-left: 0; }
+.avatar-a { background: var(--avatar-1); }
+.avatar-y { background: var(--avatar-2); }
+.avatar-s { background: var(--avatar-3); }
+.avatar-t { background: var(--avatar-4); }
+.avatar-large {
+  width: 44px; height: 44px;
+  font-size: 15px;
+  border-width: 3px;
+}
+.avatar-add {
+  background: transparent;
+  color: var(--accent);
+  border: 2px dashed var(--accent-soft);
+}
+
+/* Chevron */
+.chevron {
+  width: 7px; height: 12px;
+  position: relative;
+  opacity: 0.45;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+.chevron::before {
+  content: '';
+  position: absolute;
+  width: 100%; height: 100%;
+  border-right: 1.8px solid var(--text);
+  border-top: 1.8px solid var(--text);
+  transform: rotate(45deg);
+}
+
+/* FAB */
+.fab {
+  position: absolute;
+  right: 18px;
+  bottom: 100px;
+  background: var(--accent);
+  color: white;
+  border: 0;
+  height: 52px;
+  border-radius: 26px;
+  padding: 0 20px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 8px 20px -6px rgba(0,0,0,0.25), 0 2px 6px -2px rgba(0,0,0,0.15);
+  z-index: 60;
+  transition: background 600ms ease, transform 200ms ease;
+}
+.fab:hover { transform: translateY(-1px); }
+.fab-circle { width: 52px; padding: 0; justify-content: center; font-size: 22px; }
+.fab-circle span { line-height: 1; transform: translateY(-1px); }
+
+/* Tab bar */
+.tab-bar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 84px;
+  padding: 8px 0 28px;
+  background: var(--tab-bar-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--tab-bar-border);
+  display: flex;
+  z-index: 40;
+  transition: background 600ms ease, border-color 600ms ease;
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.tab svg { width: 24px; height: 24px; opacity: 0.85; }
+.tab.active { color: var(--accent); }
+.tab.active svg { opacity: 1; }
+
+/* ============================================================
+   SCREEN 1: TRIP LIST
+   ============================================================ */
+.trip-card {
+  display: flex;
+  align-items: center;
+  padding: 16px 16px;
+  gap: 14px;
+}
+.trip-info { flex: 1; min-width: 0; }
+.trip-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trip-status {
+  font-size: 13px;
+  margin-top: 3px;
+  color: var(--accent);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.trip-status-owe { color: var(--warning); }
+.trip-status-settled { color: var(--text-secondary); }
+.trip-card-completed { opacity: 0.72; }
+.trip-card-completed .avatar { filter: saturate(0.7); }
+
+/* ============================================================
+   SCREEN 2: TRIP DETAIL
+   ============================================================ */
+.member-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 22px 16px;
+  gap: 0;
+}
+
+.balance-card {
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-soft);
+  margin: 4px 18px 18px;
+  border-radius: 16px;
+  padding: 18px 18px 16px;
+  transition: background 600ms ease, border-color 600ms ease;
+  position: relative;
+  overflow: hidden;
+}
+.balance-card::before {
+  content: '';
+  position: absolute;
+  top: -40px; right: -40px;
+  width: 140px; height: 140px;
+  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+  pointer-events: none;
+}
+.balance-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+  opacity: 0.85;
+}
+.balance-amount {
+  font-size: 34px;
+  font-weight: 700;
+  margin-top: 4px;
+  letter-spacing: -0.025em;
+  color: var(--accent-strong);
+  font-variant-numeric: tabular-nums;
+}
+.balance-detail {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--text);
+  opacity: 0.78;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--accent-soft);
+}
+.balance-detail b { font-weight: 600; opacity: 0.95; font-variant-numeric: tabular-nums; }
+
+/* Inner segmented (Expenses | Balances) */
+.segmented {
+  display: flex;
+  margin: 2px 18px 16px;
+  padding: 3px;
+  background: var(--segmented-bg);
+  border-radius: 10px;
+  position: relative;
+  transition: background 600ms ease;
+}
+.segment {
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 280ms ease;
+  letter-spacing: -0.005em;
+}
+.segment.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+
+.date-header {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 18px 26px 6px;
+}
+
+.expense-card-group {
+  background: var(--surface);
+  margin: 0 18px 6px;
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
+  overflow: hidden;
+  transition: background 600ms ease, border-color 600ms ease;
+}
+
+.expense-row {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  gap: 12px;
+  border-bottom: 1px solid var(--row-divider);
+}
+.expense-row:last-child { border-bottom: 0; }
+.expense-icon {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: var(--icon-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
+  transition: background 600ms ease;
+}
+.expense-info { flex: 1; min-width: 0; }
+.expense-name {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.expense-meta {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  letter-spacing: -0.005em;
+}
+.expense-amount {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
+}
+
+/* ============================================================
+   SCREEN 3: EXPENSE ENTRY
+   ============================================================ */
+.amount-block {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 18px 24px 18px;
+  border-bottom: 1px solid var(--row-divider);
+}
+.amount-value {
+  font-size: 52px;
+  font-weight: 300;
+  letter-spacing: -0.04em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.currency-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: -0.005em;
+  transition: background 600ms ease, border-color 600ms ease;
+}
+.currency-pill .pill-arrow {
+  font-size: 9px;
+  opacity: 0.55;
+  margin-left: 2px;
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  padding: 13px 22px;
+  border-bottom: 1px solid var(--row-divider);
+  gap: 12px;
+  font-size: 14px;
+}
+.form-row-label { color: var(--text); font-weight: 500; letter-spacing: -0.005em; }
+.form-row-value {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: -0.005em;
+}
+.form-row-value b { color: var(--text); font-weight: 500; }
+
+.text-input {
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  padding: 0;
+  width: 100%;
+  letter-spacing: -0.005em;
+}
+.text-input::placeholder { color: var(--text-secondary); }
+.text-input:focus { outline: none; }
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 22px 24px 8px;
+}
+
+.chips-row {
+  display: flex;
+  gap: 8px;
+  padding: 0 22px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.chips-row::-webkit-scrollbar { display: none; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  letter-spacing: -0.005em;
+  transition: all 280ms ease;
+}
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.chip-icon { font-size: 14px; }
+.chip-emoji-only { padding: 8px 10px; font-size: 14px; }
+
+.split-row {
+  display: flex;
+  align-items: center;
+  padding: 13px 22px;
+  border-bottom: 1px solid var(--row-divider);
+  gap: 14px;
+}
+.split-row .form-row-label { flex-shrink: 0; }
+.segmented-mini {
+  flex: 1;
+  margin: 0 0 0 auto;
+  max-width: 180px;
+}
+.segmented-mini .segment { padding: 6px 0; font-size: 12.5px; }
+
+.participants {
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  margin: 6px 18px 12px;
+  border-radius: 14px;
+  overflow: hidden;
+  transition: background 600ms ease, border-color 600ms ease;
+}
+.participant {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  gap: 12px;
+  border-bottom: 1px solid var(--row-divider);
+}
+.participant:last-child { border-bottom: 0; }
+.checkbox {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: background 600ms ease;
+}
+.participant-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.005em;
+}
+.participant-share {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
+}
+
+.receipt-placeholder {
+  margin: 6px 18px 18px;
+  border: 1.5px dashed var(--accent-soft);
+  border-radius: 14px;
+  padding: 22px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: border-color 600ms ease, color 600ms ease;
+  cursor: pointer;
+}
+
+/* ============================================================
+   THEME: SAGE — soft sage green, warm light
+   ============================================================ */
+.theme-sage {
+  --accent: #6F9866;
+  --accent-strong: #4F7549;
+  --accent-soft: rgba(111, 152, 102, 0.25);
+  --accent-tint: #EEF2E7;
+  --accent-glow: rgba(143, 178, 130, 0.35);
+  --bg: #FAF7F0;
+  --surface: #FFFFFF;
+  --surface-2: #F1ECE2;
+  --text: #28281F;
+  --text-secondary: #777267;
+  --card-border: rgba(60, 50, 30, 0.06);
+  --row-divider: rgba(60, 50, 30, 0.07);
+  --shadow: rgba(50, 60, 40, 0.06);
+  --warning: #B16D3F;
+  --segmented-bg: rgba(60, 50, 30, 0.06);
+  --icon-bg: #F1ECE2;
+  --tab-bar-bg: rgba(250, 247, 240, 0.88);
+  --tab-bar-border: rgba(60, 50, 30, 0.08);
+  --avatar-1: #B97047; /* terracotta — Anya */
+  --avatar-2: #859E62; /* sage — Yara */
+  --avatar-3: #B98B59; /* sand — Sam */
+  --avatar-4: #6B8DA6; /* slate blue — T */
+}
+
+/* ============================================================
+   THEME: DUSK — muted indigo, deep night
+   ============================================================ */
+.theme-dusk {
+  --accent: #8A8FD4;
+  --accent-strong: #B7BCEC;
+  --accent-soft: rgba(138, 143, 212, 0.30);
+  --accent-tint: rgba(138, 143, 212, 0.12);
+  --accent-glow: rgba(138, 143, 212, 0.30);
+  --bg: #14172A;
+  --surface: #1F2240;
+  --surface-2: #282C4E;
+  --text: #E5E7F2;
+  --text-secondary: #909AC0;
+  --card-border: rgba(255, 255, 255, 0.06);
+  --row-divider: rgba(255, 255, 255, 0.07);
+  --shadow: rgba(0, 0, 0, 0.40);
+  --warning: #E89F5C;
+  --segmented-bg: rgba(255, 255, 255, 0.06);
+  --icon-bg: rgba(255, 255, 255, 0.07);
+  --tab-bar-bg: rgba(20, 23, 42, 0.85);
+  --tab-bar-border: rgba(255, 255, 255, 0.08);
+  --avatar-1: #C49EE0; /* lavender */
+  --avatar-2: #7C90DC; /* periwinkle */
+  --avatar-3: #E89F7C; /* warm coral */
+  --avatar-4: #87C4B8; /* mint */
+}
+
+/* ============================================================
+   THEME: TEAL — coastal morning
+   ============================================================ */
+.theme-teal {
+  --accent: #3F8585;
+  --accent-strong: #2D6868;
+  --accent-soft: rgba(63, 133, 133, 0.25);
+  --accent-tint: #E5EFEF;
+  --accent-glow: rgba(95, 165, 165, 0.35);
+  --bg: #F2F6F6;
+  --surface: #FFFFFF;
+  --surface-2: #E5ECEC;
+  --text: #1E2E2E;
+  --text-secondary: #5E6E6E;
+  --card-border: rgba(20, 50, 50, 0.06);
+  --row-divider: rgba(20, 50, 50, 0.07);
+  --shadow: rgba(40, 80, 80, 0.07);
+  --warning: #C66E3A;
+  --segmented-bg: rgba(30, 60, 60, 0.06);
+  --icon-bg: #E5ECEC;
+  --tab-bar-bg: rgba(242, 246, 246, 0.88);
+  --tab-bar-border: rgba(30, 60, 60, 0.08);
+  --avatar-1: #6FACAC; /* lighter teal */
+  --avatar-2: #C8975E; /* sand */
+  --avatar-3: #B5786A; /* warm clay */
+  --avatar-4: #6B8B9C; /* slate */
+}
+
+/* ============================================================
+   PALETTE STRIP
+   ============================================================ */
+.palette-section {
+  margin-top: 80px;
+  padding-top: 32px;
+  border-top: 1px solid var(--page-rule);
+}
+.palette-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 24px;
+}
+.palette-title {
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 22px;
+  color: var(--page-ink);
+  letter-spacing: -0.01em;
+}
+.palette-active {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--page-ink-2);
+}
+.palette-active b { color: var(--page-ink); font-weight: 500; }
+
+.palette-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 16px;
+}
+.swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.swatch-chip {
+  height: 88px;
+  border-radius: 12px;
+  border: 1px solid var(--page-rule);
+  position: relative;
+  overflow: hidden;
+}
+.swatch-chip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(155deg, rgba(255,255,255,0.07), transparent 60%);
+}
+.swatch-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.swatch-name {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--page-ink-2);
+}
+.swatch-hex {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--page-ink);
+  font-weight: 500;
+}
+
+/* ============================================================
+   FOOTER NOTE
+   ============================================================ */
+.page-footer {
+  margin-top: 80px;
+  padding-top: 24px;
+  border-top: 1px solid var(--page-rule);
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--page-ink-2);
+}
+.page-footer b { color: var(--page-ink); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ========================================================
+       HEADER
+       ======================================================== -->
+  <header class="page-header">
+    <div class="brand-block">
+      <div class="brand-row">
+        <span class="wordmark">roam</span>
+        <span class="meta-pill">v1 · expense tracker</span>
+      </div>
+      <h1 class="page-title">
+        Three directions for the trip ledger. <em>Same app, three moods.</em>
+      </h1>
+    </div>
+    <div class="header-meta">
+      <div class="header-meta-row"><span>study</span> <b>01 / 01</b></div>
+      <div class="header-meta-row"><span>palette</span> <b>cool · muted</b></div>
+      <div class="header-meta-row"><span>platform</span> <b>iOS 18+</b></div>
+      <div class="header-meta-row"><span>date</span> <b>May 2026</b></div>
+    </div>
+  </header>
+
+  <!-- ========================================================
+       THEME SWITCHER
+       ======================================================== -->
+  <div class="controls">
+    <div class="section-eyebrow">Pick a direction · <span>tap to compare</span></div>
+    <div class="segmented-theme" data-active="sage" id="themeSwitcher">
+      <span class="thumb"></span>
+      <button data-theme="sage" class="active">Sage</button>
+      <button data-theme="dusk">Dusk</button>
+      <button data-theme="teal">Teal</button>
+    </div>
+    <div class="theme-vibe" id="themeVibe">A fresh, calm interior.</div>
+  </div>
+
+  <!-- ========================================================
+       PHONES
+       ======================================================== -->
+  <div class="phones theme-sage" id="phonesGrid">
+
+    <!-- ========== Trip List ========== -->
+    <figure class="phone-figure">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="dynamic-island"></div>
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <span class="status-icons">
+              <svg width="17" height="11" viewBox="0 0 17 11" aria-hidden="true"><rect x="0"  y="6" width="3" height="5" rx="0.5"/><rect x="5"  y="3" width="3" height="8" rx="0.5"/><rect x="10" y="0" width="3" height="11" rx="0.5"/></svg>
+              <svg width="15" height="11" viewBox="0 0 15 11" aria-hidden="true"><path d="M7.5 1.3 C 3.4 1.3 0.3 4.0 0 4.3 L 1.5 6 C 2.0 5.5 4.4 3.5 7.5 3.5 C 10.6 3.5 13.0 5.5 13.5 6 L 15 4.3 C 14.7 4.0 11.6 1.3 7.5 1.3 Z M 7.5 5.0 C 5.0 5.0 3.1 6.4 2.6 7.0 L 4.1 8.5 C 4.5 8.0 5.7 7.0 7.5 7.0 C 9.3 7.0 10.5 8.0 10.9 8.5 L 12.4 7.0 C 11.9 6.4 10.0 5.0 7.5 5.0 Z M 7.5 8.5 C 6.4 8.5 5.6 9.2 5.5 9.4 L 7.5 11 L 9.5 9.4 C 9.4 9.2 8.6 8.5 7.5 8.5 Z"/></svg>
+              <span class="battery"><span class="battery-fill" style="width: 88%"></span></span>
+            </span>
+          </div>
+
+          <div class="screen-content">
+            <h1 class="large-title">Trips</h1>
+
+            <h2 class="section-header">Active</h2>
+            <div class="card">
+              <div class="card-row trip-card">
+                <div class="trip-info">
+                  <div class="trip-name">Lisbon w/ Anya &amp; Sam</div>
+                  <div class="trip-status">you're owed €42.50</div>
+                </div>
+                <div class="avatar-group">
+                  <div class="avatar avatar-a">A</div>
+                  <div class="avatar avatar-y">Y</div>
+                  <div class="avatar avatar-s">S</div>
+                </div>
+              </div>
+              <div class="card-row trip-card">
+                <div class="trip-info">
+                  <div class="trip-name">Tokyo December</div>
+                  <div class="trip-status trip-status-owe">you owe $128.00 + €15.20</div>
+                </div>
+                <div class="avatar-group">
+                  <div class="avatar avatar-y">M</div>
+                  <div class="avatar avatar-s">K</div>
+                  <div class="avatar avatar-t">R</div>
+                  <div class="avatar avatar-a">N</div>
+                </div>
+              </div>
+            </div>
+
+            <h2 class="section-header">Completed</h2>
+            <div class="card">
+              <div class="card-row trip-card trip-card-completed">
+                <div class="trip-info">
+                  <div class="trip-name">Berlin Weekend</div>
+                  <div class="trip-status trip-status-settled">settled · Mar 2026</div>
+                </div>
+                <div class="avatar-group">
+                  <div class="avatar avatar-t">J</div>
+                  <div class="avatar avatar-a">L</div>
+                  <div class="avatar avatar-y">P</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button class="fab fab-circle" aria-label="New trip"><span>+</span></button>
+
+          <div class="tab-bar">
+            <div class="tab active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <span>Trips</span>
+            </div>
+            <div class="tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span>Settings</span>
+            </div>
+          </div>
+
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+      <figcaption><b>01</b> <span class="dot">/</span> Trip List</figcaption>
+    </figure>
+
+    <!-- ========== Trip Detail ========== -->
+    <figure class="phone-figure">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="dynamic-island"></div>
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <span class="status-icons">
+              <svg width="17" height="11" viewBox="0 0 17 11" aria-hidden="true"><rect x="0"  y="6" width="3" height="5" rx="0.5"/><rect x="5"  y="3" width="3" height="8" rx="0.5"/><rect x="10" y="0" width="3" height="11" rx="0.5"/></svg>
+              <svg width="15" height="11" viewBox="0 0 15 11" aria-hidden="true"><path d="M7.5 1.3 C 3.4 1.3 0.3 4.0 0 4.3 L 1.5 6 C 2.0 5.5 4.4 3.5 7.5 3.5 C 10.6 3.5 13.0 5.5 13.5 6 L 15 4.3 C 14.7 4.0 11.6 1.3 7.5 1.3 Z M 7.5 5.0 C 5.0 5.0 3.1 6.4 2.6 7.0 L 4.1 8.5 C 4.5 8.0 5.7 7.0 7.5 7.0 C 9.3 7.0 10.5 8.0 10.9 8.5 L 12.4 7.0 C 11.9 6.4 10.0 5.0 7.5 5.0 Z M 7.5 8.5 C 6.4 8.5 5.6 9.2 5.5 9.4 L 7.5 11 L 9.5 9.4 C 9.4 9.2 8.6 8.5 7.5 8.5 Z"/></svg>
+              <span class="battery"><span class="battery-fill" style="width: 88%"></span></span>
+            </span>
+          </div>
+
+          <div class="screen-content">
+            <div class="nav-bar">
+              <button class="nav-link nav-left">‹ Trips</button>
+              <span></span>
+              <button class="nav-link nav-right">Edit</button>
+            </div>
+            <h1 class="large-title">Lisbon w/ Anya &amp; Sam</h1>
+            <div class="member-row">
+              <div class="avatar-group">
+                <div class="avatar avatar-large avatar-a">A</div>
+                <div class="avatar avatar-large avatar-y">Y</div>
+                <div class="avatar avatar-large avatar-s">S</div>
+                <div class="avatar avatar-large avatar-add">+</div>
+              </div>
+            </div>
+
+            <div class="balance-card">
+              <div class="balance-label">You're owed</div>
+              <div class="balance-amount">€42.50</div>
+              <div class="balance-detail"><span>Anya owes you</span><b>€30.00</b></div>
+              <div class="balance-detail"><span>Sam owes you</span><b>€12.50</b></div>
+            </div>
+
+            <div class="segmented">
+              <div class="segment active">Expenses</div>
+              <div class="segment">Balances</div>
+            </div>
+
+            <h3 class="date-header">May 14</h3>
+            <div class="expense-card-group">
+              <div class="expense-row">
+                <div class="expense-icon">🍽</div>
+                <div class="expense-info">
+                  <div class="expense-name">Dinner at Ramiro</div>
+                  <div class="expense-meta">Paid by you · your share €28.33</div>
+                </div>
+                <div class="expense-amount">€85.00</div>
+                <span class="chevron"></span>
+              </div>
+              <div class="expense-row">
+                <div class="expense-icon">🚗</div>
+                <div class="expense-info">
+                  <div class="expense-name">Uber to Sintra</div>
+                  <div class="expense-meta">Paid by Anya · your share €7.47</div>
+                </div>
+                <div class="expense-amount">€22.40</div>
+                <span class="chevron"></span>
+              </div>
+            </div>
+
+            <h3 class="date-header">May 13</h3>
+            <div class="expense-card-group">
+              <div class="expense-row">
+                <div class="expense-icon">🍽</div>
+                <div class="expense-info">
+                  <div class="expense-name">Pastéis de Belém</div>
+                  <div class="expense-meta">Paid by you · your share €6.00</div>
+                </div>
+                <div class="expense-amount">€18.00</div>
+                <span class="chevron"></span>
+              </div>
+            </div>
+
+            <h3 class="date-header">May 12</h3>
+            <div class="expense-card-group">
+              <div class="expense-row">
+                <div class="expense-icon">🏨</div>
+                <div class="expense-info">
+                  <div class="expense-name">Airbnb (3 nights)</div>
+                  <div class="expense-meta">Paid by Sam · your share €140.00</div>
+                </div>
+                <div class="expense-amount">€420.00</div>
+                <span class="chevron"></span>
+              </div>
+              <div class="expense-row">
+                <div class="expense-icon">🚗</div>
+                <div class="expense-info">
+                  <div class="expense-name">Train tickets</div>
+                  <div class="expense-meta">Paid by you · your share €18.67</div>
+                </div>
+                <div class="expense-amount">€56.00</div>
+                <span class="chevron"></span>
+              </div>
+            </div>
+          </div>
+
+          <button class="fab"><span style="font-size:18px; transform:translateY(-1px); line-height:1;">+</span>&nbsp;Add expense</button>
+
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+      <figcaption><b>02</b> <span class="dot">/</span> Trip Detail</figcaption>
+    </figure>
+
+    <!-- ========== Expense Entry ========== -->
+    <figure class="phone-figure">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="dynamic-island"></div>
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <span class="status-icons">
+              <svg width="17" height="11" viewBox="0 0 17 11" aria-hidden="true"><rect x="0"  y="6" width="3" height="5" rx="0.5"/><rect x="5"  y="3" width="3" height="8" rx="0.5"/><rect x="10" y="0" width="3" height="11" rx="0.5"/></svg>
+              <svg width="15" height="11" viewBox="0 0 15 11" aria-hidden="true"><path d="M7.5 1.3 C 3.4 1.3 0.3 4.0 0 4.3 L 1.5 6 C 2.0 5.5 4.4 3.5 7.5 3.5 C 10.6 3.5 13.0 5.5 13.5 6 L 15 4.3 C 14.7 4.0 11.6 1.3 7.5 1.3 Z M 7.5 5.0 C 5.0 5.0 3.1 6.4 2.6 7.0 L 4.1 8.5 C 4.5 8.0 5.7 7.0 7.5 7.0 C 9.3 7.0 10.5 8.0 10.9 8.5 L 12.4 7.0 C 11.9 6.4 10.0 5.0 7.5 5.0 Z M 7.5 8.5 C 6.4 8.5 5.6 9.2 5.5 9.4 L 7.5 11 L 9.5 9.4 C 9.4 9.2 8.6 8.5 7.5 8.5 Z"/></svg>
+              <span class="battery"><span class="battery-fill" style="width: 88%"></span></span>
+            </span>
+          </div>
+
+          <div class="screen-content">
+            <div class="nav-bar">
+              <button class="nav-link nav-left nav-link-muted">Cancel</button>
+              <span class="nav-title-center">New expense</span>
+              <button class="nav-link nav-right nav-link-bold">Save</button>
+            </div>
+
+            <div class="amount-block">
+              <span class="amount-value">85.<span style="opacity:0.7">00</span></span>
+              <button class="currency-pill">€&nbsp;EUR<span class="pill-arrow">▾</span></button>
+            </div>
+
+            <div class="form-row" style="border-bottom:0;">
+              <input type="text" class="text-input" value="Dinner at Ramiro" />
+            </div>
+
+            <div class="section-label">Category</div>
+            <div class="chips-row">
+              <button class="chip active"><span class="chip-icon">🍽</span> Food &amp; Drink</button>
+              <button class="chip chip-emoji-only">🚗</button>
+              <button class="chip chip-emoji-only">🏨</button>
+              <button class="chip chip-emoji-only">🎭</button>
+              <button class="chip chip-emoji-only">🛍</button>
+              <button class="chip chip-emoji-only">⋯</button>
+            </div>
+
+            <div class="section-label" style="padding-top: 22px;">Details</div>
+            <div class="form-row">
+              <span class="form-row-label">Paid by</span>
+              <span class="form-row-value"><b>You</b><span class="chevron" style="width:5px; height:9px;"></span></span>
+            </div>
+            <div class="split-row">
+              <span class="form-row-label">Split</span>
+              <div class="segmented segmented-mini" style="margin:0;">
+                <div class="segment active">Equal</div>
+                <div class="segment">Exact</div>
+              </div>
+            </div>
+
+            <div class="participants">
+              <div class="participant">
+                <div class="checkbox">✓</div>
+                <div class="participant-name">You</div>
+                <div class="participant-share">€28.33</div>
+              </div>
+              <div class="participant">
+                <div class="checkbox">✓</div>
+                <div class="participant-name">Anya</div>
+                <div class="participant-share">€28.33</div>
+              </div>
+              <div class="participant">
+                <div class="checkbox">✓</div>
+                <div class="participant-name">Sam</div>
+                <div class="participant-share">€28.34</div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <span class="form-row-label">Date</span>
+              <span class="form-row-value"><b>Today, 14 May</b><span class="chevron" style="width:5px; height:9px;"></span></span>
+            </div>
+
+            <div class="receipt-placeholder">＋&nbsp; Add photo</div>
+          </div>
+
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+      <figcaption><b>03</b> <span class="dot">/</span> New Expense</figcaption>
+    </figure>
+
+  </div>
+
+  <!-- ========================================================
+       PALETTE STRIP
+       ======================================================== -->
+  <section class="palette-section">
+    <div class="palette-section-head">
+      <h2 class="palette-title">Palette</h2>
+      <div class="palette-active">Direction · <b id="paletteName">Sage</b></div>
+    </div>
+    <div class="palette-strip" id="paletteStrip">
+      <div class="swatch"><div class="swatch-chip" data-token="accent"></div><div class="swatch-meta"><span class="swatch-name">Accent</span><span class="swatch-hex" data-hex="accent">#6F9866</span></div></div>
+      <div class="swatch"><div class="swatch-chip" data-token="accent-strong"></div><div class="swatch-meta"><span class="swatch-name">Accent · deep</span><span class="swatch-hex" data-hex="accent-strong">#4F7549</span></div></div>
+      <div class="swatch"><div class="swatch-chip" data-token="bg" style="background: #FAF7F0"></div><div class="swatch-meta"><span class="swatch-name">Background</span><span class="swatch-hex" data-hex="bg">#FAF7F0</span></div></div>
+      <div class="swatch"><div class="swatch-chip" data-token="surface" style="background: #FFFFFF"></div><div class="swatch-meta"><span class="swatch-name">Surface</span><span class="swatch-hex" data-hex="surface">#FFFFFF</span></div></div>
+      <div class="swatch"><div class="swatch-chip" data-token="text" style="background: #28281F"></div><div class="swatch-meta"><span class="swatch-name">Text</span><span class="swatch-hex" data-hex="text">#28281F</span></div></div>
+      <div class="swatch"><div class="swatch-chip" data-token="warning" style="background: #B16D3F"></div><div class="swatch-meta"><span class="swatch-name">Warning</span><span class="swatch-hex" data-hex="warning">#B16D3F</span></div></div>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <span>roam · design study · <b>01</b></span>
+    <span>built for <b>iOS 18+</b> · supabase · swiftui</span>
+  </footer>
+
+</div>
+
+<script>
+  const THEMES = {
+    sage: {
+      vibe: 'A fresh, calm interior.',
+      hex: {
+        accent: '#6F9866',
+        'accent-strong': '#4F7549',
+        bg: '#FAF7F0',
+        surface: '#FFFFFF',
+        text: '#28281F',
+        warning: '#B16D3F',
+      }
+    },
+    dusk: {
+      vibe: 'Late dusk in a city, refined.',
+      hex: {
+        accent: '#8A8FD4',
+        'accent-strong': '#B7BCEC',
+        bg: '#14172A',
+        surface: '#1F2240',
+        text: '#E5E7F2',
+        warning: '#E89F5C',
+      }
+    },
+    teal: {
+      vibe: 'Coastal town in early morning.',
+      hex: {
+        accent: '#3F8585',
+        'accent-strong': '#2D6868',
+        bg: '#F2F6F6',
+        surface: '#FFFFFF',
+        text: '#1E2E2E',
+        warning: '#C66E3A',
+      }
+    }
+  };
+
+  const switcher = document.getElementById('themeSwitcher');
+  const phonesGrid = document.getElementById('phonesGrid');
+  const vibeEl = document.getElementById('themeVibe');
+  const paletteName = document.getElementById('paletteName');
+  const paletteStrip = document.getElementById('paletteStrip');
+
+  function setTheme(name) {
+    switcher.querySelectorAll('button').forEach(b => {
+      b.classList.toggle('active', b.dataset.theme === name);
+    });
+    switcher.dataset.active = name;
+    phonesGrid.className = 'phones theme-' + name;
+    vibeEl.style.opacity = '0';
+    setTimeout(() => {
+      vibeEl.textContent = THEMES[name].vibe;
+      vibeEl.style.opacity = '1';
+    }, 220);
+    paletteName.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+    updatePalette(name);
+  }
+
+  function updatePalette(name) {
+    const hex = THEMES[name].hex;
+    paletteStrip.querySelectorAll('.swatch-chip').forEach(chip => {
+      const token = chip.dataset.token;
+      if (hex[token]) {
+        chip.style.background = hex[token];
+      }
+    });
+    paletteStrip.querySelectorAll('[data-hex]').forEach(el => {
+      const token = el.dataset.hex;
+      if (hex[token]) el.textContent = hex[token];
+    });
+  }
+
+  switcher.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => setTheme(b.dataset.theme));
+  });
+
+  // Initial palette
+  updatePalette('sage');
+</script>
+</body>
+</html>
