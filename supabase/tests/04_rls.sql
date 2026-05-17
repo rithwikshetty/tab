@@ -9,8 +9,12 @@
 begin;
 set local search_path = extensions, public, pg_temp;
 
-select plan(35);
+select plan(37);
 create temp table _r (line text);
+grant insert, select on _r to authenticated, anon;
+
+create temp table _invite (trip_id uuid, invite_id uuid, token text, expires_at timestamptz);
+grant insert, select, update, delete on _invite to authenticated;
 
 -- ===== Fixture (runs as postgres / table owner — bypasses RLS) =====
 insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
@@ -109,6 +113,13 @@ insert into _r select lives_ok(
 insert into _r select is(
   (select count(*)::int from public.trip_members where trip_id = '11111111-1111-1111-1111-111111111111'::uuid),
   2, 'Alice sees both Lisbon members');
+
+-- Can create an invite token for Lisbon.
+insert into _r select lives_ok(
+  $$insert into _invite (trip_id, invite_id, token, expires_at)
+    select trip_id, invite_id, token, expires_at
+    from public.create_trip_invite('11111111-1111-1111-1111-111111111111'::uuid)$$,
+  'Alice creates Lisbon invite via RPC');
 
 -- Cannot SEE trip_members of Solo
 insert into _r select is(
@@ -221,17 +232,25 @@ insert into _r select ok(
   (select count(*)::int from public.profiles) >= 4,
   'Carol sees all profiles (open SELECT policy)');
 
--- Can SELF-INSERT trip_members (self-add policy) — but to a real trip she knows
--- Sanity: Carol can join Lisbon if she knows the trip_id (RLS allows self-add;
--- in production this path is gated by invite-link Edge Function).
-insert into _r select lives_ok(
+-- Cannot SELF-INSERT trip_members directly. Invite-only joining is enforced by
+-- removing direct INSERT RLS and routing through join_trip_with_invite.
+insert into _r select throws_ok(
   $$insert into public.trip_members (trip_id, user_id) values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000003')$$,
-  'Carol self-adds to Lisbon (self-insert policy — relies on invite-link UUID secrecy + Edge Function in prod)');
+  '42501', null, 'Carol cannot self-add to Lisbon without invite RPC');
 
--- After self-joining, Carol can now SELECT Lisbon.
+-- Can join via the invite token Alice created.
+insert into _r select lives_ok(
+  $$select public.join_trip_with_invite(
+      (select trip_id from _invite limit 1),
+      (select invite_id from _invite limit 1),
+      (select token from _invite limit 1)
+    )$$,
+  'Carol joins Lisbon via invite RPC');
+
+-- After invite join, Carol can now SELECT Lisbon.
 insert into _r select is(
   (select count(*)::int from public.trips where id = '11111111-1111-1111-1111-111111111111'::uuid),
-  1, 'After self-join, Carol sees Lisbon');
+  1, 'After invite join, Carol sees Lisbon');
 
 -- ============================================================================
 -- AS ANON (no JWT)

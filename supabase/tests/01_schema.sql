@@ -4,7 +4,7 @@
 begin;
 set local search_path = extensions, public, pg_temp;
 
-select plan(43);
+select plan(51);
 
 create temp table _r (line text);
 
@@ -23,6 +23,13 @@ insert into _r select has_table('public', 'trip_mute_prefs', 'trip_mute_prefs ex
 -- ===== private schema + helper function =====
 insert into _r select has_schema('private', 'private schema exists');
 insert into _r select has_function('private', 'is_trip_member', array['uuid'], 'private.is_trip_member(uuid) exists');
+insert into _r select has_function('private', 'is_profile_trip_member', array['uuid', 'uuid'], 'private.is_profile_trip_member(uuid, uuid) exists');
+insert into _r select has_function('private', 'receipt_object_trip_id', array['text'], 'private.receipt_object_trip_id(text) exists');
+insert into _r select has_table('private', 'trip_invites', 'private.trip_invites exists');
+insert into _r select has_function('public', 'create_trip_invite', array['uuid', 'timestamp with time zone'], 'public.create_trip_invite(uuid, timestamptz) exists');
+insert into _r select has_function('public', 'join_trip_with_invite', array['uuid', 'uuid', 'text'], 'public.join_trip_with_invite(uuid, uuid, text) exists');
+insert into _r select has_function('public', 'purge_soft_deleted_records', array['timestamp with time zone'], 'public.purge_soft_deleted_records(timestamptz) exists');
+insert into _r select ok((select relrowsecurity from pg_class where oid='private.trip_invites'::regclass), 'RLS enabled: private.trip_invites');
 
 -- ===== RLS enabled on every public table =====
 insert into _r select ok((select relrowsecurity from pg_class where oid='public.profiles'::regclass),        'RLS enabled: profiles');
@@ -67,6 +74,11 @@ insert into _r select is(
   (select count(*)::int from public.categories where is_default),
   6,
   'six built-in categories seeded'
+);
+
+insert into _r select ok(
+  exists (select 1 from storage.buckets where id = 'receipts' and public = false),
+  'private receipts storage bucket exists'
 );
 
 insert into _r select * from finish();

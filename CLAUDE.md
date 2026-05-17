@@ -42,7 +42,7 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `R
 - **Decimal** for all money math. **Never Double.**
 - **Multi-currency, no FX conversion** — per-currency pairwise balances only.
 - **Last-write-wins** conflict resolution with delete-wins + UUID `writeID` tiebreaker on identical timestamps.
-- **Soft delete** everywhere (`deleted_at`); 30-day window before hard purge.
+- **Soft delete** on mutable user-visible records (`deleted_at`); 30-day window before hard purge.
 - **Invite-link only** trip joining (deep links).
 - **Realtime** on the currently-viewed trip only.
 
@@ -58,10 +58,12 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `R
 
 ## Database
 
-- Migrations live in `supabase/migrations/` named `NNNN_description.sql` (Supabase CLI convention).
+- Migrations live in `supabase/migrations/` named `NNNN_description.sql` (Supabase CLI convention); keep local migration files aligned with Supabase MCP-applied versions.
 - DB tests live in `supabase/tests/` as pgTAP `.sql` files.
 - **RLS is mandatory** on every public table. Every test must verify both the allow and deny path.
-- Tables use `updated_at` + `write_id` (UUID) + `deleted_at` for sync.
+- Mutable synced row-tables use `updated_at` + `write_id` (UUID), plus `deleted_at` where the row is soft-deleted.
+- Direct `trip_members` insert is forbidden for clients. Trip creation auto-adds the creator; invite joins go through `create_trip_invite` + `join_trip_with_invite`.
+- Expense + split writes must be transactional; the DB enforces split totals and trip-member references for payers, participants, settlements, categories, and mute prefs.
 - Trip access derives from membership in `trip_members` — RLS policies all read from it.
 - Apply migrations via Supabase MCP (`mcp__supabase__apply_migration`) — not via raw SQL execute.
 

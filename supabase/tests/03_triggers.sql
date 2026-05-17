@@ -53,6 +53,9 @@ insert into _r select ok(
   'auto_add_creator_as_member: creator becomes a member after trip insert'
 );
 
+insert into public.trip_members (trip_id, user_id)
+values ('11111111-1111-1111-1111-111111111111'::uuid, '00000000-0000-0000-0000-000000000002'::uuid);
+
 -- ===== set_sync_fields on INSERT =====
 insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
 values ('aaaaaaaa-0000-0000-0000-000000000001'::uuid,

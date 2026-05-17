@@ -18,6 +18,9 @@ values
   ('11111111-1111-1111-1111-111111111111'::uuid, 'Lisbon', '00000000-0000-0000-0000-000000000001'::uuid),
   ('33333333-3333-3333-3333-333333333333'::uuid, 'Empty',  '00000000-0000-0000-0000-000000000001'::uuid);
 
+insert into public.trip_members (trip_id, user_id)
+values ('11111111-1111-1111-1111-111111111111'::uuid, '00000000-0000-0000-0000-000000000002'::uuid);
+
 insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
 values ('aaaaaaaa-0000-0000-0000-000000000001'::uuid,
         '11111111-1111-1111-1111-111111111111'::uuid,

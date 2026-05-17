@@ -38,7 +38,7 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `RoamCore` via
 | Money       | `Decimal` only — never `Double`                                |
 | Currency    | Multi-currency, no FX conversion (per-currency balances)       |
 | Sync        | Last-write-wins + delete-wins + UUID write-id tiebreaker       |
-| Soft delete | `deleted_at` everywhere; 30-day window before purge            |
+| Soft delete | `deleted_at` on mutable user-visible records; 30-day purge window |
 | Auth        | Apple Sign-In primary + email magic link fallback              |
 | Joining     | Invite link only (deep link)                                   |
 | Realtime    | Currently-viewed trip only                                     |
@@ -54,11 +54,12 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `RoamCore` via
 
 ## Database
 
-- Migrations: `supabase/migrations/NNNN_description.sql`.
+- Migrations: `supabase/migrations/NNNN_description.sql`; keep local migration files aligned with Supabase MCP-applied versions.
 - Tests: pgTAP `.sql` files in `supabase/tests/`.
 - RLS mandatory on every public table; tests must verify both allow and deny.
-- Sync columns on every row-table: `updated_at` (timestamptz), `write_id` (uuid), `deleted_at` (timestamptz null).
-- Trip access derives from `trip_members` — all RLS policies read from it.
+- Sync columns on mutable synced row-tables: `updated_at` (timestamptz), `write_id` (uuid), plus `deleted_at` where the row is soft-deleted.
+- Trip access derives from `trip_members` — direct member insert is forbidden; joins go through invite RPCs.
+- Expense + split writes must be transactional; the DB enforces split totals and trip-member references.
 
 ## Don't do these
 

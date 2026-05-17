@@ -33,8 +33,8 @@ trigger then auto-creates `public.profiles`). Fixture UUIDs:
 
 | File                      | Tests | Concern                                                |
 |---------------------------|-------|--------------------------------------------------------|
-| `01_schema.sql`           | ~30   | Tables/columns/PKs/FKs/RLS-enabled existence           |
-| `02_constraints.sql`      | ~35   | CHECK / UNIQUE / FK constraints (positive + negative)  |
+| `01_schema.sql`           | ~50   | Tables/columns/PKs/FKs/RLS-enabled existence, invite/storage primitives |
+| `02_constraints.sql`      | ~40   | CHECK / UNIQUE / FK constraints plus cross-table money/trip invariants |
 | `03_triggers.sql`         | ~12   | set_sync_fields, handle_new_user, auto_add_creator, touch_trip_last_activity |
-| `04_rls.sql`              | ~30   | RLS allow + deny per table, per role (member/non/anon) |
+| `04_rls.sql`              | ~40   | RLS allow + deny per table, invite-only joining, per role (member/non/anon) |
 | `05_edge_cases.sql`       | ~15   | Soft-delete, cascade vs restrict, helper-fn behavior   |

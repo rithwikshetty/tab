@@ -5,7 +5,7 @@
 begin;
 set local search_path = extensions, public, pg_temp;
 
-select plan(34);
+select plan(40);
 create temp table _r (line text);
 
 -- Fixture: minimal auth user + auto-created profile via handle_new_user trigger.
@@ -106,10 +106,55 @@ insert into _r select throws_ok(
 insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
 values ('00000000-0000-0000-0000-000000000002'::uuid, 'bob@test.roam', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Bob"}'::jsonb);
 
+insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
+values ('00000000-0000-0000-0000-000000000003'::uuid, 'carol@test.roam', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Carol"}'::jsonb);
+
+insert into _r select throws_ok(
+  $$insert into public.expenses (trip_id, payer_id, amount, currency, description, expense_date, created_by)
+    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000003', 10, 'EUR', 'non-member payer', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
+  '23514', null, 'expense payer must be a trip member');
+
+insert into public.trip_members (trip_id, user_id)
+values ('11111111-1111-1111-1111-111111111111'::uuid, '00000000-0000-0000-0000-000000000002'::uuid);
+
 insert into _r select throws_ok(
   $$insert into public.settlements (trip_id, from_user, to_user, amount, currency, created_by)
     values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 0, 'EUR', '00000000-0000-0000-0000-000000000001')$$,
   '23514', null, 'settlement amount 0 rejected (CHECK)');
+
+insert into _r select throws_ok(
+  $$insert into public.settlements (trip_id, from_user, to_user, amount, currency, created_by)
+    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 10, 'EUR', '00000000-0000-0000-0000-000000000001')$$,
+  '23514', null, 'settlement parties must be trip members');
+
+insert into _r select throws_ok(
+  $$insert into public.expense_splits (expense_id, user_id, amount_owed, split_type)
+    values ('aaaaaaaa-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', 1, 'equal')$$,
+  '23514', null, 'expense split user must be a trip member');
+
+-- Earlier constraint probes intentionally create expenses without complete
+-- split rows. Mark them deleted before forcing deferred split-total checks.
+update public.expenses set deleted_at = clock_timestamp() where deleted_at is null;
+
+insert into _r select throws_ok(
+  $$insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
+      values ('eeeeeeee-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 10, 'EUR', 'bad split total', '2026-05-01', '00000000-0000-0000-0000-000000000001');
+    insert into public.expense_splits (expense_id, user_id, amount_owed, split_type)
+      values ('eeeeeeee-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 6, 'exact'),
+             ('eeeeeeee-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 3, 'exact');
+    set constraints trg_expenses_split_total, trg_expense_splits_total immediate$$,
+  '23514', null, 'expense split totals must equal expense amount');
+
+insert into _r select lives_ok(
+  $$set constraints all deferred;
+    insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
+      values ('eeeeeeee-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 10, 'EUR', 'good split total', '2026-05-01', '00000000-0000-0000-0000-000000000001');
+    insert into public.expense_splits (expense_id, user_id, amount_owed, split_type)
+      values ('eeeeeeee-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 6, 'exact'),
+             ('eeeeeeee-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000002', 4, 'exact');
+    set constraints trg_expenses_split_total, trg_expense_splits_total immediate;
+    set constraints all deferred$$,
+  'valid expense with matching split totals accepted');
 
 -- ===== categories: default_xor_trip constraint =====
 insert into _r select throws_ok(
@@ -126,6 +171,17 @@ insert into _r select lives_ok(
   $$insert into public.categories (trip_id, name, icon, is_default)
     values ('11111111-1111-1111-1111-111111111111', 'BBQ', '🍖', false)$$,
   'custom category with trip_id accepted');
+
+insert into public.trips (id, name, created_by)
+values ('22222222-2222-2222-2222-222222222222'::uuid, 'Porto', '00000000-0000-0000-0000-000000000001'::uuid);
+
+insert into public.categories (id, trip_id, name, icon, is_default)
+values ('cccccccc-0000-0000-0000-000000000002'::uuid, '22222222-2222-2222-2222-222222222222'::uuid, 'Porto-only', '?', false);
+
+insert into _r select throws_ok(
+  $$insert into public.expenses (trip_id, payer_id, amount, currency, category_id, description, expense_date, created_by)
+    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 10, 'EUR', 'cccccccc-0000-0000-0000-000000000002', 'wrong category', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
+  '23514', null, 'expense category must be default or belong to expense trip');
 
 -- ===== categories: case-insensitive unique within a trip =====
 insert into _r select throws_ok(

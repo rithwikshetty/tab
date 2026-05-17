@@ -104,7 +104,7 @@ V1 is intentionally minimal: trip + expenses + splits + settlement. Future versi
 - **AuthService** — wraps Supabase Auth + Apple Sign-In + email magic link. Interface: `signIn()`, `signOut()`, `currentUser`.
 - **MediaStore** — receipt photo lifecycle. Client-side compression to ~200KB JPEG, upload to Supabase Storage, lazy download, local cache.
 - **PushNotificationService** — APNs registration, device-token sync with Supabase, payload parsing, deep-link routing.
-- **InviteLinkService** — generate signed deep links with trip token, parse incoming links, validate, perform join.
+- **InviteLinkService** — call invite RPCs, generate deep links with trip/invite/token values, parse incoming links, validate, perform idempotent join.
 - **ActivityLogger** — append-only event recording (actor, action, entity, timestamp, optional snapshot). Stored, not surfaced in UI for v1.
 
 **Data layer**
@@ -122,6 +122,8 @@ V1 is intentionally minimal: trip + expenses + splits + settlement. Future versi
 users             (id, apple_user_id?, email?, display_name, avatar_url?)
 trips             (id, name, created_by, created_at, last_activity_at)
 trip_members      (trip_id, user_id, joined_at)
+private.trip_invites (id, trip_id, token_hash, created_by, expires_at,
+                   revoked_at?, used_at?, created_at, updated_at, deleted_at?)
 categories        (id, trip_id?, name, icon, is_default)
 expenses          (id, trip_id, payer_id, amount, currency, category_id,
                    description, expense_date, receipt_storage_path?,
@@ -138,19 +140,23 @@ trip_mute_prefs   (trip_id, user_id, muted_at)
 Notes:
 - `categories.trip_id` is nullable to support the global default set (Food & Drink, Transport, Lodging, Activities, Shopping, Other).
 - `expense_splits.split_type` is an enum supporting `equal | exact | percentage | shares | adjustment`. V1 writes only `equal` and `exact`; the others remain available for v2.
-- Soft-delete on `expenses` and `settlements` via nullable `deleted_at`. Hard-delete only after 30 days, via a scheduled Supabase cleanup function.
+- Expense writes are transactional: an expense and all `expense_splits` must be written together, and the DB enforces `sum(expense_splits.amount_owed) = expenses.amount` for active expenses.
+- Payers, split participants, settlement parties, creators, custom categories, and mute prefs must belong to the target trip at the DB boundary, not just in the app.
+- Soft-delete on user-visible mutable records (`trips`, `categories`, `expenses`, `settlements`, and invite records) via nullable `deleted_at`. Membership/mute/device rows use row presence because they are preference or join rows; `activity_log` is append-only.
 - `trips.last_activity_at` is updated by Postgres triggers on expense/settlement writes (used by TripStateDeriver).
+- Receipt photos live in the private Supabase Storage bucket `receipts`; object paths are `<trip_id>/<expense_id>.jpg` and storage RLS derives access from trip membership.
 
 ### Sync architecture
 - SwiftData is the source of truth on-device. All reads come from local; all writes go local first, then enqueue to SyncEngine.
 - SyncEngine pushes pending changes to Supabase when online, then pulls remote deltas since `last_synced_at` per table.
+- Multi-row mutations that must be atomic, especially expense + splits and invite joins, go through Supabase RPCs or another transactional server path. The app should not issue independent REST writes that can leave partial split state.
 - Realtime subscription opens only on the currently-viewed trip detail screen; unsubscribes on navigation away.
 - Conflict resolution is delegated to ConflictResolver. Policy: deletes win; otherwise highest `updated_at` wins.
 
 ### Auth & joining
 - Apple Sign-In is the primary path. Email magic link is the fallback.
 - A new user becomes a `users` row on first sign-in; identity is keyed by Apple user ID (preferred) or email.
-- Invite links are signed deep links: `roam://join/<trip_id>?token=<signed_jwt>`. Token has expiry (~7 days), validated server-side via an Edge Function on join request.
+- Invite links are deep links: `roam://join/<trip_id>?invite=<invite_id>&token=<secret>`. Raw invite tokens are returned once by `create_trip_invite`, stored only as SHA-256 hashes in the private schema, expire after ~7 days by default, and are validated by `join_trip_with_invite`.
 - Joining a trip is idempotent (re-tapping the link does not duplicate membership).
 
 ### Currency model
