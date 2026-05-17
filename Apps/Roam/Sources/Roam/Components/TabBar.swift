@@ -43,3 +43,13 @@ struct RoamTabBar: View {
         .buttonStyle(.plain)
     }
 }
+
+#Preview("TabBar") {
+    @Previewable @State var selection: RootTab = .trips
+    VStack {
+        Spacer()
+        RoamTabBar(selection: $selection)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Sage.bg.ignoresSafeArea())
+}

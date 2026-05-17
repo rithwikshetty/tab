@@ -31,3 +31,12 @@ struct Fab: View {
         .buttonStyle(.plain)
     }
 }
+
+#Preview("Fab") {
+    VStack(spacing: 32) {
+        Fab(label: "Add expense", systemImage: "plus")
+        Fab(systemImage: "plus")
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Sage.bg)
+}

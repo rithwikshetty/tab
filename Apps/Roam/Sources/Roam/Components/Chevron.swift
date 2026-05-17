@@ -11,3 +11,14 @@ struct Chevron: View {
             .foregroundStyle(color.opacity(opacity))
     }
 }
+
+#Preview("Chevron") {
+    HStack(spacing: 24) {
+        Chevron(size: 10)
+        Chevron(size: 12)
+        Chevron(size: 16)
+        Chevron(size: 20)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Sage.bg)
+}

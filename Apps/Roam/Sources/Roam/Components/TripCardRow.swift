@@ -41,3 +41,36 @@ struct TripCardRow: View {
         .saturation(trip.isCompleted ? 0.7 : 1)
     }
 }
+
+#Preview("Trip rows") {
+    let members = [
+        MemberCard(id: UUID(), displayName: "Alex"),
+        MemberCard(id: UUID(), displayName: "Sam"),
+        MemberCard(id: UUID(), displayName: "Jess"),
+    ]
+    return VStack(spacing: 0) {
+        TripCardRow(trip: TripCard(
+            id: UUID(), name: "Lisbon weekend", members: members,
+            status: .owed("you're owed €42.50"), isCompleted: false
+        ))
+        RowDivider()
+        TripCardRow(trip: TripCard(
+            id: UUID(), name: "Italy roadtrip", members: members,
+            status: .owe("you owe €18.00"), isCompleted: false
+        ))
+        RowDivider()
+        TripCardRow(trip: TripCard(
+            id: UUID(), name: "Solo coffee run", members: [members[0]],
+            status: .empty, isCompleted: false
+        ))
+        RowDivider()
+        TripCardRow(trip: TripCard(
+            id: UUID(), name: "Barcelona 2023", members: members,
+            status: .settled("settled · Mar 2023"), isCompleted: true
+        ))
+    }
+    .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .padding()
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Sage.bg)
+}

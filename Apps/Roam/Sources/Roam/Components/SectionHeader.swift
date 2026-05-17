@@ -30,3 +30,13 @@ struct LargeTitle: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
+
+#Preview("Headers") {
+    VStack(alignment: .leading, spacing: 0) {
+        LargeTitle(title: "Trips")
+        SectionHeaderText(title: "Active")
+        SectionHeaderText(title: "Completed")
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .background(Sage.bg)
+}

@@ -90,3 +90,33 @@ struct EmptyBalanceCard: View {
         .padding(.bottom, 12)
     }
 }
+
+#Preview("Balance cards") {
+    ScrollView {
+        VStack(spacing: 0) {
+            BalanceCard(summary: BalanceSummary(
+                label: "You're owed",
+                amount: "€42.50",
+                details: [
+                    BalanceDetailItem(id: UUID(), counterparty: "Alex owes you", amount: "€20.00"),
+                    BalanceDetailItem(id: UUID(), counterparty: "Jess owes you", amount: "€22.50"),
+                ]
+            ))
+            BalanceCard(summary: BalanceSummary(
+                label: "You owe",
+                amount: "$18.00",
+                details: [
+                    BalanceDetailItem(id: UUID(), counterparty: "You owe Sam", amount: "$18.00"),
+                ]
+            ))
+            BalanceCard(summary: BalanceSummary(
+                label: "You're owed",
+                amount: "£12.00",
+                details: []
+            ))
+            EmptyBalanceCard()
+        }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Sage.bg)
+}

@@ -24,3 +24,37 @@ struct RowDivider: View {
             .frame(height: 1)
     }
 }
+
+#Preview("Card") {
+    VStack(spacing: 0) {
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("First row")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Sage.text)
+                    Spacer()
+                    Text("€12.50")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Sage.text)
+                        .monospacedDigit()
+                }
+                .padding(14)
+                RowDivider()
+                HStack {
+                    Text("Second row")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Sage.textSecondary)
+                    Spacer()
+                    Text("€4.20")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Sage.textSecondary)
+                        .monospacedDigit()
+                }
+                .padding(14)
+            }
+        }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Sage.bg)
+}

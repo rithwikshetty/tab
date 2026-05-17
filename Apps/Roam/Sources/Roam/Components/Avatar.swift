@@ -58,3 +58,33 @@ struct AvatarGroup: View {
         }
     }
 }
+
+#Preview("Avatars") {
+    VStack(spacing: 32) {
+        HStack(spacing: 12) {
+            Avatar(initial: "A", tone: .terracotta, size: 44, borderWidth: 3)
+            Avatar(initial: "B", tone: .sage, size: 44, borderWidth: 3)
+            Avatar(initial: "C", tone: .sand, size: 44, borderWidth: 3)
+            Avatar(initial: "D", tone: .slate, size: 44, borderWidth: 3)
+            AvatarAdd(size: 44, borderWidth: 3)
+        }
+        HStack(spacing: 12) {
+            Avatar(initial: "A", tone: .terracotta, size: 28)
+            Avatar(initial: "B", tone: .sage, size: 28)
+            Avatar(initial: "C", tone: .sand, size: 28)
+            Avatar(initial: "D", tone: .slate, size: 28)
+        }
+        AvatarGroup(
+            members: [
+                MemberCard(id: UUID(), displayName: "Alex"),
+                MemberCard(id: UUID(), displayName: "Sam"),
+                MemberCard(id: UUID(), displayName: "Jess"),
+            ],
+            size: 44,
+            borderWidth: 3,
+            showAddButton: true
+        )
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Sage.bg)
+}

@@ -54,3 +54,47 @@ struct CurrencyPill: View {
         .buttonStyle(.plain)
     }
 }
+
+#Preview("Chips") {
+    VStack(spacing: 20) {
+        HStack(spacing: 8) {
+            CategoryChip(
+                category: CategoryOption(id: UUID(), icon: "🍕", name: "Food"),
+                isActive: true
+            )
+            CategoryChip(
+                category: CategoryOption(id: UUID(), icon: "🚌", name: "Transport"),
+                isActive: false
+            )
+            CategoryChip(
+                category: CategoryOption(id: UUID(), icon: "🏨", name: "Lodging"),
+                isActive: false
+            )
+        }
+        HStack(spacing: 8) {
+            CategoryChip(
+                category: CategoryOption(id: UUID(), icon: "🍕", name: "Food"),
+                isActive: true,
+                emojiOnly: true
+            )
+            CategoryChip(
+                category: CategoryOption(id: UUID(), icon: "🚌", name: "Transport"),
+                isActive: false,
+                emojiOnly: true
+            )
+            CategoryChip(
+                category: CategoryOption(id: UUID(), icon: "🏨", name: "Lodging"),
+                isActive: false,
+                emojiOnly: true
+            )
+        }
+        HStack(spacing: 8) {
+            CurrencyPill(code: "EUR", symbol: "€")
+            CurrencyPill(code: "USD", symbol: "$")
+            CurrencyPill(code: "GBP", symbol: "£")
+        }
+    }
+    .padding()
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Sage.bg)
+}
