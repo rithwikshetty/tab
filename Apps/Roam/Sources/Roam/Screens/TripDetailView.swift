@@ -15,6 +15,7 @@ struct TripDetailView: View {
     @Query private var categories: [CategoryEntity]
 
     @State private var segment: Int = 0
+    @State private var showingInvite: Bool = false
 
     init(tripID: UUID, onAddExpense: @escaping () -> Void = {}) {
         self.tripID = tripID
@@ -95,7 +96,12 @@ struct TripDetailView: View {
                 LargeTitle(title: trip.name)
 
                 HStack(spacing: 0) {
-                    AvatarGroup(members: memberCards, size: 44, borderWidth: 3, showAddButton: true)
+                    AvatarGroup(
+                        members: memberCards,
+                        size: 44,
+                        borderWidth: 3,
+                        onAddTap: { showingInvite = true }
+                    )
                     Spacer()
                 }
                 .padding(.horizontal, 22)
@@ -128,6 +134,11 @@ struct TripDetailView: View {
             Fab(label: "Add expense", systemImage: "plus", action: onAddExpense)
                 .padding(.trailing, 18)
                 .padding(.bottom, 24)
+        }
+        .sheet(isPresented: $showingInvite) {
+            InviteSheet(tripID: trip.id, tripName: trip.name)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
     }
 

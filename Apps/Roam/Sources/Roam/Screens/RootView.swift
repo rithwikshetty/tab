@@ -5,9 +5,11 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(AuthService.self) private var auth
     @Environment(SyncService.self) private var sync
+    @Environment(InviteService.self) private var invites
 
     @State private var tab: RootTab = .trips
     @State private var path = NavigationPath()
+    @State private var joinError: String?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -41,123 +43,48 @@ struct RootView: View {
         }
         .tint(Sage.accent)
         .task(id: auth.currentUser?.id) {
+            removeLegacyMockSeedIfNeeded()
             bootstrapProfile()
             bootstrapDefaultCategories()
-            #if DEBUG
-            if ProcessInfo.processInfo.environment["ROAM_MOCK_SEED"] == "1" {
-                bootstrapMockSeed()
-            }
-            applyDebugNavIfNeeded()
-            #endif
+            await sync.pushPending()
             await sync.pullAll()
         }
+        .task(id: invites.pending) {
+            await consumePendingInvite()
+        }
+        .alert("Couldn't join trip", isPresented: Binding(
+            get: { joinError != nil },
+            set: { if !$0 { joinError = nil } }
+        ), actions: {
+            Button("OK", role: .cancel) { joinError = nil }
+        }, message: {
+            Text(joinError ?? "")
+        })
     }
 
-    #if DEBUG
-    private func applyDebugNavIfNeeded() {
-        let nav = ProcessInfo.processInfo.environment["ROAM_NAV"] ?? ""
-        let seedTripID = UUID(uuidString: "99999999-9999-9999-9999-999999999999")!
-        switch nav {
-        case "trip":
-            path.append(Route.trip(seedTripID))
-        case "expense":
-            path.append(Route.trip(seedTripID))
-            path.append(Route.newExpense(seedTripID))
-        default:
-            break
+    private func consumePendingInvite() async {
+        guard let parsed = invites.consumePending() else { return }
+        do {
+            try await invites.joinTrip(parsed)
+            await sync.pullAll()
+            Haptics.success()
+            path.append(Route.trip(parsed.tripID))
+        } catch {
+            joinError = error.localizedDescription
+            Haptics.error()
         }
     }
 
-    private func bootstrapMockSeed() {
-        guard let user = auth.currentUser else { return }
+    private func removeLegacyMockSeedIfNeeded() {
         let seedTripID = UUID(uuidString: "99999999-9999-9999-9999-999999999999")!
         let descriptor = FetchDescriptor<TripEntity>(predicate: #Predicate<TripEntity> { $0.id == seedTripID })
-        guard (try? context.fetch(descriptor))?.isEmpty == true else { return }
-        let anyaID = UUID(uuidString: "AAAAAAAA-0001-0000-0000-000000000000")!
-        let samID  = UUID(uuidString: "AAAAAAAA-0002-0000-0000-000000000000")!
-
-        if (try? context.fetch(FetchDescriptor<ProfileEntity>(
-            predicate: #Predicate<ProfileEntity> { $0.id == anyaID }
-        )))?.isEmpty == true {
-            context.insert(ProfileEntity(id: anyaID, displayName: "Anya"))
-        }
-        if (try? context.fetch(FetchDescriptor<ProfileEntity>(
-            predicate: #Predicate<ProfileEntity> { $0.id == samID }
-        )))?.isEmpty == true {
-            context.insert(ProfileEntity(id: samID, displayName: "Sam"))
-        }
-
-        let trip = TripEntity(id: seedTripID, name: "Lisbon w/ Anya & Sam", createdByID: user.id)
-        trip.lastActivityAt = .now.addingTimeInterval(-86400 * 2)
-        context.insert(trip)
-        context.insert(TripMemberEntity(userID: user.id, trip: trip))
-        context.insert(TripMemberEntity(userID: anyaID, trip: trip))
-        context.insert(TripMemberEntity(userID: samID, trip: trip))
-
-        addMockExpense(
-            description: "Dinner at Ramiro",
-            payerID: user.id, amount: 85, currency: "EUR",
-            categoryID: DefaultCategories.food.id,
-            participants: [user.id, anyaID, samID],
-            daysAgo: 3, trip: trip
-        )
-        addMockExpense(
-            description: "Uber to Sintra",
-            payerID: anyaID, amount: Decimal(string: "22.40")!, currency: "EUR",
-            categoryID: DefaultCategories.transport.id,
-            participants: [user.id, anyaID, samID],
-            daysAgo: 3, trip: trip
-        )
-        addMockExpense(
-            description: "Airbnb (3 nights)",
-            payerID: samID, amount: 420, currency: "EUR",
-            categoryID: DefaultCategories.lodging.id,
-            participants: [user.id, anyaID, samID],
-            daysAgo: 5, trip: trip
-        )
-
-        try? context.save()
+        do {
+            for trip in try context.fetch(descriptor) {
+                context.delete(trip)
+            }
+            try context.save()
+        } catch { }
     }
-
-    private func addMockExpense(
-        description: String,
-        payerID: UUID,
-        amount: Decimal,
-        currency: String,
-        categoryID: UUID,
-        participants: [UUID],
-        daysAgo: Int,
-        trip: TripEntity
-    ) {
-        let expense = ExpenseEntity(
-            payerID: payerID,
-            amount: amount,
-            currency: currency,
-            categoryID: categoryID,
-            descriptionText: description,
-            expenseDate: .now.addingTimeInterval(TimeInterval(-86400 * daysAgo)),
-            createdByID: payerID,
-            trip: trip
-        )
-        context.insert(expense)
-
-        let cents = (amount as NSDecimalNumber).multiplying(by: 100).intValue
-        let n = participants.count
-        let base = cents / n
-        let remainder = cents - base * n
-        let sorted = participants.sorted { $0.uuidString < $1.uuidString }
-        for (i, pid) in sorted.enumerated() {
-            let owedCents = base + (i < remainder ? 1 : 0)
-            let owed = Decimal(owedCents) / 100
-            context.insert(ExpenseSplitEntity(
-                userID: pid,
-                amountOwed: owed,
-                splitTypeRaw: "equal",
-                expense: expense
-            ))
-        }
-    }
-    #endif
 
     private func bootstrapProfile() {
         guard let user = auth.currentUser else { return }

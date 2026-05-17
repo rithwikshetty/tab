@@ -45,15 +45,22 @@ struct AvatarGroup: View {
     let members: [MemberCard]
     var size: CGFloat = 28
     var borderWidth: CGFloat = 2
-    var showAddButton: Bool = false
+    var onAddTap: (() -> Void)?
 
     var body: some View {
         HStack(spacing: -8) {
             ForEach(members) { member in
                 Avatar(initial: member.initial, tone: member.tone, size: size, borderWidth: borderWidth)
             }
-            if showAddButton {
-                AvatarAdd(size: size, borderWidth: borderWidth)
+            if let onAddTap {
+                Button {
+                    Haptics.light()
+                    onAddTap()
+                } label: {
+                    AvatarAdd(size: size, borderWidth: borderWidth)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Invite to trip")
             }
         }
     }
@@ -82,7 +89,7 @@ struct AvatarGroup: View {
             ],
             size: 44,
             borderWidth: 3,
-            showAddButton: true
+            onAddTap: {}
         )
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -28,6 +28,8 @@
 create extension if not exists pgcrypto with schema extensions;
 create extension if not exists pgtap     with schema extensions;
 
+set check_function_bodies = off;
+
 -- Stamps server-owned sync fields. Clients cannot forge them — LWW ordering
 -- is determined by server-receive time.
 create or replace function public.set_sync_fields()
@@ -447,12 +449,12 @@ create trigger trg_categories_validate
   for each row execute function public.validate_category_row();
 
 insert into public.categories (id, trip_id, name, icon, is_default) values
-  ('00000001-0000-0000-0000-000000000000', null, 'Food & Drink', '🍽', true),
-  ('00000002-0000-0000-0000-000000000000', null, 'Transport',    '🚗', true),
-  ('00000003-0000-0000-0000-000000000000', null, 'Lodging',      '🏨', true),
-  ('00000004-0000-0000-0000-000000000000', null, 'Activities',   '🎭', true),
-  ('00000005-0000-0000-0000-000000000000', null, 'Shopping',     '🛍', true),
-  ('00000006-0000-0000-0000-000000000000', null, 'Other',        '⋯', true);
+  ('00000001-0000-0000-0000-000000000000', null, 'Food & Drink', 'bowl-food',    true),
+  ('00000002-0000-0000-0000-000000000000', null, 'Transport',    'car-profile',  true),
+  ('00000003-0000-0000-0000-000000000000', null, 'Lodging',      'bed',          true),
+  ('00000004-0000-0000-0000-000000000000', null, 'Activities',   'mask-happy',   true),
+  ('00000005-0000-0000-0000-000000000000', null, 'Shopping',     'shopping-bag', true),
+  ('00000006-0000-0000-0000-000000000000', null, 'Other',        'tag',          true);
 
 
 -- ============================================================================

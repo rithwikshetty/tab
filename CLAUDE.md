@@ -63,14 +63,17 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `R
 - Dummy/seed data is disposable. Recreate and reseed freely when validating features.
 - Canonical schema lives in `supabase/schema.sql`. Update it directly for schema changes.
 - Migration strategy is baseline-first: rewrite/squash baseline files aggressively; do not create incremental migration chains unless the user explicitly asks.
-- Reset command (default workflow): `./supabase/scripts/recreate_db.sh` (uses `supabase db reset` non-interactively).
+- For agents with Supabase MCP access, use MCP for remote destructive DB work. Prefer `apply_migration` with the current baseline/destructive SQL; use `reset_branch` for disposable Supabase development branches.
+- CLI fallback/human reset command: `./supabase/scripts/recreate_db.sh` (uses `supabase db reset` non-interactively).
+- Receipt storage objects/buckets cannot be deleted with raw SQL. Use `./supabase/scripts/clear_receipts_storage.sh`; pass `SUPABASE_SERVICE_ROLE_KEY` and `--delete-bucket` to delete the bucket itself.
+- Remote DB resets do not clear local SwiftData. If stale trips still appear in the app, uninstall the app from the simulator/device or reset simulator content.
 - DB tests live in `supabase/tests/` as pgTAP `.sql` files.
 - **RLS is mandatory** on every public table. Every test must verify both the allow and deny path.
 - Mutable synced row-tables use `updated_at` + `write_id` (UUID), plus `deleted_at` where the row is soft-deleted.
 - Direct `trip_members` insert is forbidden for clients. Trip creation auto-adds the creator; invite joins go through `create_trip_invite` + `join_trip_with_invite`.
 - Expense + split writes must be transactional; the DB enforces split totals and trip-member references for payers, participants, settlements, categories, and mute prefs.
 - Trip access derives from membership in `trip_members` — RLS policies all read from it.
-- Default reset/apply path is `./supabase/scripts/recreate_db.sh`. Use raw MCP migration application only when the user explicitly requests that workflow.
+- Default remote apply path for agents is Supabase MCP. Use `./supabase/scripts/recreate_db.sh` when MCP is unavailable or when a human wants a terminal command.
 
 ## What NOT to do
 
@@ -91,6 +94,7 @@ cd Packages/RoamCore && swift test
 open design/mockups.html
 
 # Supabase — destructive reset/recreate (default for this project)
+# Agents: prefer Supabase MCP when available. CLI fallback:
 ./supabase/scripts/recreate_db.sh
 ```
 

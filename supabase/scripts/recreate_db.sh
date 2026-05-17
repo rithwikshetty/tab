@@ -12,10 +12,10 @@ Usage:
   ./supabase/scripts/recreate_db.sh
 
 Behavior:
-  1) If SUPABASE_DB_URL is set, resets that database.
+  1) If SUPABASE_DB_URL is set, applies destructive teardown + schema to that DB.
   2) Else if SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD are set, links to
-     SUPABASE_PROJECT_REF (or default project ref) and resets linked DB.
-  3) Else resets currently linked database.
+     SUPABASE_PROJECT_REF (or default project ref) and applies destructive SQL.
+  3) Else applies destructive SQL to the currently linked database.
 
 Environment variables:
   SUPABASE_DB_URL         Optional direct Postgres URL (percent-encoded).
@@ -33,11 +33,20 @@ fi
 cd "$ROOT_DIR"
 
 SUPABASE_CMD=(npx --yes supabase)
-RESET_ARGS=(db reset --yes --no-seed --workdir "$ROOT_DIR")
+QUERY_ARGS=(db query --workdir "$ROOT_DIR")
+TEARDOWN_FILE="$ROOT_DIR/supabase/scripts/destructive_teardown.sql"
+SCHEMA_FILE="$ROOT_DIR/supabase/schema.sql"
+
+apply_files() {
+  echo "[recreate-db] Applying destructive teardown"
+  "${SUPABASE_CMD[@]}" "${QUERY_ARGS[@]}" -f "$TEARDOWN_FILE" "$@"
+  echo "[recreate-db] Applying canonical schema"
+  "${SUPABASE_CMD[@]}" "${QUERY_ARGS[@]}" -f "$SCHEMA_FILE" "$@"
+}
 
 if [[ -n "${SUPABASE_DB_URL:-}" ]]; then
-  echo "[recreate-db] Resetting database via SUPABASE_DB_URL"
-  "${SUPABASE_CMD[@]}" "${RESET_ARGS[@]}" --db-url "$SUPABASE_DB_URL"
+  echo "[recreate-db] Recreating database via SUPABASE_DB_URL"
+  apply_files --db-url "$SUPABASE_DB_URL"
   exit 0
 fi
 
@@ -48,10 +57,10 @@ if [[ -n "${SUPABASE_ACCESS_TOKEN:-}" && -n "${SUPABASE_DB_PASSWORD:-}" ]]; then
   "${SUPABASE_CMD[@]}" link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD" --workdir "$ROOT_DIR"
 fi
 
-echo "[recreate-db] Resetting linked database"
-if ! "${SUPABASE_CMD[@]}" "${RESET_ARGS[@]}" --linked; then
+echo "[recreate-db] Recreating linked database"
+if ! apply_files --linked; then
   cat <<'EOF'
-[recreate-db] Linked reset failed.
+[recreate-db] Linked recreate failed.
 Provide one of:
   - SUPABASE_DB_URL (recommended for CI/non-interactive usage), or
   - SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD (+ optional SUPABASE_PROJECT_REF)

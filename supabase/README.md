@@ -6,7 +6,17 @@ Default workflow:
 
 1. Edit `schema.sql` directly.
 2. Keep baseline migration files minimal (rewrite/squash aggressively).
-3. Recreate the target DB with `./scripts/recreate_db.sh`.
+3. Agents with Supabase MCP access should apply destructive remote changes through MCP.
+4. Humans or sessions without MCP can recreate the target DB with `./scripts/recreate_db.sh`.
+
+Remote DB resets do not clear the app's local SwiftData store. Delete the app
+from the simulator/device, or reset simulator content, when validating a truly
+empty app state.
+
+Receipt files live in Supabase Storage and are not deleted by SQL teardown.
+Use `./scripts/clear_receipts_storage.sh` to empty the `receipts` bucket. To
+delete the bucket itself, run it with `SUPABASE_SERVICE_ROLE_KEY` and
+`--delete-bucket`.
 
 ## Client write paths
 

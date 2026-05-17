@@ -6,6 +6,7 @@ struct RoamApp: App {
     @State private var auth: AuthService
     @State private var sync: SyncService
     @State private var realtime: RealtimeService
+    @State private var invites: InviteService
     let container: ModelContainer
 
     init() {
@@ -13,10 +14,12 @@ struct RoamApp: App {
         let auth = AuthService()
         let sync = SyncService(container: container, auth: auth)
         let realtime = RealtimeService(sync: sync)
+        let invites = InviteService()
         self.container = container
         _auth = State(initialValue: auth)
         _sync = State(initialValue: sync)
         _realtime = State(initialValue: realtime)
+        _invites = State(initialValue: invites)
     }
 
     var body: some Scene {
@@ -25,7 +28,11 @@ struct RoamApp: App {
                 .environment(auth)
                 .environment(sync)
                 .environment(realtime)
+                .environment(invites)
                 .preferredColorScheme(.light)
+                .onOpenURL { url in
+                    invites.handleOpenURL(url)
+                }
         }
         .modelContainer(container)
     }

@@ -59,7 +59,10 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `RoamCore` via
 - Dummy/seed data is disposable. Recreate and reseed freely to validate product behavior.
 - Canonical schema lives in `supabase/schema.sql`. Update it directly for schema changes.
 - Migration strategy is baseline-first: rewrite/squash baseline files aggressively; do not create incremental migration chains unless the user explicitly asks.
-- Reset command (default workflow): `./supabase/scripts/recreate_db.sh` (uses `supabase db reset` non-interactively).
+- For agents with Supabase MCP access, use MCP for remote destructive DB work. Prefer `apply_migration` with the current baseline/destructive SQL; use `reset_branch` for disposable Supabase development branches.
+- CLI fallback/human reset command: `./supabase/scripts/recreate_db.sh` (uses `supabase db reset` non-interactively).
+- Receipt storage objects/buckets cannot be deleted with raw SQL. Use `./supabase/scripts/clear_receipts_storage.sh`; pass `SUPABASE_SERVICE_ROLE_KEY` and `--delete-bucket` to delete the bucket itself.
+- Remote DB resets do not clear local SwiftData. If stale trips still appear in the app, uninstall the app from the simulator/device or reset simulator content.
 - Tests: pgTAP `.sql` files in `supabase/tests/`.
 - RLS mandatory on every public table; tests must verify both allow and deny.
 - Sync columns on mutable synced row-tables: `updated_at` (timestamptz), `write_id` (uuid), plus `deleted_at` where the row is soft-deleted.
@@ -81,6 +84,7 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `RoamCore` via
 cd Packages/RoamCore && swift test     # Swift tests
 open design/mockups.html                # Mockups
 # Supabase: destructive reset/recreate (default for this project)
+# Agents: prefer Supabase MCP when available. CLI fallback:
 ./supabase/scripts/recreate_db.sh
 ```
 

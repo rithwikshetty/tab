@@ -20,6 +20,18 @@ struct ProfileDTO: Codable, Sendable {
     }
 }
 
+struct ProfileInsertDTO: Codable, Sendable {
+    let id: UUID
+    let displayName: String
+    let avatarURL: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+        case avatarURL = "avatar_url"
+    }
+}
+
 // MARK: - Trip
 
 struct TripDTO: Codable, Sendable {

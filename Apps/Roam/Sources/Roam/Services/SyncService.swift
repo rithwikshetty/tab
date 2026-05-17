@@ -5,6 +5,16 @@ import os
 
 private let syncLog = Logger(subsystem: "com.rithwikshetty.roam", category: "sync")
 
+private struct TripMemberRemoteKey: Hashable, Sendable {
+    let tripID: UUID
+    let userID: UUID
+}
+
+private struct ExpenseSplitRemoteKey: Hashable, Sendable {
+    let expenseID: UUID
+    let userID: UUID
+}
+
 @MainActor
 @Observable
 final class SyncService {
@@ -13,6 +23,20 @@ final class SyncService {
         case pulling
         case pushing
         case error(String)
+    }
+
+    enum SyncError: LocalizedError {
+        case signInRequired
+        case localTripMissing
+        case deletedTrip
+
+        var errorDescription: String? {
+            switch self {
+            case .signInRequired: "Sign in to sync this trip."
+            case .localTripMissing: "Trip not found on this device."
+            case .deletedTrip: "This trip has been deleted."
+            }
+        }
     }
 
     private(set) var phase: Phase = .idle
@@ -32,19 +56,45 @@ final class SyncService {
         client.auth.currentSession != nil
     }
 
+    func ensureTripUploaded(tripID: UUID) async throws {
+        guard hasRealSession else { throw SyncError.signInRequired }
+
+        let ctx = container.mainContext
+        let trip = try ctx.fetch(FetchDescriptor<TripEntity>(
+            predicate: #Predicate { $0.id == tripID }
+        )).first
+
+        guard let trip else { throw SyncError.localTripMissing }
+        guard trip.deletedAt == nil else { throw SyncError.deletedTrip }
+        guard trip.pushedWriteID != trip.writeID else { return }
+
+        try await pushCurrentProfileIfNeeded(in: ctx)
+        try await pushTrip(trip)
+        try ctx.save()
+    }
+
     // MARK: - Pull
 
     func pullAll() async {
         guard hasRealSession else { return }
         phase = .pulling
         do {
-            try await pullProfiles()
-            try await pullTrips()
-            try await pullTripMembers()
-            try await pullCategories()
-            try await pullExpenses()
-            try await pullExpenseSplits()
-            try await pullSettlements()
+            let profileIDs = try await pullProfiles()
+            let tripIDs = try await pullTrips()
+            let tripMemberKeys = try await pullTripMembers()
+            let categoryIDs = try await pullCategories()
+            let expenseIDs = try await pullExpenses()
+            let expenseSplitKeys = try await pullExpenseSplits()
+            let settlementIDs = try await pullSettlements()
+            try reconcileLocalRows(
+                remoteProfileIDs: profileIDs,
+                remoteTripIDs: tripIDs,
+                remoteTripMemberKeys: tripMemberKeys,
+                remoteCategoryIDs: categoryIDs,
+                remoteExpenseIDs: expenseIDs,
+                remoteExpenseSplitKeys: expenseSplitKeys,
+                remoteSettlementIDs: settlementIDs
+            )
             lastPullAt = .now
             phase = .idle
         } catch {
@@ -53,7 +103,7 @@ final class SyncService {
         }
     }
 
-    private func pullProfiles() async throws {
+    private func pullProfiles() async throws -> Set<UUID> {
         let rows: [ProfileDTO] = try await client
             .from("profiles")
             .select()
@@ -65,9 +115,10 @@ final class SyncService {
             try upsertProfile(dto, in: ctx)
         }
         try ctx.save()
+        return Set(rows.map(\.id))
     }
 
-    private func pullTrips() async throws {
+    private func pullTrips() async throws -> Set<UUID> {
         let rows: [TripDTO] = try await client
             .from("trips")
             .select()
@@ -79,9 +130,10 @@ final class SyncService {
             try upsertTrip(dto, in: ctx)
         }
         try ctx.save()
+        return Set(rows.map(\.id))
     }
 
-    private func pullTripMembers() async throws {
+    private func pullTripMembers() async throws -> Set<TripMemberRemoteKey> {
         let rows: [TripMemberDTO] = try await client
             .from("trip_members")
             .select()
@@ -93,9 +145,10 @@ final class SyncService {
             try upsertTripMember(dto, in: ctx)
         }
         try ctx.save()
+        return Set(rows.map { TripMemberRemoteKey(tripID: $0.tripID, userID: $0.userID) })
     }
 
-    private func pullCategories() async throws {
+    private func pullCategories() async throws -> Set<UUID> {
         let rows: [CategoryDTO] = try await client
             .from("categories")
             .select()
@@ -107,9 +160,10 @@ final class SyncService {
             try upsertCategory(dto, in: ctx)
         }
         try ctx.save()
+        return Set(rows.map(\.id))
     }
 
-    private func pullExpenses() async throws {
+    private func pullExpenses() async throws -> Set<UUID> {
         let rows: [ExpenseDTO] = try await client
             .from("expenses")
             .select()
@@ -121,9 +175,10 @@ final class SyncService {
             try upsertExpense(dto, in: ctx)
         }
         try ctx.save()
+        return Set(rows.map(\.id))
     }
 
-    private func pullExpenseSplits() async throws {
+    private func pullExpenseSplits() async throws -> Set<ExpenseSplitRemoteKey> {
         let rows: [ExpenseSplitDTO] = try await client
             .from("expense_splits")
             .select()
@@ -135,9 +190,10 @@ final class SyncService {
             try upsertExpenseSplit(dto, in: ctx)
         }
         try ctx.save()
+        return Set(rows.map { ExpenseSplitRemoteKey(expenseID: $0.expenseID, userID: $0.userID) })
     }
 
-    private func pullSettlements() async throws {
+    private func pullSettlements() async throws -> Set<UUID> {
         let rows: [SettlementDTO] = try await client
             .from("settlements")
             .select()
@@ -148,6 +204,68 @@ final class SyncService {
         for dto in rows {
             try upsertSettlement(dto, in: ctx)
         }
+        try ctx.save()
+        return Set(rows.map(\.id))
+    }
+
+    private func reconcileLocalRows(
+        remoteProfileIDs: Set<UUID>,
+        remoteTripIDs: Set<UUID>,
+        remoteTripMemberKeys: Set<TripMemberRemoteKey>,
+        remoteCategoryIDs: Set<UUID>,
+        remoteExpenseIDs: Set<UUID>,
+        remoteExpenseSplitKeys: Set<ExpenseSplitRemoteKey>,
+        remoteSettlementIDs: Set<UUID>
+    ) throws {
+        let ctx = container.mainContext
+
+        for split in try ctx.fetch(FetchDescriptor<ExpenseSplitEntity>()) {
+            guard split.pushedWriteID != nil, let expenseID = split.expense?.id else { continue }
+            if !remoteExpenseSplitKeys.contains(ExpenseSplitRemoteKey(expenseID: expenseID, userID: split.userID)) {
+                ctx.delete(split)
+            }
+        }
+
+        for settlement in try ctx.fetch(FetchDescriptor<SettlementEntity>()) {
+            if settlement.pushedWriteID != nil && !remoteSettlementIDs.contains(settlement.id) {
+                ctx.delete(settlement)
+            }
+        }
+
+        for expense in try ctx.fetch(FetchDescriptor<ExpenseEntity>()) {
+            if expense.pushedWriteID != nil && !remoteExpenseIDs.contains(expense.id) {
+                ctx.delete(expense)
+            }
+        }
+
+        for member in try ctx.fetch(FetchDescriptor<TripMemberEntity>()) {
+            guard member.pushedWriteID != nil, let tripID = member.trip?.id else { continue }
+            if !remoteTripMemberKeys.contains(TripMemberRemoteKey(tripID: tripID, userID: member.userID)) {
+                ctx.delete(member)
+            }
+        }
+
+        for trip in try ctx.fetch(FetchDescriptor<TripEntity>()) {
+            if trip.pushedWriteID != nil && !remoteTripIDs.contains(trip.id) {
+                ctx.delete(trip)
+            }
+        }
+
+        for category in try ctx.fetch(FetchDescriptor<CategoryEntity>()) {
+            guard !category.isDefault else { continue }
+            if category.pushedWriteID != nil && !remoteCategoryIDs.contains(category.id) {
+                ctx.delete(category)
+            }
+        }
+
+        for profile in try ctx.fetch(FetchDescriptor<ProfileEntity>()) {
+            guard profile.pushedWriteID != nil else { continue }
+            if auth?.currentUser?.id == profile.id { continue }
+            if !remoteProfileIDs.contains(profile.id) {
+                ctx.delete(profile)
+            }
+        }
+
         try ctx.save()
     }
 
@@ -393,6 +511,7 @@ final class SyncService {
         guard hasRealSession else { return }
         phase = .pushing
         do {
+            try await pushProfiles()
             try await pushTrips()
             try await pushSettlements()
             try await pushExpensesAndSplits()
@@ -403,23 +522,74 @@ final class SyncService {
         }
     }
 
+    private func pushProfiles() async throws {
+        let ctx = container.mainContext
+        let dirty = try ctx.fetch(FetchDescriptor<ProfileEntity>())
+            .filter { $0.pushedWriteID != $0.writeID }
+        guard !dirty.isEmpty else { return }
+
+        for profile in dirty {
+            do {
+                try await pushProfile(profile)
+            } catch {
+                syncLog.error("profile push failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        try ctx.save()
+    }
+
+    private func pushCurrentProfileIfNeeded(in ctx: ModelContext) async throws {
+        guard let userID = auth?.currentUser?.id else { throw SyncError.signInRequired }
+        let profile = try ctx.fetch(FetchDescriptor<ProfileEntity>(
+            predicate: #Predicate { $0.id == userID }
+        )).first
+        guard let profile, profile.pushedWriteID != profile.writeID else { return }
+        try await pushProfile(profile)
+    }
+
+    private func pushProfile(_ profile: ProfileEntity) async throws {
+        let insert = ProfileInsertDTO(
+            id: profile.id,
+            displayName: profile.displayName,
+            avatarURL: profile.avatarURL
+        )
+        try await client
+            .from("profiles")
+            .upsert(insert, onConflict: "id")
+            .execute()
+        profile.pushedWriteID = profile.writeID
+    }
+
     private func pushTrips() async throws {
         let ctx = container.mainContext
         let dirty = try ctx.fetch(FetchDescriptor<TripEntity>()).filter { $0.pushedWriteID != $0.writeID }
         guard !dirty.isEmpty else { return }
         for trip in dirty {
-            let insert = TripInsertDTO(id: trip.id, name: trip.name, createdBy: trip.createdByID)
             do {
-                try await client
-                    .from("trips")
-                    .upsert(insert, onConflict: "id")
-                    .execute()
-                trip.pushedWriteID = trip.writeID
+                try await pushTrip(trip)
             } catch {
                 syncLog.error("trip push failed: \(error.localizedDescription, privacy: .public)")
             }
         }
         try ctx.save()
+    }
+
+    private func pushTrip(_ trip: TripEntity) async throws {
+        if trip.pushedWriteID == nil {
+            let insert = TripInsertDTO(id: trip.id, name: trip.name, createdBy: trip.createdByID)
+            try await client
+                .from("trips")
+                .insert(insert)
+                .execute()
+        } else {
+            let update = TripUpdateDTO(name: trip.name, deletedAt: trip.deletedAt)
+            try await client
+                .from("trips")
+                .update(update)
+                .eq("id", value: trip.id.uuidString)
+                .execute()
+        }
+        trip.pushedWriteID = trip.writeID
     }
 
     private func pushSettlements() async throws {
