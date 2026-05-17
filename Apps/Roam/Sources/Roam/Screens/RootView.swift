@@ -30,6 +30,8 @@ struct RootView: View {
                 RoamTabBar(selection: $tab)
             }
             .background(Sage.bg.ignoresSafeArea())
+            .navigationTitle(tab == .trips ? "Trips" : "Settings")
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .trip(let tripID):
@@ -39,7 +41,7 @@ struct RootView: View {
                         onOpenExpense: { expenseID in path.append(Route.expense(expenseID)) }
                     )
                 case .newExpense(let tripID):
-                    ExpenseEntryView(tripID: tripID) { path.removeLast() }
+                    ExpenseEntryView(tripID: tripID)
                 case .expense(let expenseID):
                     ExpenseDetailView(expenseID: expenseID)
                 }

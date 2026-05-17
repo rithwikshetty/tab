@@ -5,8 +5,8 @@ import RoamCore
 
 struct ExpenseEntryView: View {
     let tripID: UUID
-    var onDone: () -> Void = {}
 
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @Environment(AuthService.self) private var auth
     @Environment(SyncService.self) private var sync
@@ -43,9 +43,8 @@ struct ExpenseEntryView: View {
         static let sectionLabelBottom: CGFloat = 10
     }
 
-    init(tripID: UUID, onDone: @escaping () -> Void = {}) {
+    init(tripID: UUID) {
         self.tripID = tripID
-        self.onDone = onDone
         _trips = Query(filter: #Predicate<TripEntity> { $0.id == tripID })
     }
 
@@ -144,23 +143,14 @@ struct ExpenseEntryView: View {
             if trip != nil {
                 form
             } else {
-                Color.clear.onAppear { onDone() }
+                Color.clear.onAppear { dismiss() }
             }
         }
         .background(Sage.bg.ignoresSafeArea())
-        .navigationBarBackButtonHidden(true)
+        .navigationTitle("New expense")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Cancel", action: onDone)
-                    .font(.navLink)
-                    .foregroundStyle(Sage.text)
-            }
-            ToolbarItem(placement: .principal) {
-                Text("New expense")
-                    .font(.navTitle)
-                    .tracking(-0.07)
-                    .foregroundStyle(Sage.text)
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") { save() }
                     .font(.navLinkBold)
@@ -537,7 +527,7 @@ struct ExpenseEntryView: View {
 
         try? context.save()
         Haptics.success()
-        onDone()
+        dismiss()
 
         Task { await sync.pushPending() }
     }

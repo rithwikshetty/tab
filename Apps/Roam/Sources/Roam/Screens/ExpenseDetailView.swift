@@ -4,7 +4,6 @@ import RoamCore
 
 struct ExpenseDetailView: View {
     let expenseID: UUID
-    var onDeleted: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -17,9 +16,8 @@ struct ExpenseDetailView: View {
 
     @State private var confirmDelete = false
 
-    init(expenseID: UUID, onDeleted: @escaping () -> Void = {}) {
+    init(expenseID: UUID) {
         self.expenseID = expenseID
-        self.onDeleted = onDeleted
         _expenses = Query(filter: #Predicate<ExpenseEntity> { $0.id == expenseID })
     }
 
@@ -42,21 +40,8 @@ struct ExpenseDetailView: View {
             }
         }
         .background(Sage.bg.ignoresSafeArea())
-        .navigationBarBackButtonHidden(true)
+        .toolbar(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button(action: { dismiss() }) {
-                    HStack(spacing: 2) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .medium))
-                        Text(expense?.trip?.name ?? "Trip")
-                            .font(.navLink)
-                            .tracking(-0.07)
-                            .lineLimit(1)
-                    }
-                    .foregroundStyle(Sage.accent)
-                }
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button(role: .destructive) {
@@ -408,7 +393,6 @@ struct ExpenseDetailView: View {
         }
         try? context.save()
         Haptics.success()
-        onDeleted()
         dismiss()
         Task { await sync.pushPending() }
     }

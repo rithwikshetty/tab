@@ -79,7 +79,6 @@ struct TripListView: View {
                 .padding(.trailing, 18)
                 .padding(.bottom, 100)
         }
-        .navigationBarHidden(true)
         .sheet(isPresented: $showingNewTrip) {
             NewTripSheet()
         }

@@ -47,21 +47,7 @@ struct TripDetailView: View {
                 MissingTripView { dismiss() }
             }
         }
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button(action: { dismiss() }) {
-                    HStack(spacing: 2) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .medium))
-                        Text("Trips")
-                            .font(.navLink)
-                            .tracking(-0.07)
-                    }
-                    .foregroundStyle(Sage.accent)
-                }
-            }
-        }
+        .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(Sage.bg, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .task(id: tripID) {
