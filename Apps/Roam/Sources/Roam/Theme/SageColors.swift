@@ -38,4 +38,8 @@ enum Sage {
         static let sand = Color(0xB98B59)
         static let slate = Color(0x6B8DA6)
     }
+
+    static let markStart = accentStrong
+    static let markCurve = accentStrong
+    static let markEnd = Color(0xB97047)
 }

@@ -33,18 +33,37 @@ struct RoamApp: App {
 
 private struct AppShell: View {
     @Environment(AuthService.self) private var auth
+    @State private var splashAnimationDone = false
+
+    private var isLoading: Bool {
+        if case .loading = auth.phase { return true }
+        return false
+    }
+
+    private var showSplash: Bool {
+        !splashAnimationDone || isLoading
+    }
 
     var body: some View {
-        Group {
-            switch auth.phase {
-            case .loading:
-                SplashView()
-            case .signedOut:
-                AuthView()
-            case .signedIn:
-                RootView()
+        ZStack {
+            Group {
+                switch auth.phase {
+                case .loading:
+                    Sage.bg.ignoresSafeArea()
+                case .signedOut:
+                    AuthView()
+                case .signedIn:
+                    RootView()
+                }
+            }
+
+            if showSplash {
+                SplashView(onAnimationComplete: { splashAnimationDone = true })
+                    .transition(.opacity)
+                    .zIndex(1)
             }
         }
-        .animation(.easeOut(duration: 0.18), value: auth.phase)
+        .animation(.easeOut(duration: 0.35), value: splashAnimationDone)
+        .animation(.easeOut(duration: 0.35), value: isLoading)
     }
 }
