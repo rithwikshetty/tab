@@ -21,6 +21,11 @@ DerivedData/
 timeline.xctimeline
 playground.xcworkspace
 
+# XcodeGen — project.yml is source of truth; .xcodeproj is generated
+Apps/*/*.xcodeproj/
+Apps/*/Sources/*/Info.plist
+.xcodebuildmcp/
+
 # Xcode workspace user state inside an .xcworkspace
 *.xcworkspace/xcuserdata/
 

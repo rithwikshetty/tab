@@ -1,0 +1,60 @@
+import SwiftUI
+
+struct Avatar: View {
+    let initial: String
+    let tone: AvatarTone
+    var size: CGFloat = 28
+    var borderWidth: CGFloat = 2
+
+    private var bg: Color {
+        switch tone {
+        case .terracotta: Sage.Avatar.terracotta
+        case .sage: Sage.Avatar.sage
+        case .sand: Sage.Avatar.sand
+        case .slate: Sage.Avatar.slate
+        }
+    }
+
+    var body: some View {
+        Text(initial)
+            .font(size >= 40 ? .avatarLarge : .avatarSmall)
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(bg, in: Circle())
+            .overlay(Circle().stroke(Sage.surface, lineWidth: borderWidth))
+    }
+}
+
+struct AvatarAdd: View {
+    var size: CGFloat = 44
+    var borderWidth: CGFloat = 3
+
+    var body: some View {
+        Text("+")
+            .font(.system(size: size >= 40 ? 20 : 14, weight: .regular))
+            .foregroundStyle(Sage.accent)
+            .frame(width: size, height: size)
+            .overlay(
+                Circle()
+                    .strokeBorder(Sage.accentSoft, style: StrokeStyle(lineWidth: borderWidth, dash: [3, 3]))
+            )
+    }
+}
+
+struct AvatarGroup: View {
+    let members: [DemoMember]
+    var size: CGFloat = 28
+    var borderWidth: CGFloat = 2
+    var showAddButton: Bool = false
+
+    var body: some View {
+        HStack(spacing: -8) {
+            ForEach(members) { member in
+                Avatar(initial: member.initial, tone: member.tone, size: size, borderWidth: borderWidth)
+            }
+            if showAddButton {
+                AvatarAdd(size: size, borderWidth: borderWidth)
+            }
+        }
+    }
+}
