@@ -30,6 +30,7 @@ struct TripListView: View {
             TripPresenter.card(
                 from: trip,
                 currentUserID: userID,
+                currentUserDisplayName: auth.currentUser?.displayName,
                 profileFor: { id in profilesByID[id] }
             )
         }

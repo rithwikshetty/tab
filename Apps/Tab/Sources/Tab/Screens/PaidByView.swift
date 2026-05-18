@@ -17,6 +17,7 @@ struct PaidByView: View {
     @State private var mode: PaymentMode = .equal
     @State private var selectedPayerIDs: Set<UUID> = []
     @State private var exactAmountTextByUserID: [UUID: String] = [:]
+    @State private var exactAmountsManuallyEdited = false
 
     @FocusState private var focusedPayerID: UUID?
 
@@ -195,7 +196,12 @@ struct PaidByView: View {
         .padding(.horizontal, Layout.hPad)
         .padding(.vertical, 12)
         .onChange(of: mode) { _, newMode in
-            if newMode == .exact { seedExactFromEqual() }
+            if newMode == .exact {
+                exactAmountsManuallyEdited = false
+                seedExactFromEqual(overwriteExisting: true)
+            } else {
+                focusedPayerID = nil
+            }
         }
     }
 
@@ -265,7 +271,10 @@ struct PaidByView: View {
                 DecimalTextField(
                     text: Binding(
                         get: { exactAmountTextByUserID[userID, default: ""] },
-                        set: { exactAmountTextByUserID[userID] = sanitize($0) }
+                        set: {
+                            exactAmountsManuallyEdited = true
+                            exactAmountTextByUserID[userID] = sanitize($0)
+                        }
                     ),
                     placeholder: "0.00",
                     font: .systemFont(ofSize: 13),
@@ -302,10 +311,15 @@ struct PaidByView: View {
             if selectedPayerIDs.count > 1 {
                 selectedPayerIDs.remove(userID)
                 exactAmountTextByUserID.removeValue(forKey: userID)
+                if mode == .exact && !exactAmountsManuallyEdited {
+                    seedExactFromEqual(overwriteExisting: true)
+                }
             }
         } else {
             selectedPayerIDs.insert(userID)
-            if mode == .exact { seedExactFromEqual() }
+            if mode == .exact {
+                seedExactFromEqual(overwriteExisting: !exactAmountsManuallyEdited)
+            }
         }
     }
 
@@ -321,6 +335,7 @@ struct PaidByView: View {
             selectedPayerIDs = Set(payments.map(\.payerID))
             mode = payments.first?.paymentMode ?? .equal
             if mode == .exact {
+                exactAmountsManuallyEdited = true
                 for p in payments {
                     exactAmountTextByUserID[p.payerID] = plainAmountString(p.amountPaid)
                 }
@@ -328,7 +343,7 @@ struct PaidByView: View {
         }
     }
 
-    private func seedExactFromEqual() {
+    private func seedExactFromEqual(overwriteExisting: Bool) {
         guard !selectedPayerIDs.isEmpty, totalAmount > 0 else { return }
         guard let computed = try? PaymentCalculator.calculate(
             totalAmount: totalAmount,
@@ -336,9 +351,11 @@ struct PaidByView: View {
             payers: Array(selectedPayerIDs),
             paymentMode: .equal
         ) else { return }
+
+        exactAmountTextByUserID = exactAmountTextByUserID.filter { selectedPayerIDs.contains($0.key) }
         for p in computed {
             let existing = exactAmountTextByUserID[p.payerID, default: ""].trimmingCharacters(in: .whitespaces)
-            if existing.isEmpty {
+            if overwriteExisting || existing.isEmpty {
                 exactAmountTextByUserID[p.payerID] = plainAmountString(p.amountPaid)
             }
         }

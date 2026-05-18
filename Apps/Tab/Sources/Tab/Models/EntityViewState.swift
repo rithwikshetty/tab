@@ -70,12 +70,14 @@ enum TripPresenter {
     static func card(
         from trip: TripEntity,
         currentUserID: UUID,
+        currentUserDisplayName: String? = nil,
         profileFor: (UUID) -> ProfileEntity?,
         now: Date = .now
     ) -> TripCard {
         let members = trip.members.map { member -> MemberCard in
             if member.userID == currentUserID {
-                return MemberCard(id: member.userID, displayName: "You")
+                let avatarName = profileFor(member.userID)?.displayName ?? currentUserDisplayName
+                return MemberCard(id: member.userID, displayName: "You", avatarName: avatarName)
             }
             let displayName = profileFor(member.userID)?.displayName ?? "Member"
             return MemberCard(id: member.userID, displayName: displayName)

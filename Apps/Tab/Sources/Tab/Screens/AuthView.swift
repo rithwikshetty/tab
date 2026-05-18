@@ -123,7 +123,11 @@ struct AuthView: View {
             }
             status = .verifying
             do {
-                try await auth.signInWithApple(idToken: idToken, nonce: rawNonce)
+                try await auth.signInWithApple(
+                    idToken: idToken,
+                    nonce: rawNonce,
+                    fullName: appleDisplayName(from: credential.fullName)
+                )
                 // AuthService will publish .signedIn via authStateChanges
             } catch {
                 status = .error(error.localizedDescription)
@@ -135,6 +139,17 @@ struct AuthView: View {
                 status = .error(error.localizedDescription)
             }
         }
+    }
+
+    private func appleDisplayName(from components: PersonNameComponents?) -> String? {
+        guard let components else { return nil }
+        if let givenName = components.givenName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !givenName.isEmpty {
+            return givenName
+        }
+
+        let formatted = components.formatted().trimmingCharacters(in: .whitespacesAndNewlines)
+        return formatted.isEmpty ? nil : formatted
     }
 
     private var codeForm: some View {

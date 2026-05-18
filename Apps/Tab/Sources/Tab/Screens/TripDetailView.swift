@@ -78,7 +78,11 @@ struct TripDetailView: View {
         let userID = auth.currentUser?.id ?? UUID()
         let memberCards = trip.members.map { m -> MemberCard in
             if m.userID == userID {
-                MemberCard(id: m.userID, displayName: "You")
+                MemberCard(
+                    id: m.userID,
+                    displayName: "You",
+                    avatarName: profilesByID[m.userID]?.displayName ?? auth.currentUser?.displayName
+                )
             } else {
                 MemberCard(id: m.userID, displayName: profilesByID[m.userID]?.displayName ?? "Member")
             }

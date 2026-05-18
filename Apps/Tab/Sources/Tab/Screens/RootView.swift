@@ -48,7 +48,7 @@ struct RootView: View {
             }
         }
         .tint(Sage.accent)
-        .task(id: auth.currentUser?.id) {
+        .task(id: auth.currentUser) {
             removeLegacyMockSeedIfNeeded()
             bootstrapProfile()
             bootstrapDefaultCategories()

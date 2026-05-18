@@ -56,7 +56,7 @@ final class AuthService {
         for await (_, session) in client.auth.authStateChanges {
             if let session {
                 let user = session.user
-                let displayName = Self.displayName(from: user.email)
+                let displayName = Self.displayName(from: user)
                 currentUser = CurrentUser(id: user.id, email: user.email, displayName: displayName)
                 phase = .signedIn(user.id)
             } else {
@@ -74,19 +74,47 @@ final class AuthService {
         _ = try await client.auth.verifyOTP(email: email, token: token, type: .email)
     }
 
-    func signInWithApple(idToken: String, nonce: String) async throws {
-        _ = try await client.auth.signInWithIdToken(
+    func signInWithApple(idToken: String, nonce: String, fullName: String?) async throws {
+        let session = try await client.auth.signInWithIdToken(
             credentials: .init(provider: .apple, idToken: idToken, nonce: nonce)
         )
+
+        if let displayName = Self.normalizedDisplayName(fullName) {
+            _ = try? await client.auth.update(
+                user: UserAttributes(data: [
+                    "display_name": .string(displayName),
+                    "full_name": .string(displayName),
+                ])
+            )
+            currentUser = CurrentUser(id: session.user.id, email: session.user.email, displayName: displayName)
+            phase = .signedIn(session.user.id)
+        }
     }
 
     func signOut() async {
         try? await client.auth.signOut()
     }
 
+    private static func displayName(from user: User) -> String {
+        if let displayName = normalizedDisplayName(user.userMetadata["display_name"]?.stringValue) {
+            return displayName
+        }
+        if let fullName = normalizedDisplayName(user.userMetadata["full_name"]?.stringValue) {
+            return fullName
+        }
+        return displayName(from: user.email)
+    }
+
     private static func displayName(from email: String?) -> String {
         guard let email else { return "You" }
         let prefix = email.split(separator: "@").first.map(String.init) ?? "You"
         return prefix.capitalized
+    }
+
+    private static func normalizedDisplayName(_ name: String?) -> String? {
+        guard let name else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(60))
     }
 }

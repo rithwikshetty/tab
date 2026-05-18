@@ -6,10 +6,10 @@ struct MemberCard: Identifiable, Hashable, Sendable {
     let initial: String
     let tone: AvatarTone
 
-    init(id: UUID, displayName: String) {
+    init(id: UUID, displayName: String, avatarName: String? = nil) {
         self.id = id
         self.displayName = displayName
-        self.initial = AvatarInitial.from(displayName)
+        self.initial = AvatarInitial.from(avatarName ?? displayName)
         self.tone = AvatarTone.deterministic(for: id)
     }
 }

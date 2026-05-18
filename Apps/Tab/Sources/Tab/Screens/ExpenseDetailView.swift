@@ -86,10 +86,14 @@ struct ExpenseDetailView: View {
                 return MemberCard(id: expense.id, displayName: "\(expense.payments.count) people")
             }
             if let payerID = expense.primaryPayerID {
-                let name = payerID == userID
-                    ? "You"
-                    : (profilesByID[payerID]?.displayName ?? "Member")
-                return MemberCard(id: payerID, displayName: name)
+                if payerID == userID {
+                    return MemberCard(
+                        id: payerID,
+                        displayName: "You",
+                        avatarName: profilesByID[payerID]?.displayName ?? auth.currentUser?.displayName
+                    )
+                }
+                return MemberCard(id: payerID, displayName: profilesByID[payerID]?.displayName ?? "Member")
             }
             return MemberCard(id: expense.id, displayName: "—")
         }()
@@ -509,10 +513,13 @@ struct ExpenseDetailView: View {
         expense.splits
             .map { split -> SplitRowItem in
                 let isYou = split.userID == currentUserID
-                let name = isYou
-                    ? "You"
-                    : (profilesByID[split.userID]?.displayName ?? "Member")
-                let member = MemberCard(id: split.userID, displayName: name)
+                let member = isYou
+                    ? MemberCard(
+                        id: split.userID,
+                        displayName: "You",
+                        avatarName: profilesByID[split.userID]?.displayName ?? auth.currentUser?.displayName
+                    )
+                    : MemberCard(id: split.userID, displayName: profilesByID[split.userID]?.displayName ?? "Member")
                 return SplitRowItem(
                     id: split.userID,
                     member: member,
