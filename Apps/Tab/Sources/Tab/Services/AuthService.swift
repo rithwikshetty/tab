@@ -66,14 +66,6 @@ final class AuthService {
         }
     }
 
-    func sendOTP(email: String) async throws {
-        try await client.auth.signInWithOTP(email: email, shouldCreateUser: true)
-    }
-
-    func verifyOTP(email: String, token: String) async throws {
-        _ = try await client.auth.verifyOTP(email: email, token: token, type: .email)
-    }
-
     func signInWithApple(idToken: String, nonce: String, fullName: String?) async throws {
         let session = try await client.auth.signInWithIdToken(
             credentials: .init(provider: .apple, idToken: idToken, nonce: nonce)
