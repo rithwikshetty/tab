@@ -33,7 +33,7 @@ trigger then auto-creates `public.profiles`). Fixture UUIDs:
 
 | File                      | Tests | Concern                                                |
 |---------------------------|-------|--------------------------------------------------------|
-| `01_schema.sql`           | 42    | Tables/PKs/FKs/RLS-enabled existence and email-person RPCs |
+| `01_schema.sql`           | 46    | Tables/PKs/FKs/RLS-enabled existence, realtime publication membership, and email-person RPCs |
 | `02_constraints.sql`      | 18    | CHECK / UNIQUE / FK constraints plus trip-person ledger invariants |
 | `03_triggers.sql`         | 9     | `handle_new_user`, sync/touch triggers, transactional trip creation |
 | `04_rls.sql`              | 16    | RLS allow + deny paths and email-claim joining          |

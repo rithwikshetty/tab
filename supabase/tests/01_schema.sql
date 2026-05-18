@@ -3,7 +3,7 @@
 begin;
 set search_path = extensions, public, pg_temp;
 
-select plan(42);
+select plan(46);
 create temp table _r (line text);
 
 -- Tables
@@ -55,6 +55,60 @@ insert into _r select ok((select relrowsecurity from pg_class where oid = 'publi
 insert into _r select ok((select relrowsecurity from pg_class where oid = 'public.activity_log'::regclass),     'RLS enabled: activity_log');
 insert into _r select ok((select relrowsecurity from pg_class where oid = 'public.push_devices'::regclass),     'RLS enabled: push_devices');
 insert into _r select ok((select relrowsecurity from pg_class where oid = 'public.trip_mute_prefs'::regclass),  'RLS enabled: trip_mute_prefs');
+
+-- Realtime publication membership (required for cross-device live updates).
+insert into _r select ok(
+  exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'trips'
+  ),
+  'supabase_realtime includes public.trips'
+);
+insert into _r select ok(
+  exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'trip_people'
+  ),
+  'supabase_realtime includes public.trip_people'
+);
+insert into _r select ok(
+  exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'expenses'
+  ),
+  'supabase_realtime includes public.expenses'
+);
+insert into _r select ok(
+  exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'settlements'
+  ),
+  'supabase_realtime includes public.settlements'
+);
 
 insert into _r select * from finish();
 select line from _r;

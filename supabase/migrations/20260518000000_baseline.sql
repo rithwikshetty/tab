@@ -932,6 +932,68 @@ $$;
 comment on function public.purge_soft_deleted_records(timestamptz) is
   'Hard-deletes soft-deleted rows older than the cutoff. Intended for service-role scheduled execution after the 30-day recovery window.';
 
+-- Ensure Postgres change feeds include the trip-sync tables used by the app's
+-- realtime subscriptions.
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'trips'
+  ) then
+    execute 'alter publication supabase_realtime add table public.trips';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'trip_people'
+  ) then
+    execute 'alter publication supabase_realtime add table public.trip_people';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'expenses'
+  ) then
+    execute 'alter publication supabase_realtime add table public.expenses';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'settlements'
+  ) then
+    execute 'alter publication supabase_realtime add table public.settlements';
+  end if;
+end
+$$;
+
 
 -- ============================================================================
 -- 10. RLS policies
