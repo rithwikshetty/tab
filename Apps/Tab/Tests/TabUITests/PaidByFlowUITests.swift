@@ -44,10 +44,11 @@ final class PaidByFlowUITests: XCTestCase {
         replaceText(in: app.textFields["expense.descriptionField"], with: "Dinner", app: app)
         app.buttons["expense.paidByRow"].tap()
 
-        XCTAssertTrue(app.navigationBars["Paid by"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Payment & Split"].waitForExistence(timeout: 5))
         app.buttons["paidBy.toggle.\(alexID)"].tap()
         app.buttons["paidBy.toggle.\(samID)"].tap()
-        app.buttons["Exact"].tap()
+        app.buttons["paymentSplit.payerModePill"].tap()
+        app.buttons["Exact amounts"].tap()
 
         let currentUserAmount = app.textFields["paidBy.exactAmount.\(currentUserID)"]
         let alexAmount = app.textFields["paidBy.exactAmount.\(alexID)"]
@@ -61,7 +62,7 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertEqual(fieldValue(currentUserAmount), "60")
         XCTAssertEqual(fieldValue(alexAmount), "30")
         XCTAssertEqual(fieldValue(samAmount), "10")
-        app.navigationBars["Paid by"].buttons["Done"].tap()
+        app.navigationBars["Payment & Split"].buttons["Done"].tap()
 
         let paidBySummary = app.staticTexts["expense.paidBySummary"]
         XCTAssertTrue(paidBySummary.waitForExistence(timeout: 5))

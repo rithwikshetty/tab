@@ -34,7 +34,7 @@ struct ExpenseEntryView: View {
     @State private var isDatePickerPresented = false
 
     /// Empty = single-payer with the recorder paying the full amount (default).
-    /// Non-empty = explicit ledger from PaidByView. Sum must equal totalAmount.
+    /// Non-empty = explicit ledger from PaymentSplitView. Sum must equal totalAmount.
     @State private var paymentEntries: [Payment] = []
 
     @State private var receiptPickerItem: PhotosPickerItem?
@@ -219,9 +219,7 @@ struct ExpenseEntryView: View {
                     .padding(.top, Layout.sectionGap)
 
                 Card(horizontalPadding: Layout.cardHPad) {
-                    paidByRow
-                    RowDivider()
-                    splitRow
+                    paymentSplitRow
                     RowDivider()
                     dateRow
                 }
@@ -361,29 +359,41 @@ struct ExpenseEntryView: View {
         }
     }
 
-    private var paidByRow: some View {
+    private var paymentSplitRow: some View {
         NavigationLink {
-            PaidByView(
+            PaymentSplitView(
                 tripID: tripID,
                 totalAmount: totalAmount,
                 currency: currency,
-                payments: $paymentEntries
+                payments: $paymentEntries,
+                splitMode: $splitMode,
+                participantSet: $participantSet,
+                exactSplitAmountText: $exactAmountTextByUserID
             )
         } label: {
             HStack(spacing: 12) {
-                Text("Paid by")
-                    .font(.formRowLabel)
-                    .tracking(-0.07)
-                    .foregroundStyle(Sage.text)
-                Spacer()
-                HStack(spacing: 4) {
-                    Text(paidByLabel)
-                        .font(.formRowValue.weight(.medium))
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 0) {
+                        Text(paidByShortLabel)
+                            .font(.formRow.weight(.semibold))
+                            .tracking(-0.07)
+                            .foregroundStyle(paymentLedgerValid ? Sage.accentStrong : Sage.warning)
+                            .accessibilityIdentifier("expense.paidBySummary")
+                        Text(" \u{00B7} ")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Sage.textSecondary)
+                        Text(splitTypeLabel)
+                            .font(.formRow.weight(.medium))
+                            .tracking(-0.07)
+                            .foregroundStyle(Sage.text)
+                    }
+                    Text(splitSummarySubtitle)
+                        .font(.system(size: 12.5))
                         .tracking(-0.07)
-                        .foregroundStyle(paidByLedgerReconciles ? Sage.text : Sage.warning)
-                        .accessibilityIdentifier("expense.paidBySummary")
-                    Chevron(size: 9)
+                        .foregroundStyle(Sage.textSecondary)
                 }
+                Spacer()
+                Chevron(size: 9)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, Layout.rowVPad)
@@ -395,48 +405,27 @@ struct ExpenseEntryView: View {
         .opacity(totalAmount > 0 ? 1 : 0.5)
     }
 
-    private var paidByLabel: String {
-        if paymentEntries.isEmpty {
-            return "You"
-        }
-        let mismatched = !paidByLedgerReconciles
-        let names: String
+    private var paidByShortLabel: String {
+        if paymentEntries.isEmpty { return "You" }
         if paymentEntries.count == 1, let only = paymentEntries.first {
-            names = only.payerID == auth.currentUser?.id
+            return only.payerID == auth.currentUser?.id
                 ? "You"
                 : (profilesByID[only.payerID]?.displayName ?? "Member")
-        } else {
-            names = "\(paymentEntries.count) people"
         }
-        if mismatched {
-            return "\(names) · ≠ \(MoneyFormatter.format(totalAmount, currency: currency))"
-        }
-        return names
+        return "\(paymentEntries.count) people"
     }
 
-    private var paidByLedgerReconciles: Bool {
-        if paymentEntries.isEmpty { return true }
-        let sum = paymentEntries.reduce(Decimal(0)) { $0 + $1.amountPaid }
-        return sum == totalAmount
+    private var splitTypeLabel: String {
+        splitMode == 0 ? "Equal split" : "Exact split"
     }
 
-    private var splitRow: some View {
-        HStack(spacing: 14) {
-            Text("Split")
-                .font(.formRowLabel)
-                .tracking(-0.07)
-                .foregroundStyle(Sage.text)
-            Spacer()
-            Segmented(
-                options: ["Equal", "Exact"],
-                selection: $splitMode,
-                mini: true,
-                horizontalPadding: 0
-            )
-            .frame(maxWidth: 180)
+    private var splitSummarySubtitle: String {
+        let count = participantSet.count
+        let payer = paidByShortLabel
+        if !paymentLedgerValid {
+            return "\(payer) paid \u{00B7} doesn't reconcile"
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        return "Split between \(count) \(count == 1 ? "person" : "people")"
     }
 
     private var dateRow: some View {

@@ -235,8 +235,7 @@ struct ExpenseDetailView: View {
     }
 
     private func paidByCard(member: MemberCard, isYou: Bool) -> some View {
-        HStack(spacing: 12) {
-            Avatar(initial: member.initial, tone: member.tone, size: 32, borderWidth: 2)
+        HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("PAID BY")
                     .font(.system(size: 10, weight: .semibold))

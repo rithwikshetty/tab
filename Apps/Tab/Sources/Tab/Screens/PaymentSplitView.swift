@@ -1,0 +1,687 @@
+import SwiftUI
+import SwiftData
+import TabCore
+
+struct PaymentSplitView: View {
+    let tripID: UUID
+    let totalAmount: Decimal
+    let currency: String
+    @Binding var payments: [Payment]
+    @Binding var splitMode: Int
+    @Binding var participantSet: Set<UUID>
+    @Binding var exactSplitAmountText: [UUID: String]
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AuthService.self) private var auth
+
+    @Query private var trips: [TripEntity]
+    @Query private var profiles: [ProfileEntity]
+
+    @State private var draft = PaymentSplitDraft()
+
+    private enum FocusField: Hashable {
+        case payer(UUID)
+        case split(UUID)
+    }
+    @FocusState private var focused: FocusField?
+
+    private enum Layout {
+        static let hPad: CGFloat = 18
+        static let cardHPad: CGFloat = 18
+    }
+
+    init(tripID: UUID, totalAmount: Decimal, currency: String,
+         payments: Binding<[Payment]>, splitMode: Binding<Int>,
+         participantSet: Binding<Set<UUID>>, exactSplitAmountText: Binding<[UUID: String]>) {
+        self.tripID = tripID
+        self.totalAmount = totalAmount
+        self.currency = currency
+        _payments = payments
+        _splitMode = splitMode
+        _participantSet = participantSet
+        _exactSplitAmountText = exactSplitAmountText
+        _trips = Query(filter: #Predicate<TripEntity> { $0.id == tripID })
+    }
+
+    private var trip: TripEntity? { trips.first }
+
+    private var profilesByID: [UUID: ProfileEntity] {
+        Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+    }
+
+    private var members: [UUID] { trip?.members.map(\.userID) ?? [] }
+
+    private var computedPayments: [Payment]? {
+        draft.computedPayments(totalAmount: totalAmount, currency: currency)
+    }
+
+    private var computedSplits: [ExpenseSplit]? {
+        draft.computedSplits(totalAmount: totalAmount, currency: currency)
+    }
+
+    private var canSave: Bool {
+        computedPayments != nil && computedSplits != nil
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        Group {
+            if trip != nil { formContent }
+            else { Color.clear.onAppear { dismiss() } }
+        }
+        .background(Sage.bg.ignoresSafeArea())
+        .navigationTitle("Payment & Split")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") { commit() }
+                    .font(.navLinkBold)
+                    .foregroundStyle(canSave ? Sage.accent : Sage.accent.opacity(0.4))
+                    .disabled(!canSave)
+                    .animation(.snappy(duration: 0.15), value: canSave)
+            }
+        }
+        .toolbarBackground(Sage.bg, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .onAppear {
+            draft.seed(
+                payments: payments,
+                splitMode: splitMode,
+                participantSet: participantSet,
+                exactSplitAmountText: exactSplitAmountText,
+                currentUserID: auth.currentUser?.id,
+                members: members
+            )
+        }
+    }
+
+    private var formContent: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                totalRow
+                hairline
+
+                whoPaidSection
+                splitBetweenSection
+
+                Spacer(minLength: 24)
+            }
+        }
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    // MARK: - Total
+
+    private var totalRow: some View {
+        HStack {
+            Text("Total")
+                .font(.formRowLabel)
+                .foregroundStyle(Sage.textSecondary)
+            Spacer()
+            Text(MoneyFormatter.format(totalAmount, currency: currency))
+                .font(.system(size: 22, weight: .semibold))
+                .tracking(-0.4)
+                .foregroundStyle(Sage.text)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, Layout.hPad)
+        .padding(.vertical, 16)
+    }
+
+    private var hairline: some View {
+        Rectangle().fill(Sage.rowDivider).frame(height: 1)
+    }
+
+    // MARK: - Who Paid
+
+    private var whoPaidSection: some View {
+        VStack(spacing: 0) {
+            whoPaidHeader
+            payerCard
+        }
+    }
+
+    private var whoPaidHeader: some View {
+        HStack {
+            Text("WHO PAID")
+                .font(.sectionLabel)
+                .tracking(1.32)
+                .foregroundStyle(Sage.textSecondary)
+            Spacer()
+            if draft.selectedPayerIDs.count > 1 {
+                payerModeMenu
+                    .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .trailing)))
+            }
+        }
+        .padding(.horizontal, Layout.hPad + 4)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+        .animation(.snappy(duration: 0.22), value: draft.selectedPayerIDs.count > 1)
+    }
+
+    private var payerModeMenu: some View {
+        Menu {
+            Button {
+                draft.setPayerMode(.equal, totalAmount: totalAmount, currency: currency)
+                focused = nil
+            } label: {
+                Label("Equal", systemImage: draft.payerMode == .equal ? "checkmark" : "")
+            }
+            Button {
+                draft.setPayerMode(.exact, totalAmount: totalAmount, currency: currency)
+            } label: {
+                Label("Exact amounts", systemImage: draft.payerMode == .exact ? "checkmark" : "")
+            }
+        } label: {
+            TypePill(title: draft.payerMode == .equal ? "Equal" : "Exact")
+        }
+        .accessibilityIdentifier("paymentSplit.payerModePill")
+    }
+
+    private var payerCard: some View {
+        VStack(spacing: 0) {
+            ForEach(members, id: \.self) { userID in
+                payerRow(userID: userID)
+                if userID != members.last { RowDivider() }
+            }
+            if let footer = payerReconcileFooter {
+                RowDivider()
+                Text(footer.text)
+                    .font(.system(size: 12, weight: .medium))
+                    .tracking(-0.07)
+                    .foregroundStyle(footer.isValid ? Sage.textSecondary : Sage.warning)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .transition(.opacity)
+            }
+        }
+        .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Sage.cardBorder, lineWidth: 1)
+        )
+        .padding(.horizontal, Layout.cardHPad)
+        .animation(.snappy(duration: 0.2), value: draft.payerMode)
+    }
+
+    private func payerRow(userID: UUID) -> some View {
+        let isOn = draft.selectedPayerIDs.contains(userID)
+        let isYou = userID == auth.currentUser?.id
+        let name = isYou ? "You" : (profilesByID[userID]?.displayName ?? "Member")
+        let payment = computedPayments?.first { $0.payerID == userID }
+        let displayShare = isOn
+            ? MoneyFormatter.format(payment?.amountPaid ?? 0, currency: currency)
+            : "—"
+
+        return HStack(spacing: 12) {
+            Button {
+                Haptics.light()
+                withAnimation(.snappy(duration: 0.18)) {
+                    draft.togglePayer(userID, totalAmount: totalAmount, currency: currency)
+                }
+            } label: {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 22, height: 22)
+                    .background(isOn ? Sage.accent : Sage.textSecondary.opacity(0.4), in: Circle())
+                    .scaleEffect(isOn ? 1.0 : 0.92)
+                    .animation(.snappy(duration: 0.18), value: isOn)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("paidBy.toggle.\(userID.uuidString)")
+            .accessibilityLabel("Toggle payer \(name)")
+
+            Text(name)
+                .font(.formRow.weight(.medium))
+                .tracking(-0.07)
+                .foregroundStyle(isOn ? Sage.text : Sage.textSecondary)
+
+            Spacer()
+
+            if draft.payerMode == .exact, isOn, draft.selectedPayerIDs.count > 1 {
+                InlineDecimalTextField(
+                    text: Binding(
+                        get: { draft.exactPayerAmountText[userID, default: ""] },
+                        set: { draft.setExactPayerAmount($0, for: userID) }
+                    ),
+                    accessibilityIdentifier: "paidBy.exactAmount.\(userID.uuidString)"
+                )
+                .frame(width: 88, height: 28)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Sage.surface2, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Sage.cardBorder, lineWidth: 1)
+                )
+                .focused($focused, equals: .payer(userID))
+            } else {
+                Text(displayShare)
+                    .font(.system(size: 13))
+                    .tracking(-0.07)
+                    .foregroundStyle(isOn ? Sage.textSecondary : Sage.textSecondary.opacity(0.5))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+    }
+
+    private var payerReconcileFooter: (text: String, isValid: Bool)? {
+        guard draft.selectedPayerIDs.count > 1, totalAmount > 0 else { return nil }
+        switch draft.payerMode {
+        case .equal:
+            guard let payments = computedPayments else { return nil }
+            let amounts = Set(payments.map(\.amountPaid))
+            if amounts.count == 1, let amount = amounts.first {
+                return ("Each pays \(MoneyFormatter.format(amount, currency: currency))", true)
+            }
+            return ("Equal total \(MoneyFormatter.format(totalAmount, currency: currency))", true)
+        case .exact:
+            let remaining = totalAmount - draft.enteredPayerTotal
+            if computedPayments != nil {
+                return ("Exact total \(MoneyFormatter.format(draft.enteredPayerTotal, currency: currency))", true)
+            }
+            if remaining >= 0 {
+                return ("Remaining \(MoneyFormatter.format(remaining, currency: currency))", false)
+            }
+            return ("Over by \(MoneyFormatter.format(-remaining, currency: currency))", false)
+        default:
+            return nil
+        }
+    }
+
+    // MARK: - Split Between
+
+    private var splitBetweenSection: some View {
+        VStack(spacing: 0) {
+            splitHeader
+            splitCard
+        }
+    }
+
+    private var splitHeader: some View {
+        HStack {
+            Text("SPLIT BETWEEN")
+                .font(.sectionLabel)
+                .tracking(1.32)
+                .foregroundStyle(Sage.textSecondary)
+            Spacer()
+            splitModeMenu
+        }
+        .padding(.horizontal, Layout.hPad + 4)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+    }
+
+    private var splitModeMenu: some View {
+        Menu {
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    draft.setSplitMode(0, totalAmount: totalAmount, currency: currency)
+                }
+                focused = nil
+            } label: {
+                Label("Equal", systemImage: draft.splitMode == 0 ? "checkmark" : "")
+            }
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    draft.setSplitMode(1, totalAmount: totalAmount, currency: currency)
+                }
+            } label: {
+                Label("Exact amounts", systemImage: draft.splitMode == 1 ? "checkmark" : "")
+            }
+        } label: {
+            TypePill(title: draft.splitMode == 0 ? "Equal" : "Exact")
+        }
+        .accessibilityIdentifier("paymentSplit.splitModePill")
+    }
+
+    private var splitCard: some View {
+        VStack(spacing: 0) {
+            ForEach(members, id: \.self) { userID in
+                splitRow(userID: userID)
+                if userID != members.last { RowDivider() }
+            }
+            if let footer = splitReconcileFooter {
+                RowDivider()
+                Text(footer.text)
+                    .font(.system(size: 12, weight: .medium))
+                    .tracking(-0.07)
+                    .foregroundStyle(footer.isValid ? Sage.textSecondary : Sage.warning)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .transition(.opacity)
+            }
+        }
+        .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Sage.cardBorder, lineWidth: 1)
+        )
+        .padding(.horizontal, Layout.cardHPad)
+        .animation(.snappy(duration: 0.2), value: draft.selectedSplitType)
+    }
+
+    private func splitRow(userID: UUID) -> some View {
+        let isOn = draft.selectedParticipants.contains(userID)
+        let isYou = userID == auth.currentUser?.id
+        let name = isYou ? "You" : (profilesByID[userID]?.displayName ?? "Member")
+        let split = computedSplits?.first { $0.participantID == userID }
+        let displayShare = isOn
+            ? MoneyFormatter.format(split?.amountOwed ?? 0, currency: currency)
+            : "—"
+
+        return HStack(spacing: 12) {
+            Button {
+                Haptics.light()
+                withAnimation(.snappy(duration: 0.18)) {
+                    draft.toggleParticipant(userID, totalAmount: totalAmount, currency: currency)
+                }
+            } label: {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 22, height: 22)
+                    .background(isOn ? Sage.accent : Sage.textSecondary.opacity(0.4), in: Circle())
+                    .scaleEffect(isOn ? 1.0 : 0.92)
+                    .animation(.snappy(duration: 0.18), value: isOn)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("split.toggle.\(userID.uuidString)")
+
+            Text(name)
+                .font(.formRow.weight(.medium))
+                .tracking(-0.07)
+                .foregroundStyle(isOn ? Sage.text : Sage.textSecondary)
+
+            Spacer()
+
+            if draft.selectedSplitType == .exact, isOn {
+                InlineDecimalTextField(
+                    text: Binding(
+                        get: { draft.exactSplitAmountText[userID, default: ""] },
+                        set: { draft.setExactSplitAmount($0, for: userID) }
+                    ),
+                    accessibilityIdentifier: "split.exactAmount.\(userID.uuidString)"
+                )
+                .frame(width: 88, height: 28)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Sage.surface2, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Sage.cardBorder, lineWidth: 1)
+                )
+                .focused($focused, equals: .split(userID))
+            } else {
+                Text(displayShare)
+                    .font(.system(size: 13))
+                    .tracking(-0.07)
+                    .foregroundStyle(isOn ? Sage.textSecondary : Sage.textSecondary.opacity(0.5))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+    }
+
+    private var splitReconcileFooter: (text: String, isValid: Bool)? {
+        guard draft.selectedSplitType == .exact, totalAmount > 0, !draft.selectedParticipants.isEmpty else {
+            return nil
+        }
+        let remaining = totalAmount - draft.enteredSplitTotal
+        if computedSplits != nil {
+            return ("Exact total \(MoneyFormatter.format(draft.enteredSplitTotal, currency: currency))", true)
+        }
+        if remaining >= 0 {
+            return ("Remaining \(MoneyFormatter.format(remaining, currency: currency))", false)
+        }
+        return ("Over by \(MoneyFormatter.format(-remaining, currency: currency))", false)
+    }
+
+    // MARK: - Commit
+
+    private func commit() {
+        guard let payments = computedPayments else { return }
+        self.payments = payments
+        splitMode = draft.splitMode
+        participantSet = draft.selectedParticipants
+        exactSplitAmountText = draft.exactSplitAmountText
+        Haptics.light()
+        dismiss()
+    }
+}
+
+// MARK: - Type Pill
+
+private struct TypePill: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .tracking(-0.07)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 8, weight: .medium))
+                .opacity(0.45)
+        }
+        .foregroundStyle(Sage.text)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Sage.surface2, in: Capsule())
+        .overlay(Capsule().stroke(Sage.cardBorder, lineWidth: 1))
+    }
+}
+
+// MARK: - Draft
+
+@Observable
+final class PaymentSplitDraft: @unchecked Sendable {
+    var payerMode: PaymentMode = .equal
+    var selectedPayerIDs: Set<UUID> = []
+    var exactPayerAmountText: [UUID: String] = [:]
+    private var payerEdited = false
+
+    var splitMode: Int = 0
+    var selectedParticipants: Set<UUID> = []
+    var exactSplitAmountText: [UUID: String] = [:]
+
+    private var hasSeeded = false
+
+    var selectedSplitType: SplitType {
+        splitMode == 0 ? .equal : .exact
+    }
+
+    var enteredPayerTotal: Decimal {
+        selectedPayerIDs.reduce(Decimal(0)) { $0 + (Self.decimal(from: exactPayerAmountText[$1, default: ""]) ?? 0) }
+    }
+
+    var enteredSplitTotal: Decimal {
+        selectedParticipants.reduce(Decimal(0)) { $0 + (Self.decimal(from: exactSplitAmountText[$1, default: ""]) ?? 0) }
+    }
+
+    // MARK: Seed
+
+    func seed(payments: [Payment], splitMode: Int, participantSet: Set<UUID>,
+              exactSplitAmountText: [UUID: String], currentUserID: UUID?, members: [UUID]) {
+        guard !hasSeeded else { return }
+        hasSeeded = true
+
+        if payments.isEmpty {
+            selectedPayerIDs = Set([currentUserID ?? members.first].compactMap { $0 })
+            payerMode = .equal
+        } else {
+            selectedPayerIDs = Set(payments.map(\.payerID))
+            payerMode = payments.first?.paymentMode ?? .equal
+            if payerMode == .exact {
+                payerEdited = true
+                for p in payments {
+                    exactPayerAmountText[p.payerID] = Self.plainAmountString(p.amountPaid)
+                }
+            }
+        }
+
+        self.splitMode = splitMode
+        self.selectedParticipants = participantSet
+        self.exactSplitAmountText = exactSplitAmountText
+    }
+
+    // MARK: Payer methods
+
+    func setPayerMode(_ mode: PaymentMode, totalAmount: Decimal, currency: String) {
+        payerMode = mode
+        if mode == .exact {
+            payerEdited = false
+            seedPayerExact(totalAmount: totalAmount, currency: currency, overwrite: true)
+        }
+    }
+
+    func togglePayer(_ uid: UUID, totalAmount: Decimal, currency: String) {
+        if selectedPayerIDs.contains(uid) {
+            guard selectedPayerIDs.count > 1 else { return }
+            selectedPayerIDs.remove(uid)
+            exactPayerAmountText.removeValue(forKey: uid)
+            if payerMode == .exact, !payerEdited {
+                seedPayerExact(totalAmount: totalAmount, currency: currency, overwrite: true)
+            }
+        } else {
+            selectedPayerIDs.insert(uid)
+            if payerMode == .exact {
+                seedPayerExact(totalAmount: totalAmount, currency: currency, overwrite: !payerEdited)
+            }
+        }
+    }
+
+    func setExactPayerAmount(_ input: String, for uid: UUID) {
+        payerEdited = true
+        exactPayerAmountText[uid] = Self.sanitize(input)
+    }
+
+    func computedPayments(totalAmount: Decimal, currency: String) -> [Payment]? {
+        guard !selectedPayerIDs.isEmpty, totalAmount > 0 else { return nil }
+        let payers = Array(selectedPayerIDs)
+        switch payerMode {
+        case .equal:
+            return try? PaymentCalculator.calculate(totalAmount: totalAmount, currency: currency, payers: payers, paymentMode: .equal)
+        case .exact:
+            var amounts: [UUID: Decimal] = [:]
+            for id in selectedPayerIDs {
+                let raw = exactPayerAmountText[id, default: ""].trimmingCharacters(in: .whitespaces)
+                guard !raw.isEmpty, let amt = Self.decimal(from: raw) else { return nil }
+                amounts[id] = amt
+            }
+            return try? PaymentCalculator.calculate(totalAmount: totalAmount, currency: currency, payers: payers, paymentMode: .exact, exactAmounts: amounts)
+        default:
+            return nil
+        }
+    }
+
+    // MARK: Split methods
+
+    func setSplitMode(_ newMode: Int, totalAmount: Decimal, currency: String) {
+        splitMode = newMode
+        if newMode == 1 {
+            seedSplitExact(totalAmount: totalAmount, currency: currency)
+        }
+    }
+
+    func toggleParticipant(_ uid: UUID, totalAmount: Decimal, currency: String) {
+        if selectedParticipants.contains(uid) {
+            guard selectedParticipants.count > 1 else { return }
+            selectedParticipants.remove(uid)
+        } else {
+            selectedParticipants.insert(uid)
+        }
+        if selectedSplitType == .exact {
+            seedSplitExact(totalAmount: totalAmount, currency: currency)
+        }
+    }
+
+    func setExactSplitAmount(_ input: String, for uid: UUID) {
+        exactSplitAmountText[uid] = Self.sanitize(input)
+    }
+
+    func computedSplits(totalAmount: Decimal, currency: String) -> [ExpenseSplit]? {
+        guard !selectedParticipants.isEmpty, totalAmount > 0 else { return nil }
+        let parts = Array(selectedParticipants)
+        switch selectedSplitType {
+        case .equal:
+            return try? SplitCalculator.calculate(totalAmount: totalAmount, currency: currency, participants: parts, splitType: .equal)
+        case .exact:
+            var amounts: [UUID: Decimal] = [:]
+            for id in selectedParticipants {
+                let raw = exactSplitAmountText[id, default: ""].trimmingCharacters(in: .whitespaces)
+                guard !raw.isEmpty, let amt = Self.decimal(from: raw) else { return nil }
+                amounts[id] = amt
+            }
+            return try? SplitCalculator.calculate(totalAmount: totalAmount, currency: currency, participants: parts, splitType: .exact, exactAmounts: amounts)
+        default:
+            return nil
+        }
+    }
+
+    // MARK: Private helpers
+
+    private func seedPayerExact(totalAmount: Decimal, currency: String, overwrite: Bool) {
+        guard !selectedPayerIDs.isEmpty, totalAmount > 0 else { return }
+        guard let computed = try? PaymentCalculator.calculate(
+            totalAmount: totalAmount, currency: currency,
+            payers: Array(selectedPayerIDs), paymentMode: .equal
+        ) else { return }
+        exactPayerAmountText = exactPayerAmountText.filter { selectedPayerIDs.contains($0.key) }
+        for p in computed {
+            let existing = exactPayerAmountText[p.payerID, default: ""].trimmingCharacters(in: .whitespaces)
+            if overwrite || existing.isEmpty {
+                exactPayerAmountText[p.payerID] = Self.plainAmountString(p.amountPaid)
+            }
+        }
+    }
+
+    private func seedSplitExact(totalAmount: Decimal, currency: String) {
+        guard !selectedParticipants.isEmpty, totalAmount > 0 else { return }
+        guard let splits = try? SplitCalculator.calculate(
+            totalAmount: totalAmount, currency: currency,
+            participants: Array(selectedParticipants), splitType: .equal
+        ) else { return }
+        for s in splits {
+            let existing = exactSplitAmountText[s.participantID, default: ""].trimmingCharacters(in: .whitespaces)
+            if existing.isEmpty {
+                exactSplitAmountText[s.participantID] = Self.plainAmountString(s.amountOwed)
+            }
+        }
+    }
+
+    static func sanitize(_ input: String) -> String {
+        var cleaned = input.replacingOccurrences(of: ",", with: ".")
+        cleaned = cleaned.filter { $0.isNumber || $0 == "." }
+        let parts = cleaned.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        if parts.count == 2 { return String(parts[0]) + "." + String(parts[1].prefix(2)) }
+        return cleaned
+    }
+
+    static func decimal(from input: String) -> Decimal? {
+        Decimal(string: input.replacingOccurrences(of: ",", with: "."))
+    }
+
+    static func plainAmountString(_ amount: Decimal) -> String {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 2
+        f.maximumFractionDigits = 2
+        f.usesGroupingSeparator = false
+        return f.string(from: amount as NSDecimalNumber) ?? NSDecimalNumber(decimal: amount).stringValue
+    }
+}
