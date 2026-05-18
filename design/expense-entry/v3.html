@@ -1,0 +1,1136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tab — Expense entry: combined Payment &amp; Split flow</title>
+  <style>
+    :root {
+      --sage-accent: #6F9866;
+      --sage-accent-strong: #4F7549;
+      --sage-accent-soft: #C6D6BA;
+      --sage-bg: #FAF7F0;
+      --sage-surface: #FFFFFF;
+      --sage-surface2: #F1ECE2;
+      --sage-text: #28281F;
+      --sage-text-secondary: #777267;
+      --sage-card-border: rgba(60, 50, 30, 0.06);
+      --sage-row-divider: rgba(60, 50, 30, 0.07);
+      --sage-segmented-bg: rgba(60, 50, 30, 0.06);
+      --sage-shadow: rgba(50, 60, 40, 0.06);
+      --sage-warn: #C46A4E;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ECE7DC;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+      color: var(--sage-text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 48px 28px 96px;
+    }
+
+    .page-head {
+      text-align: center;
+      margin-bottom: 52px;
+    }
+    .page-head h1 {
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      margin: 0 0 10px;
+    }
+    .page-head p {
+      font-size: 14px;
+      color: var(--sage-text-secondary);
+      margin: 0 auto;
+      line-height: 1.55;
+      max-width: 760px;
+    }
+
+    /* flow section */
+    .flow-section {
+      margin-bottom: 64px;
+      padding: 32px 24px 28px;
+      background: rgba(255,255,255,0.4);
+      border-radius: 24px;
+      border: 1px solid var(--sage-card-border);
+    }
+    .flow-section.recommended {
+      background: linear-gradient(180deg, rgba(198, 214, 186, 0.45), rgba(198, 214, 186, 0.18));
+      border-color: var(--sage-accent-soft);
+    }
+    .flow-head {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .flow-head h2 {
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+      margin: 0;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    .badge.green { background: var(--sage-accent); color: #fff; }
+    .badge.muted { background: var(--sage-surface); color: var(--sage-text-secondary); border: 1px solid var(--sage-card-border); }
+
+    .flow-sub {
+      text-align: center;
+      color: var(--sage-text-secondary);
+      font-size: 13px;
+      margin: 0 auto 28px;
+      line-height: 1.5;
+      max-width: 700px;
+    }
+
+    .frames {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .frame-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      max-width: 390px;
+    }
+    .frame-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--sage-text-secondary);
+    }
+    .frame-caption {
+      font-size: 12px;
+      color: var(--sage-text-secondary);
+      text-align: center;
+      max-width: 340px;
+      line-height: 1.45;
+      margin-top: 2px;
+    }
+    .frame-arrow {
+      align-self: center;
+      color: var(--sage-text-secondary);
+      font-size: 28px;
+      padding-top: 380px;
+      user-select: none;
+    }
+
+    /* phone */
+    .phone {
+      width: 390px;
+      height: 844px;
+      background: var(--sage-bg);
+      border-radius: 44px;
+      border: 8px solid #1A1814;
+      box-shadow: 0 30px 60px -20px rgba(50, 60, 40, 0.25), 0 6px 12px rgba(0,0,0,0.04);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .status-bar {
+      height: 47px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 24px 0 28px;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.1px;
+    }
+    .status-bar .notch {
+      position: absolute;
+      top: 11px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 124px;
+      height: 32px;
+      background: #1A1814;
+      border-radius: 999px;
+    }
+    .battery {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--sage-text);
+    }
+    .battery::after {
+      content: "";
+      width: 22px;
+      height: 11px;
+      background: var(--sage-accent);
+      border-radius: 3px;
+    }
+
+    .nav-bar {
+      height: 52px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: 4px 14px 8px;
+    }
+    .nav-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      background: var(--sage-surface);
+      border-radius: 999px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      font-size: 17px;
+      letter-spacing: -0.1px;
+      color: var(--sage-text);
+      font-weight: 400;
+    }
+    .nav-pill.action { color: var(--sage-accent); font-weight: 600; }
+    .nav-pill.disabled { color: rgba(111, 152, 102, 0.4); font-weight: 500; }
+    .nav-bar .left { justify-self: start; }
+    .nav-bar .right { justify-self: end; }
+    .nav-bar .title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.07px;
+    }
+
+    /* amount block */
+    .amount-block {
+      padding: 18px 22px;
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      border-bottom: 1px solid var(--sage-row-divider);
+    }
+    .amount {
+      flex: 1;
+      font-size: 50px;
+      font-weight: 300;
+      letter-spacing: -1px;
+      line-height: 1;
+    }
+    .currency-pill {
+      background: var(--sage-surface);
+      border: 1px solid var(--sage-card-border);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.2px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .currency-pill .chev { font-size: 9px; opacity: 0.6; }
+
+    .desc-row {
+      padding: 14px 22px;
+      font-size: 17px;
+      letter-spacing: -0.07px;
+    }
+
+    .cat-strip {
+      padding: 16px 22px 4px;
+      display: flex;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .cat-chip {
+      flex-shrink: 0;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: var(--sage-surface);
+      border: 1px solid var(--sage-card-border);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .cat-chip.active {
+      background: var(--sage-accent);
+      color: #fff;
+      border-color: var(--sage-accent);
+    }
+    .cat-chip .em { font-size: 14px; }
+
+    /* cards */
+    .card {
+      margin: 6px 18px 0;
+      background: var(--sage-surface);
+      border-radius: 14px;
+      border: 1px solid var(--sage-card-border);
+      overflow: hidden;
+    }
+    .row {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 15px;
+      letter-spacing: -0.07px;
+    }
+    .row + .row { border-top: 1px solid var(--sage-row-divider); }
+    .row .label { color: var(--sage-text); }
+    .row .value {
+      color: var(--sage-text);
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .row .value.muted { color: var(--sage-text-secondary); font-weight: 400; }
+    .row .chev { font-size: 11px; color: var(--sage-text-secondary); }
+
+    /* summary row — the combined tappable row on the main form */
+    .summary-row {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+    }
+    .summary-left {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .summary-primary {
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -0.07px;
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+    .summary-primary .payer {
+      color: var(--sage-accent-strong);
+      font-weight: 600;
+    }
+    .summary-primary .dot {
+      color: var(--sage-text-secondary);
+      margin: 0 7px;
+      font-size: 10px;
+    }
+    .summary-primary .split-type {
+      color: var(--sage-text);
+      font-weight: 500;
+    }
+    .summary-secondary {
+      font-size: 12.5px;
+      color: var(--sage-text-secondary);
+      letter-spacing: -0.07px;
+    }
+    .summary-chev {
+      font-size: 13px;
+      color: var(--sage-text-secondary);
+      flex-shrink: 0;
+    }
+
+    /* participant card (compact, main form) */
+    .pcard {
+      margin: 4px 18px 0;
+      background: var(--sage-surface);
+      border-radius: 14px;
+      border: 1px solid var(--sage-card-border);
+      overflow: hidden;
+    }
+    .p-row {
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .p-row + .p-row { border-top: 1px solid var(--sage-row-divider); }
+    .check {
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--sage-accent);
+      flex-shrink: 0;
+    }
+    .check.off { background: rgba(119, 114, 103, 0.4); }
+    .p-name {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -0.07px;
+    }
+    .p-name.dim { color: var(--sage-text-secondary); }
+    .p-amount {
+      font-size: 13px;
+      font-feature-settings: "tnum";
+      color: var(--sage-text-secondary);
+    }
+    .p-amount.input {
+      background: var(--sage-surface2);
+      padding: 4px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--sage-card-border);
+      color: var(--sage-text);
+      font-weight: 500;
+    }
+    .p-amount.dash { color: rgba(119, 114, 103, 0.35); }
+    .p-footer {
+      padding: 10px 14px;
+      border-top: 1px solid var(--sage-row-divider);
+      text-align: right;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .p-footer.ok { color: var(--sage-accent-strong); }
+    .p-footer.warn { color: var(--sage-warn); }
+
+    .sec-label {
+      padding: 18px 22px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--sage-text-secondary);
+    }
+
+    /* section header with dropdown */
+    .sec-header {
+      padding: 18px 22px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sec-header .sh-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--sage-text-secondary);
+    }
+    .type-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 10px;
+      background: var(--sage-surface2);
+      border: 1px solid var(--sage-card-border);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--sage-text);
+      cursor: pointer;
+    }
+    .type-pill .tp-chev {
+      font-size: 8px;
+      opacity: 0.45;
+    }
+
+    .photo-add {
+      margin: 18px 18px 0;
+      border: 1.5px dashed var(--sage-accent-soft);
+      border-radius: 14px;
+      padding: 22px;
+      text-align: center;
+      color: var(--sage-accent);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    /* push page total bar */
+    .total-bar {
+      padding: 16px 22px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--sage-row-divider);
+    }
+    .total-bar .tl { font-size: 13px; color: var(--sage-text-secondary); }
+    .total-bar .tv { font-size: 22px; font-weight: 600; letter-spacing: -0.4px; }
+
+    /* divider between sections on push page */
+    .section-divider {
+      margin: 6px 22px 0;
+      border-top: 1px solid var(--sage-row-divider);
+    }
+
+    /* avatar dots for compact summary */
+    .avatar-dots {
+      display: flex;
+      gap: 0;
+      margin-right: 2px;
+    }
+    .avatar-dot {
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #fff;
+      border: 2px solid var(--sage-surface);
+    }
+    .avatar-dot:not(:first-child) { margin-left: -6px; }
+    .avatar-dot.you { background: var(--sage-accent); }
+    .avatar-dot.a { background: #6B8DA6; }
+    .avatar-dot.b { background: #B97047; }
+    .avatar-dot.c { background: #8B6B96; }
+
+    /* home indicator */
+    .home-indicator {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 140px;
+      height: 5px;
+      background: #1A1814;
+      border-radius: 999px;
+      opacity: 0.85;
+    }
+
+    /* dropdown menu overlay */
+    .dropdown-menu {
+      position: absolute;
+      background: var(--sage-surface);
+      border: 1px solid var(--sage-card-border);
+      border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.06);
+      padding: 6px 0;
+      width: 200px;
+      z-index: 20;
+      overflow: hidden;
+    }
+    .dm-item {
+      padding: 12px 16px;
+      font-size: 15px;
+      font-weight: 400;
+      letter-spacing: -0.07px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .dm-item + .dm-item { border-top: 1px solid var(--sage-row-divider); }
+    .dm-item.active { color: var(--sage-accent-strong); font-weight: 600; }
+    .dm-item .dm-check { font-size: 14px; color: var(--sage-accent); }
+    .dm-item .dm-soon {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--sage-text-secondary);
+      opacity: 0.6;
+    }
+    .dim-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(28, 28, 24, 0.08);
+      z-index: 15;
+    }
+
+    /* notes */
+    .summary-box {
+      margin-top: 64px;
+      padding: 28px 32px;
+      background: var(--sage-surface);
+      border-radius: 18px;
+      border: 1px solid var(--sage-card-border);
+    }
+    .summary-box h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+    .summary-box p {
+      color: var(--sage-text-secondary);
+      font-size: 13.5px;
+      margin: 0 0 14px;
+      line-height: 1.5;
+    }
+    .summary-box table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .summary-box th, .summary-box td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--sage-row-divider);
+      vertical-align: top;
+    }
+    .summary-box th {
+      font-weight: 600;
+      color: var(--sage-text-secondary);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+    .summary-box td:first-child { font-weight: 600; }
+    .summary-box tr:last-child td { border-bottom: 0; }
+
+    .callout {
+      margin-top: 16px;
+      padding: 14px 18px;
+      background: var(--sage-surface2);
+      border-radius: 12px;
+      font-size: 12.5px;
+      color: var(--sage-text-secondary);
+      line-height: 1.5;
+    }
+    .callout strong { color: var(--sage-text); }
+
+    /* annotation hotspot */
+    .hotspot {
+      position: absolute;
+      border: 2px solid var(--sage-accent);
+      border-radius: 14px;
+      z-index: 5;
+      pointer-events: none;
+      box-shadow: 0 0 0 4px rgba(111, 152, 102, 0.12);
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="page-head">
+    <h1>Expense entry — combined Payment &amp; Split flow</h1>
+    <p>
+      The old "Paid by" row and "Split" segmented control merge into one summary row
+      on the main form. Tapping it pushes to a single page where both "Who paid" and
+      "Split between" live as two sections. One push, one Done, both configured.
+    </p>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- FLOW 1 — DEFAULT (You paid, equal split)                          -->
+  <!-- ================================================================= -->
+  <div class="flow-section recommended">
+    <div class="flow-head">
+      <h2>Default flow — "You paid, equal split"</h2>
+      <span class="badge green">90% case</span>
+    </div>
+    <p class="flow-sub">
+      Most expenses: you paid, everyone splits equally. The summary row shows the
+      defaults, participant list previews the result. Tap the row only if you need
+      to change something.
+    </p>
+
+    <div class="frames">
+      <!-- ============================================ -->
+      <!-- MAIN FORM — default state                    -->
+      <!-- ============================================ -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">New expense</span>
+            <span class="right"><span class="nav-pill action">Save</span></span>
+          </div>
+          <div class="amount-block">
+            <div class="amount">250.00</div>
+            <span class="currency-pill">EUR <span class="chev">&#9662;</span></span>
+          </div>
+          <div class="desc-row">Dinner at Trattoria</div>
+          <div class="cat-strip">
+            <span class="cat-chip active"><span class="em">&#x1F37D;</span> Food</span>
+            <span class="cat-chip"><span class="em">&#x1F697;</span></span>
+            <span class="cat-chip"><span class="em">&#x1F3E8;</span></span>
+            <span class="cat-chip"><span class="em">&#x1F39F;</span></span>
+            <span class="cat-chip"><span class="em">&#x1F6CD;</span></span>
+          </div>
+
+          <!-- COMBINED SUMMARY ROW -->
+          <div class="card" style="margin-top:18px;">
+            <div class="summary-row">
+              <div class="summary-left">
+                <div class="summary-primary">
+                  <span class="payer">You</span>
+                  <span class="dot">&#183;</span>
+                  <span class="split-type">Equal split</span>
+                </div>
+                <div class="summary-secondary">Split between 3 people</div>
+              </div>
+              <span class="summary-chev">&#x203A;</span>
+            </div>
+            <div class="row">
+              <span class="label">Date</span>
+              <span class="value muted">Today</span>
+            </div>
+          </div>
+
+          <!-- participant preview (read-only) -->
+          <div class="sec-label">Split between</div>
+          <div class="pcard">
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">You</span>
+              <span class="p-amount">83.33</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Alice</span>
+              <span class="p-amount">83.33</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Bob</span>
+              <span class="p-amount">83.34</span>
+            </div>
+          </div>
+          <div class="photo-add">+ Add receipt photo</div>
+
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Main form</div>
+        <div class="frame-caption">Summary row: "You &middot; Equal split" with subtitle "Split between 3 people". Chevron hints it's tappable. Participant list below is read-only preview.</div>
+      </div>
+
+      <div class="frame-arrow">&rarr;</div>
+
+      <!-- ============================================ -->
+      <!-- PUSH PAGE — default state                    -->
+      <!-- ============================================ -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">&#x2039; Back</span></span>
+            <span class="title">Payment &amp; Split</span>
+            <span class="right"><span class="nav-pill action">Done</span></span>
+          </div>
+
+          <div class="total-bar">
+            <span class="tl">Total</span>
+            <span class="tv">250.00 EUR</span>
+          </div>
+
+          <!-- WHO PAID section -->
+          <div class="sec-label">Who paid</div>
+          <div class="pcard">
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">You</span>
+              <span class="p-amount" style="color: var(--sage-text); font-weight: 500;">250.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check off">&#10003;</span>
+              <span class="p-name dim">Alice</span>
+              <span class="p-amount dash">&mdash;</span>
+            </div>
+            <div class="p-row">
+              <span class="check off">&#10003;</span>
+              <span class="p-name dim">Bob</span>
+              <span class="p-amount dash">&mdash;</span>
+            </div>
+          </div>
+
+          <!-- SPLIT BETWEEN section -->
+          <div class="sec-header">
+            <span class="sh-label">Split between</span>
+            <span class="type-pill">Equal <span class="tp-chev">&#9662;</span></span>
+          </div>
+          <div class="pcard">
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">You</span>
+              <span class="p-amount">83.33</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Alice</span>
+              <span class="p-amount">83.33</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Bob</span>
+              <span class="p-amount">83.34</span>
+            </div>
+          </div>
+
+          <div style="padding: 22px 22px 0; font-size: 12px; color: var(--sage-text-secondary); line-height: 1.5;">
+            Tap a name to include/exclude. Use the pill to switch split type.
+            "Done" saves both and pops back.
+          </div>
+
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Push page &mdash; default</div>
+        <div class="frame-caption">Two sections on one page. "Who paid" defaults to You (full amount). "Split between" defaults to equal among everyone. Split type pill sits in the section header. Nothing to edit for the common case &mdash; just hit Done.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- FLOW 2 — CUSTOMISED (multi-payer, exact split)                    -->
+  <!-- ================================================================= -->
+  <div class="flow-section">
+    <div class="flow-head">
+      <h2>Customised flow — "3 people paid, exact split"</h2>
+      <span class="badge muted">Power use</span>
+    </div>
+    <p class="flow-sub">
+      When someone changes payers or split type, the push page adapts:
+      payer amounts become editable, split list shows input fields.
+      The main form summary row updates when they tap Done.
+    </p>
+
+    <div class="frames">
+      <!-- ============================================ -->
+      <!-- PUSH PAGE — multi-payer, exact split         -->
+      <!-- ============================================ -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">&#x2039; Back</span></span>
+            <span class="title">Payment &amp; Split</span>
+            <span class="right"><span class="nav-pill action">Done</span></span>
+          </div>
+
+          <div class="total-bar">
+            <span class="tl">Total</span>
+            <span class="tv">250.00 EUR</span>
+          </div>
+
+          <!-- WHO PAID — multi-payer with editable amounts -->
+          <div class="sec-label">Who paid</div>
+          <div class="pcard">
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">You</span>
+              <span class="p-amount input">100.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Alice</span>
+              <span class="p-amount input">100.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Bob</span>
+              <span class="p-amount input">50.00</span>
+            </div>
+            <div class="p-footer ok">&#10003; Reconciles 250.00</div>
+          </div>
+
+          <!-- SPLIT BETWEEN — exact amounts -->
+          <div class="sec-header">
+            <span class="sh-label">Split between</span>
+            <span class="type-pill">Exact <span class="tp-chev">&#9662;</span></span>
+          </div>
+          <div class="pcard">
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">You</span>
+              <span class="p-amount input">100.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Alice</span>
+              <span class="p-amount input">100.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Bob</span>
+              <span class="p-amount input">50.00</span>
+            </div>
+            <div class="p-footer ok">&#10003; Reconciles 250.00</div>
+          </div>
+
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Push page &mdash; customised</div>
+        <div class="frame-caption">Multiple payers checked &rarr; amounts become editable fields with reconciliation footer. Split type changed to "Exact" via the pill dropdown &rarr; split amounts also editable.</div>
+      </div>
+
+      <div class="frame-arrow">&rarr;</div>
+
+      <!-- ============================================ -->
+      <!-- MAIN FORM — after customisation              -->
+      <!-- ============================================ -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">New expense</span>
+            <span class="right"><span class="nav-pill action">Save</span></span>
+          </div>
+          <div class="amount-block">
+            <div class="amount">250.00</div>
+            <span class="currency-pill">EUR <span class="chev">&#9662;</span></span>
+          </div>
+          <div class="desc-row">Dinner at Trattoria</div>
+          <div class="cat-strip">
+            <span class="cat-chip active"><span class="em">&#x1F37D;</span> Food</span>
+            <span class="cat-chip"><span class="em">&#x1F697;</span></span>
+            <span class="cat-chip"><span class="em">&#x1F3E8;</span></span>
+            <span class="cat-chip"><span class="em">&#x1F39F;</span></span>
+            <span class="cat-chip"><span class="em">&#x1F6CD;</span></span>
+          </div>
+
+          <!-- SUMMARY ROW — updated after customisation -->
+          <div class="card" style="margin-top:18px;">
+            <div class="summary-row">
+              <div class="summary-left">
+                <div class="summary-primary">
+                  <div class="avatar-dots">
+                    <span class="avatar-dot you">Y</span>
+                    <span class="avatar-dot a">A</span>
+                    <span class="avatar-dot b">B</span>
+                  </div>
+                  <span style="margin-left: 6px;"></span>
+                  <span class="payer">3 people</span>
+                  <span class="dot">&#183;</span>
+                  <span class="split-type">Exact split</span>
+                </div>
+                <div class="summary-secondary">You, Alice, Bob paid &middot; 3-way split</div>
+              </div>
+              <span class="summary-chev">&#x203A;</span>
+            </div>
+            <div class="row">
+              <span class="label">Date</span>
+              <span class="value muted">Today</span>
+            </div>
+          </div>
+
+          <!-- participant preview — exact amounts -->
+          <div class="sec-label">Split between</div>
+          <div class="pcard">
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">You</span>
+              <span class="p-amount">100.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Alice</span>
+              <span class="p-amount">100.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Bob</span>
+              <span class="p-amount">50.00</span>
+            </div>
+          </div>
+          <div class="photo-add">+ Add receipt photo</div>
+
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Main form &mdash; updated</div>
+        <div class="frame-caption">After Done: summary row updates to "3 people &middot; Exact split" with stacked avatars. Subtitle reads "You, Alice, Bob paid". Participant list reflects exact amounts.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- DROPDOWN DETAIL — what the split type menu looks like              -->
+  <!-- ================================================================= -->
+  <div class="flow-section">
+    <div class="flow-head">
+      <h2>Split type dropdown</h2>
+      <span class="badge muted">Detail</span>
+    </div>
+    <p class="flow-sub">
+      The "Equal" pill in the "Split between" section header opens this dropdown.
+      Current selection is checked. Future options shown greyed out (or hidden entirely
+      until implemented &mdash; your call).
+    </p>
+
+    <div class="frames">
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">&#x2039; Back</span></span>
+            <span class="title">Payment &amp; Split</span>
+            <span class="right"><span class="nav-pill action">Done</span></span>
+          </div>
+
+          <div class="total-bar">
+            <span class="tl">Total</span>
+            <span class="tv">250.00 EUR</span>
+          </div>
+
+          <div class="sec-label">Who paid</div>
+          <div class="pcard">
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">You</span>
+              <span class="p-amount" style="color: var(--sage-text); font-weight: 500;">250.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check off">&#10003;</span>
+              <span class="p-name dim">Alice</span>
+              <span class="p-amount dash">&mdash;</span>
+            </div>
+            <div class="p-row">
+              <span class="check off">&#10003;</span>
+              <span class="p-name dim">Bob</span>
+              <span class="p-amount dash">&mdash;</span>
+            </div>
+          </div>
+
+          <div class="sec-header">
+            <span class="sh-label">Split between</span>
+            <span class="type-pill" style="background: var(--sage-accent-soft); border-color: var(--sage-accent);">Equal <span class="tp-chev">&#9662;</span></span>
+          </div>
+
+          <!-- dropdown open -->
+          <div class="dim-overlay" style="top: 480px;"></div>
+          <div class="dropdown-menu" style="top: 470px; right: 30px;">
+            <div class="dm-item active">
+              Equal <span class="dm-check">&#10003;</span>
+            </div>
+            <div class="dm-item">Exact amounts</div>
+            <div class="dm-item" style="color: var(--sage-text-secondary);">
+              Percentage <span class="dm-soon">soon</span>
+            </div>
+            <div class="dm-item" style="color: var(--sage-text-secondary);">
+              Shares <span class="dm-soon">soon</span>
+            </div>
+          </div>
+
+          <div class="pcard" style="position:relative; z-index:0;">
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">You</span>
+              <span class="p-amount">83.33</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Alice</span>
+              <span class="p-amount">83.33</span>
+            </div>
+            <div class="p-row">
+              <span class="check">&#10003;</span>
+              <span class="p-name">Bob</span>
+              <span class="p-amount">83.34</span>
+            </div>
+          </div>
+
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Dropdown open</div>
+        <div class="frame-caption">Pill highlights when active. Menu anchors below it. "Soon" labels on future options &mdash; or omit them entirely and add when ready.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- DESIGN NOTES                                                      -->
+  <!-- ================================================================= -->
+  <div class="summary-box">
+    <h2>How it works</h2>
+    <p>One combined page replaces the old separate "Paid by" push page. The main form
+    gets a compact summary row instead of two separate rows + a segmented control.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Element</th>
+          <th>Where</th>
+          <th>Behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Summary row</td>
+          <td>Main form</td>
+          <td>"You &middot; Equal split" &mdash; tap to push to Payment &amp; Split page. Updates on return.</td>
+        </tr>
+        <tr>
+          <td>Who paid</td>
+          <td>Push page, top</td>
+          <td>Checkbox per member. Single payer = amount shown. Multi-payer = editable fields + reconciliation footer.</td>
+        </tr>
+        <tr>
+          <td>Split type pill</td>
+          <td>Push page, section header</td>
+          <td>Dropdown: Equal, Exact (now), Percentage, Shares (future). Changes participant list behaviour.</td>
+        </tr>
+        <tr>
+          <td>Split between</td>
+          <td>Push page, bottom</td>
+          <td>Checkbox per member. Equal = auto-calculated. Exact = editable fields + reconciliation footer.</td>
+        </tr>
+        <tr>
+          <td>Participant list</td>
+          <td>Main form, below card</td>
+          <td>Read-only preview of current split. Shows amounts but no edit controls.</td>
+        </tr>
+        <tr>
+          <td>Date</td>
+          <td>Main form, in card</td>
+          <td>Unchanged &mdash; stays as its own row in the card below the summary row.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>Key decisions:</strong>
+      The push page title is "Payment &amp; Split" &mdash; rename to whatever feels right.
+      The participant list on the main form is read-only (view-only context); all editing happens on the push page.
+      The split type dropdown only lives on the push page, not the main form &mdash; keeps the main form clean.
+      When the payer is just "You" (90% case), the Who Paid section shows amounts but they're not editable &mdash; nothing to edit.
+      The summary row subtitle adapts: "Split between 3 people" (default) vs. "You, Alice, Bob paid &middot; 3-way split" (customised).
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
