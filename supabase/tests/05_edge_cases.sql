@@ -21,12 +21,14 @@ values
 insert into public.trip_members (trip_id, user_id)
 values ('11111111-1111-1111-1111-111111111111'::uuid, '00000000-0000-0000-0000-000000000002'::uuid);
 
-insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
+insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
 values ('aaaaaaaa-0000-0000-0000-000000000001'::uuid,
         '11111111-1111-1111-1111-111111111111'::uuid,
-        '00000000-0000-0000-0000-000000000001'::uuid,
         30, 'EUR', 'Dinner', '2026-05-14',
         '00000000-0000-0000-0000-000000000001'::uuid);
+
+insert into public.expense_payments (expense_id, user_id, amount_paid, payment_mode) values
+  ('aaaaaaaa-0000-0000-0000-000000000001'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 30, 'equal');
 
 insert into public.expense_splits (expense_id, user_id, amount_owed, split_type) values
   ('aaaaaaaa-0000-0000-0000-000000000001'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 15, 'equal'),
@@ -70,8 +72,8 @@ insert into _r select lives_ok(
 
 -- Recreate Empty + add an expense → now hard-delete must RESTRICT
 insert into public.trips (id, name, created_by) values ('33333333-3333-3333-3333-333333333333'::uuid, 'Empty', '00000000-0000-0000-0000-000000000001'::uuid);
-insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
-values ('bbbbbbbb-0000-0000-0000-000000000001'::uuid, '33333333-3333-3333-3333-333333333333'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 5, 'EUR', 'blocker', '2026-05-01', '00000000-0000-0000-0000-000000000001'::uuid);
+insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
+values ('bbbbbbbb-0000-0000-0000-000000000001'::uuid, '33333333-3333-3333-3333-333333333333'::uuid, 5, 'EUR', 'blocker', '2026-05-01', '00000000-0000-0000-0000-000000000001'::uuid);
 
 insert into _r select throws_ok(
   $$delete from public.trips where id = '33333333-3333-3333-3333-333333333333'$$,
@@ -80,13 +82,13 @@ insert into _r select throws_ok(
 -- Cleanup the expense so subsequent tests don't trip over it
 delete from public.expenses where id = 'bbbbbbbb-0000-0000-0000-000000000001'::uuid;
 
--- ===== Profile hard-delete RESTRICTed by expense.payer_id and created_by =====
-insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
-values ('bbbbbbbb-0000-0000-0000-000000000002'::uuid, '33333333-3333-3333-3333-333333333333'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 5, 'EUR', 'blocker2', '2026-05-01', '00000000-0000-0000-0000-000000000001'::uuid);
+-- ===== Profile hard-delete RESTRICTed by expense.created_by and expense_payments.user_id =====
+insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
+values ('bbbbbbbb-0000-0000-0000-000000000002'::uuid, '33333333-3333-3333-3333-333333333333'::uuid, 5, 'EUR', 'blocker2', '2026-05-01', '00000000-0000-0000-0000-000000000001'::uuid);
 
 insert into _r select throws_ok(
   $$delete from public.profiles where id = '00000000-0000-0000-0000-000000000001'$$,
-  '23503', null, 'profile hard-delete RESTRICTed when expenses reference it (payer_id/created_by)');
+  '23503', null, 'profile hard-delete RESTRICTed when expenses reference it (created_by)');
 
 delete from public.expenses where id = 'bbbbbbbb-0000-0000-0000-000000000002'::uuid;
 delete from public.trips where id = '33333333-3333-3333-3333-333333333333'::uuid;

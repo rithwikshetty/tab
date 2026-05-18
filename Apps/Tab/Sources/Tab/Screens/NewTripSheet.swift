@@ -89,6 +89,13 @@ struct NewTripSheet: View {
         context.insert(trip)
         let member = TripMemberEntity(userID: user.id, trip: trip)
         context.insert(member)
+
+        #if DEBUG
+        if auth.isUsingMockAuth {
+            insertDemoMembers(into: trip, currentUserID: user.id)
+        }
+        #endif
+
         try? context.save()
 
         Haptics.success()
@@ -96,4 +103,37 @@ struct NewTripSheet: View {
 
         Task { await sync.pushPending() }
     }
+
+    #if DEBUG
+    private func insertDemoMembers(into trip: TripEntity, currentUserID: UUID) {
+        let existingProfiles = (try? context.fetch(FetchDescriptor<ProfileEntity>())) ?? []
+        var existingProfileIDs = Set(existingProfiles.map(\.id))
+
+        for demo in DemoTripMember.all where demo.id != currentUserID {
+            if !existingProfileIDs.contains(demo.id) {
+                context.insert(ProfileEntity(id: demo.id, displayName: demo.displayName))
+                existingProfileIDs.insert(demo.id)
+            }
+            context.insert(TripMemberEntity(userID: demo.id, trip: trip))
+        }
+    }
+    #endif
 }
+
+#if DEBUG
+private struct DemoTripMember {
+    let id: UUID
+    let displayName: String
+
+    static let all: [DemoTripMember] = [
+        DemoTripMember(
+            id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
+            displayName: "Alex Demo"
+        ),
+        DemoTripMember(
+            id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!,
+            displayName: "Sam Demo"
+        ),
+    ]
+}
+#endif

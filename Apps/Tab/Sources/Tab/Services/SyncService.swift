@@ -10,6 +10,11 @@ private struct TripMemberRemoteKey: Hashable, Sendable {
     let userID: UUID
 }
 
+private struct ExpensePaymentRemoteKey: Hashable, Sendable {
+    let expenseID: UUID
+    let userID: UUID
+}
+
 private struct ExpenseSplitRemoteKey: Hashable, Sendable {
     let expenseID: UUID
     let userID: UUID
@@ -84,6 +89,7 @@ final class SyncService {
             let tripMemberKeys = try await pullTripMembers()
             let categoryIDs = try await pullCategories()
             let expenseIDs = try await pullExpenses()
+            let expensePaymentKeys = try await pullExpensePayments()
             let expenseSplitKeys = try await pullExpenseSplits()
             let settlementIDs = try await pullSettlements()
             try reconcileLocalRows(
@@ -92,6 +98,7 @@ final class SyncService {
                 remoteTripMemberKeys: tripMemberKeys,
                 remoteCategoryIDs: categoryIDs,
                 remoteExpenseIDs: expenseIDs,
+                remoteExpensePaymentKeys: expensePaymentKeys,
                 remoteExpenseSplitKeys: expenseSplitKeys,
                 remoteSettlementIDs: settlementIDs
             )
@@ -178,6 +185,21 @@ final class SyncService {
         return Set(rows.map(\.id))
     }
 
+    private func pullExpensePayments() async throws -> Set<ExpensePaymentRemoteKey> {
+        let rows: [ExpensePaymentDTO] = try await client
+            .from("expense_payments")
+            .select()
+            .execute()
+            .value
+
+        let ctx = container.mainContext
+        for dto in rows {
+            try upsertExpensePayment(dto, in: ctx)
+        }
+        try ctx.save()
+        return Set(rows.map { ExpensePaymentRemoteKey(expenseID: $0.expenseID, userID: $0.userID) })
+    }
+
     private func pullExpenseSplits() async throws -> Set<ExpenseSplitRemoteKey> {
         let rows: [ExpenseSplitDTO] = try await client
             .from("expense_splits")
@@ -214,10 +236,18 @@ final class SyncService {
         remoteTripMemberKeys: Set<TripMemberRemoteKey>,
         remoteCategoryIDs: Set<UUID>,
         remoteExpenseIDs: Set<UUID>,
+        remoteExpensePaymentKeys: Set<ExpensePaymentRemoteKey>,
         remoteExpenseSplitKeys: Set<ExpenseSplitRemoteKey>,
         remoteSettlementIDs: Set<UUID>
     ) throws {
         let ctx = container.mainContext
+
+        for payment in try ctx.fetch(FetchDescriptor<PaymentEntity>()) {
+            guard payment.pushedWriteID != nil, let expenseID = payment.expense?.id else { continue }
+            if !remoteExpensePaymentKeys.contains(ExpensePaymentRemoteKey(expenseID: expenseID, userID: payment.userID)) {
+                ctx.delete(payment)
+            }
+        }
 
         for split in try ctx.fetch(FetchDescriptor<ExpenseSplitEntity>()) {
             guard split.pushedWriteID != nil, let expenseID = split.expense?.id else { continue }
@@ -399,7 +429,6 @@ final class SyncService {
 
         if let entity = existing {
             if entity.writeID == dto.writeID { return }
-            entity.payerID = dto.payerID
             entity.amount = dto.amount
             entity.currency = dto.currency
             entity.categoryID = dto.categoryID
@@ -414,7 +443,6 @@ final class SyncService {
         } else {
             ctx.insert(ExpenseEntity(
                 id: dto.id,
-                payerID: dto.payerID,
                 amount: dto.amount,
                 currency: dto.currency,
                 categoryID: dto.categoryID,
@@ -426,6 +454,35 @@ final class SyncService {
                 createdAt: dto.createdAt,
                 updatedAt: dto.updatedAt,
                 deletedAt: dto.deletedAt,
+                writeID: dto.writeID,
+                pushedWriteID: dto.writeID
+            ))
+        }
+    }
+
+    private func upsertExpensePayment(_ dto: ExpensePaymentDTO, in ctx: ModelContext) throws {
+        let expenseID = dto.expenseID
+        let userID = dto.userID
+        let expense = try ctx.fetch(FetchDescriptor<ExpenseEntity>(
+            predicate: #Predicate { $0.id == expenseID }
+        )).first
+        guard let expense else { return }
+
+        let existing = expense.payments.first(where: { $0.userID == userID })
+        if let entity = existing {
+            if entity.writeID == dto.writeID { return }
+            entity.amountPaid = dto.amountPaid
+            entity.paymentModeRaw = dto.paymentMode
+            entity.updatedAt = dto.updatedAt
+            entity.writeID = dto.writeID
+            entity.pushedWriteID = dto.writeID
+        } else {
+            ctx.insert(PaymentEntity(
+                userID: dto.userID,
+                amountPaid: dto.amountPaid,
+                paymentModeRaw: dto.paymentMode,
+                expense: expense,
+                updatedAt: dto.updatedAt,
                 writeID: dto.writeID,
                 pushedWriteID: dto.writeID
             ))
@@ -639,7 +696,7 @@ final class SyncService {
         }
     }
 
-    /// Expenses + splits via the create_expense_with_splits RPC (transactional).
+    /// Expenses + payments + splits via the create_expense_with_payments_and_splits RPC (transactional).
     /// Soft-deletes (deletedAt != nil) bypass the RPC and use a direct UPDATE,
     /// since the RPC upserts the row + splits but ignores deleted_at.
     private func pushExpensesAndSplits() async throws {
@@ -684,7 +741,6 @@ final class SyncService {
             let expensePayload: [String: AnyJSON] = [
                 "id": .string(expense.id.uuidString),
                 "trip_id": .string(tripID.uuidString),
-                "payer_id": .string(expense.payerID.uuidString),
                 "amount": .string(Self.decimalString(expense.amount)),
                 "currency": .string(expense.currency),
                 "category_id": expense.categoryID.map { .string($0.uuidString) } ?? .null,
@@ -693,6 +749,14 @@ final class SyncService {
                 "receipt_storage_path": expense.receiptStoragePath.map { .string($0) } ?? .null,
                 "created_by": .string(expense.createdByID.uuidString),
             ]
+
+            let paymentsPayload: [AnyJSON] = expense.payments.map { payment in
+                AnyJSON.object([
+                    "user_id": .string(payment.userID.uuidString),
+                    "amount_paid": .string(Self.decimalString(payment.amountPaid)),
+                    "payment_mode": .string(payment.paymentModeRaw),
+                ])
+            }
 
             let splitsPayload: [AnyJSON] = expense.splits.map { split in
                 AnyJSON.object([
@@ -703,11 +767,13 @@ final class SyncService {
             }
 
             do {
-                try await client.rpc("create_expense_with_splits", params: [
-                    "p_expense": AnyJSON.object(expensePayload),
-                    "p_splits": AnyJSON.array(splitsPayload),
+                try await client.rpc("create_expense_with_payments_and_splits", params: [
+                    "p_expense":  AnyJSON.object(expensePayload),
+                    "p_payments": AnyJSON.array(paymentsPayload),
+                    "p_splits":   AnyJSON.array(splitsPayload),
                 ]).execute()
                 expense.pushedWriteID = expense.writeID
+                for payment in expense.payments { payment.pushedWriteID = payment.writeID }
                 for split in expense.splits { split.pushedWriteID = split.writeID }
             } catch {
                 syncLog.error("expense push failed: \(error.localizedDescription, privacy: .public)")

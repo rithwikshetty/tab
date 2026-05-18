@@ -1,2 +1,0 @@
--- Historical remote migration placeholder.
--- The current greenfield baseline lives in 20260517123815_schema.sql.

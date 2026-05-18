@@ -15,12 +15,12 @@ public struct ExpenseSplit: Hashable, Codable, Sendable {
 public struct Expense: Identifiable, Hashable, Codable, Sendable {
     public let id: UUID
     public let tripID: UUID
-    public let payerID: UUID
     public let amount: Money
     public let categoryID: UUID?
     public let descriptionText: String?
     public let receiptStoragePath: String?
     public let expenseDate: Date
+    public let payments: [Payment]
     public let splits: [ExpenseSplit]
     public let createdBy: UUID
     public let createdAt: Date
@@ -30,12 +30,12 @@ public struct Expense: Identifiable, Hashable, Codable, Sendable {
     public init(
         id: UUID = UUID(),
         tripID: UUID,
-        payerID: UUID,
         amount: Money,
         categoryID: UUID? = nil,
         descriptionText: String? = nil,
         receiptStoragePath: String? = nil,
         expenseDate: Date,
+        payments: [Payment],
         splits: [ExpenseSplit],
         createdBy: UUID,
         createdAt: Date,
@@ -44,12 +44,12 @@ public struct Expense: Identifiable, Hashable, Codable, Sendable {
     ) {
         self.id = id
         self.tripID = tripID
-        self.payerID = payerID
         self.amount = amount
         self.categoryID = categoryID
         self.descriptionText = descriptionText
         self.receiptStoragePath = receiptStoragePath
         self.expenseDate = expenseDate
+        self.payments = payments
         self.splits = splits
         self.createdBy = createdBy
         self.createdAt = createdAt

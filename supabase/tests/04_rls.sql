@@ -36,18 +36,16 @@ insert into public.trips (id, name, created_by)
 values ('22222222-2222-2222-2222-222222222222'::uuid, 'Solo', '00000000-0000-0000-0000-000000000004'::uuid);
 
 -- One Lisbon expense paid by Alice.
-insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
+insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
 values ('aaaaaaaa-0000-0000-0000-000000000001'::uuid,
         '11111111-1111-1111-1111-111111111111'::uuid,
-        '00000000-0000-0000-0000-000000000001'::uuid,
         85, 'EUR', 'Dinner at Ramiro', '2026-05-14',
         '00000000-0000-0000-0000-000000000001'::uuid);
 
 -- One Solo expense by Dave.
-insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
+insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
 values ('aaaaaaaa-0000-0000-0000-000000000099'::uuid,
         '22222222-2222-2222-2222-222222222222'::uuid,
-        '00000000-0000-0000-0000-000000000004'::uuid,
         50, 'USD', 'Lone lunch', '2026-05-10',
         '00000000-0000-0000-0000-000000000004'::uuid);
 
@@ -83,21 +81,21 @@ insert into _r select is(
 
 -- Can INSERT a new expense in Lisbon (with self as created_by)
 insert into _r select lives_ok(
-  $$insert into public.expenses (trip_id, payer_id, amount, currency, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 22.40, 'EUR', 'Uber', '2026-05-14', '00000000-0000-0000-0000-000000000001')$$,
+  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
+    values ('11111111-1111-1111-1111-111111111111', 22.40, 'EUR', 'Uber', '2026-05-14', '00000000-0000-0000-0000-000000000001')$$,
   'Alice INSERTs Lisbon expense with created_by=self');
 
 -- Cannot INSERT a Lisbon expense with created_by = Bob (WITH CHECK violation)
 insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, payer_id, amount, currency, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 5, 'EUR', 'spoof', '2026-05-14', '00000000-0000-0000-0000-000000000002')$$,
+  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
+    values ('11111111-1111-1111-1111-111111111111', 5, 'EUR', 'spoof', '2026-05-14', '00000000-0000-0000-0000-000000000002')$$,
   '42501', null, 'Alice cannot spoof created_by to another user');
 
--- Cannot INSERT in Solo (non-member)
+-- Cannot INSERT in Solo (non-member). Validate trigger fires before RLS.
 insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, payer_id, amount, currency, description, expense_date, created_by)
-    values ('22222222-2222-2222-2222-222222222222', '00000000-0000-0000-0000-000000000001', 5, 'EUR', 'wrong trip', '2026-05-14', '00000000-0000-0000-0000-000000000001')$$,
-  '42501', null, 'Alice cannot INSERT in Solo (non-member)');
+  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
+    values ('22222222-2222-2222-2222-222222222222', 5, 'EUR', 'wrong trip', '2026-05-14', '00000000-0000-0000-0000-000000000001')$$,
+  '23514', null, 'Alice cannot INSERT in Solo (non-member; validate trigger rejects first)');
 
 -- Can UPDATE Lisbon expense she did not author? Per PRD any member can edit anything.
 insert into _r select lives_ok(
@@ -235,11 +233,11 @@ insert into _r select is(
   (select count(*)::int from public.expenses where trip_id = '11111111-1111-1111-1111-111111111111'::uuid),
   0, 'Carol cannot SELECT Lisbon expenses');
 
--- Cannot INSERT in Lisbon
+-- Cannot INSERT in Lisbon. Validate trigger fires before RLS.
 insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, payer_id, amount, currency, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000003', 5, 'EUR', 'intruder', '2026-05-14', '00000000-0000-0000-0000-000000000003')$$,
-  '42501', null, 'Carol cannot INSERT in Lisbon');
+  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
+    values ('11111111-1111-1111-1111-111111111111', 5, 'EUR', 'intruder', '2026-05-14', '00000000-0000-0000-0000-000000000003')$$,
+  '23514', null, 'Carol cannot INSERT in Lisbon (validate trigger rejects first)');
 
 -- Cannot SEE Lisbon trip_members
 insert into _r select is(

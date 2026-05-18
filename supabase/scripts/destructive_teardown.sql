@@ -14,6 +14,7 @@ drop table if exists
   public.push_devices,
   public.activity_log,
   public.settlements,
+  public.expense_payments,
   public.expense_splits,
   public.expenses,
   public.categories,
@@ -37,7 +38,11 @@ drop function if exists public.validate_expense_split_row() cascade;
 drop function if exists public.validate_expense_split_total(uuid) cascade;
 drop function if exists public.validate_expense_split_total_from_expense_trigger() cascade;
 drop function if exists public.validate_expense_split_total_from_split_trigger() cascade;
+drop function if exists public.validate_expense_payment_row() cascade;
+drop function if exists public.validate_expense_payment_total(uuid) cascade;
+drop function if exists public.validate_expense_payment_total_from_expense_trigger() cascade;
+drop function if exists public.validate_expense_payment_total_from_payment_trigger() cascade;
 drop function if exists public.validate_settlement_row() cascade;
 drop function if exists public.validate_trip_mute_pref_row() cascade;
 drop function if exists public.purge_soft_deleted_records(timestamptz) cascade;
-drop function if exists public.create_expense_with_splits(jsonb, jsonb) cascade;
+drop function if exists public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) cascade;

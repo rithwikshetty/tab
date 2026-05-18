@@ -141,7 +141,6 @@ struct CategoryInsertDTO: Codable, Sendable {
 struct ExpenseDTO: Codable, Sendable {
     let id: UUID
     let tripID: UUID
-    let payerID: UUID
     let amount: Decimal
     let currency: String
     let categoryID: UUID?
@@ -157,7 +156,6 @@ struct ExpenseDTO: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id
         case tripID = "trip_id"
-        case payerID = "payer_id"
         case amount, currency
         case categoryID = "category_id"
         case description
@@ -174,7 +172,6 @@ struct ExpenseDTO: Codable, Sendable {
 struct ExpenseInsertDTO: Codable, Sendable {
     let id: UUID
     let tripID: UUID
-    let payerID: UUID
     let amount: Decimal
     let currency: String
     let categoryID: UUID?
@@ -186,7 +183,6 @@ struct ExpenseInsertDTO: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id
         case tripID = "trip_id"
-        case payerID = "payer_id"
         case amount, currency
         case categoryID = "category_id"
         case description
@@ -201,6 +197,42 @@ struct ExpenseDeleteUpdateDTO: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case deletedAt = "deleted_at"
+    }
+}
+
+// MARK: - ExpensePayment
+
+struct ExpensePaymentDTO: Codable, Sendable {
+    let expenseID: UUID
+    let userID: UUID
+    let amountPaid: Decimal
+    let paymentMode: String
+    let createdAt: Date
+    let updatedAt: Date
+    let writeID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case expenseID = "expense_id"
+        case userID = "user_id"
+        case amountPaid = "amount_paid"
+        case paymentMode = "payment_mode"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case writeID = "write_id"
+    }
+}
+
+struct ExpensePaymentInsertDTO: Codable, Sendable {
+    let expenseID: UUID
+    let userID: UUID
+    let amountPaid: Decimal
+    let paymentMode: String
+
+    enum CodingKeys: String, CodingKey {
+        case expenseID = "expense_id"
+        case userID = "user_id"
+        case amountPaid = "amount_paid"
+        case paymentMode = "payment_mode"
     }
 }
 

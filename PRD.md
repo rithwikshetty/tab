@@ -32,7 +32,7 @@ V1 is intentionally minimal: trip + expenses + splits + settlement. Future versi
 11. As a user, I want to add an expense with amount, currency, description, category, payer, participants, and date, so that I can record what happened on the trip.
 12. As a user, I want the expense date to default to today, so that I don't have to set it for every entry.
 13. As a user, I want to pick the currency from a searchable list, so that I can quickly find the one I used.
-14. As a user, I want to pick the payer (myself or another trip member), so that the right person gets credit.
+14. As a user, I want to record one or more payers per expense — each paying an equal share or an exact amount — so that real-world bills where multiple people fronted cash are captured in a single expense. (Default: the recorder is the sole payer, paying the full amount; multi-payer entry is reachable from a dedicated sub-page so the common single-payer case stays one tap.)
 15. As a user, I want to pick which trip members participated in this expense, so that absent members aren't charged for things they didn't do.
 16. As a user, I want to choose Equal or Exact split type per expense, so that I can split bills accurately.
 17. As a user adding an Exact split, I want to enter per-participant amounts and have them validate against the total, so that I don't accidentally over- or under-charge.
@@ -125,9 +125,10 @@ trip_members      (trip_id, user_id, joined_at)
 private.trip_invites (id, trip_id, token_hash, created_by, expires_at,
                    revoked_at?, used_at?, created_at, updated_at, deleted_at?)
 categories        (id, trip_id?, name, icon, is_default)
-expenses          (id, trip_id, payer_id, amount, currency, category_id,
+expenses          (id, trip_id, amount, currency, category_id,
                    description, expense_date, receipt_storage_path?,
                    created_by, created_at, updated_at, deleted_at?)
+expense_payments  (expense_id, user_id, amount_paid, payment_mode)
 expense_splits    (expense_id, user_id, amount_owed, split_type)
 settlements       (id, trip_id, from_user, to_user, amount, currency,
                    note?, settled_at, created_by, created_at, deleted_at?)
@@ -139,8 +140,8 @@ trip_mute_prefs   (trip_id, user_id, muted_at)
 
 Notes:
 - `categories.trip_id` is nullable to support the global default set (Food & Drink, Transport, Lodging, Activities, Shopping, Other).
-- `expense_splits.split_type` is an enum supporting `equal | exact | percentage | shares | adjustment`. V1 writes only `equal` and `exact`; the others remain available for v2.
-- Expense writes are transactional: an expense and all `expense_splits` must be written together, and the DB enforces `sum(expense_splits.amount_owed) = expenses.amount` for active expenses.
+- `expense_splits.split_type` and `expense_payments.payment_mode` share the enum `equal | exact | percentage | shares | adjustment`. V1 writes only `equal` and `exact`; the others remain available for v2. The mode is stored per row so that edit-restore reopens the correct picker.
+- Expense writes are transactional: an expense, all `expense_payments`, and all `expense_splits` must be written together. The DB enforces both `sum(expense_payments.amount_paid) = expenses.amount` and `sum(expense_splits.amount_owed) = expenses.amount` for active expenses, via per-ledger triggers.
 - Payers, split participants, settlement parties, creators, custom categories, and mute prefs must belong to the target trip at the DB boundary, not just in the app.
 - Soft-delete on user-visible mutable records (`trips`, `categories`, `expenses`, `settlements`, and invite records) via nullable `deleted_at`. Membership/mute/device rows use row presence because they are preference or join rows; `activity_log` is append-only.
 - `trips.last_activity_at` is updated by Postgres triggers on expense/settlement writes (used by TripStateDeriver).
@@ -149,7 +150,7 @@ Notes:
 ### Sync architecture
 - SwiftData is the source of truth on-device. All reads come from local; all writes go local first, then enqueue to SyncEngine.
 - SyncEngine pushes pending changes to Supabase when online, then pulls remote deltas since `last_synced_at` per table.
-- Multi-row mutations that must be atomic, especially expense + splits and invite joins, go through Supabase RPCs or another transactional server path. The app should not issue independent REST writes that can leave partial split state.
+- Multi-row mutations that must be atomic, especially expense + payments + splits and invite joins, go through Supabase RPCs or another transactional server path. The app should not issue independent REST writes that can leave partial-ledger state.
 - Realtime subscription opens only on the currently-viewed trip detail screen; unsubscribes on navigation away.
 - Conflict resolution is delegated to ConflictResolver. Policy: deletes win; otherwise highest `updated_at` wins.
 
@@ -194,7 +195,6 @@ Explicitly NOT in v1 (deferred to v2 or later):
 - Itinerary feature (mentioned as a long-term goal — separate scope).
 - Spending analytics / category breakdowns / per-trip dashboards.
 - Simplified-debt computation (always-pairwise in v1).
-- Multiple payers per expense.
 - Percentage, shares, and adjustment split types (data model supports them; UI does not).
 - Placeholder / ghost members (everyone in a trip must be a signed-in app user).
 - Real payment integration or deep-links to Venmo / Apple Cash / etc.

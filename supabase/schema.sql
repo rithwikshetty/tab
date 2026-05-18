@@ -11,7 +11,7 @@
 --   3. profiles
 --   4. trips + trip_members + auto-add-creator trigger
 --   5. categories (built-in defaults + per-trip custom)
---   6. expenses + expense_splits + last_activity trigger
+--   6. expenses + expense_payments + expense_splits + last_activity trigger
 --   7. settlements
 --   8. activity_log (append-only)
 --   9. push_devices + trip_mute_prefs
@@ -458,13 +458,12 @@ insert into public.categories (id, trip_id, name, icon, is_default) values
 
 
 -- ============================================================================
--- 6. expenses + expense_splits + touch_trip_last_activity trigger
+-- 6. expenses + expense_payments + expense_splits + touch_trip_last_activity trigger
 -- ============================================================================
 
 create table public.expenses (
   id                   uuid primary key default gen_random_uuid(),
   trip_id              uuid not null references public.trips(id) on delete restrict,
-  payer_id             uuid not null references public.profiles(id) on delete restrict,
   amount               numeric(14, 2) not null check (amount > 0),
   currency             text not null check (char_length(currency) = 3 and currency = upper(currency)),
   category_id          uuid references public.categories(id) on delete set null,
@@ -479,11 +478,10 @@ create table public.expenses (
 );
 
 comment on table public.expenses is
-  'Group expenses. Soft-delete via deleted_at. Hard-delete blocked by FK from trips (RESTRICT).';
+  'Group expenses. Soft-delete via deleted_at. Payers live in expense_payments (multi-payer); participants live in expense_splits.';
 
 create index expenses_trip_id_idx     on public.expenses(trip_id);
 create index expenses_trip_active_idx on public.expenses(trip_id, expense_date desc) where deleted_at is null;
-create index expenses_payer_id_idx    on public.expenses(payer_id);
 create index expenses_category_id_idx on public.expenses(category_id) where category_id is not null;
 create index expenses_created_by_idx  on public.expenses(created_by);
 
@@ -500,10 +498,6 @@ as $$
 begin
   if not exists (select 1 from public.trips where id = new.trip_id and deleted_at is null) then
     raise exception 'Expense trip must exist and be active' using errcode = '23514';
-  end if;
-
-  if not private.is_profile_trip_member(new.trip_id, new.payer_id) then
-    raise exception 'Expense payer must be a trip member' using errcode = '23514';
   end if;
 
   if not private.is_profile_trip_member(new.trip_id, new.created_by) then
@@ -524,7 +518,7 @@ end;
 $$;
 
 create trigger trg_expenses_validate
-  before insert or update of trip_id, payer_id, category_id, created_by, deleted_at on public.expenses
+  before insert or update of trip_id, category_id, created_by, deleted_at on public.expenses
   for each row execute function public.validate_expense_row();
 
 create or replace function public.touch_trip_last_activity()
@@ -549,6 +543,139 @@ comment on function public.touch_trip_last_activity() is
 create trigger trg_expenses_touch_trip
   after insert or update or delete on public.expenses
   for each row execute function public.touch_trip_last_activity();
+
+create table public.expense_payments (
+  expense_id   uuid not null references public.expenses(id) on delete cascade,
+  user_id      uuid not null references public.profiles(id) on delete restrict,
+  amount_paid  numeric(14, 2) not null check (amount_paid >= 0),
+  payment_mode text not null check (payment_mode in ('equal', 'exact', 'percentage', 'shares', 'adjustment')),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  write_id     uuid not null default gen_random_uuid(),
+  primary key (expense_id, user_id)
+);
+
+comment on table public.expense_payments is
+  'Per-payer contribution to an expense. Mirrors expense_splits. Cascade-deletes if the parent expense is hard-deleted.';
+
+create index expense_payments_user_id_idx on public.expense_payments(user_id);
+
+create trigger trg_expense_payments_sync_fields
+  before insert or update on public.expense_payments
+  for each row execute function public.set_sync_fields();
+
+create or replace function public.validate_expense_payment_row()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, private
+as $$
+declare
+  v_trip_id    uuid;
+  v_deleted_at timestamptz;
+begin
+  select trip_id, deleted_at
+  into v_trip_id, v_deleted_at
+  from public.expenses
+  where id = new.expense_id;
+
+  if v_trip_id is null then
+    raise exception 'Expense payment parent expense must exist' using errcode = '23514';
+  end if;
+
+  if v_deleted_at is not null then
+    raise exception 'Cannot write payments for a deleted expense' using errcode = '23514';
+  end if;
+
+  if not private.is_profile_trip_member(v_trip_id, new.user_id) then
+    raise exception 'Expense payment user must be a trip member' using errcode = '23514';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger trg_expense_payments_validate
+  before insert or update of expense_id, user_id on public.expense_payments
+  for each row execute function public.validate_expense_payment_row();
+
+create or replace function public.validate_expense_payment_total(p_expense_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_amount     numeric(14, 2);
+  v_deleted_at timestamptz;
+  v_pay_count  int;
+  v_pay_total  numeric(14, 2);
+begin
+  select amount, deleted_at
+  into v_amount, v_deleted_at
+  from public.expenses
+  where id = p_expense_id;
+
+  if v_amount is null or v_deleted_at is not null then
+    return;
+  end if;
+
+  select count(*)::int, coalesce(sum(amount_paid), 0)::numeric(14, 2)
+  into v_pay_count, v_pay_total
+  from public.expense_payments
+  where expense_id = p_expense_id;
+
+  if v_pay_count = 0 then
+    raise exception 'Expense % must have at least one payment', p_expense_id using errcode = '23514';
+  end if;
+
+  if v_pay_total <> v_amount then
+    raise exception 'Expense % payment total % does not equal amount %', p_expense_id, v_pay_total, v_amount
+      using errcode = '23514';
+  end if;
+end;
+$$;
+
+create or replace function public.validate_expense_payment_total_from_expense_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public.validate_expense_payment_total(coalesce(new.id, old.id));
+  return coalesce(new, old);
+end;
+$$;
+
+create or replace function public.validate_expense_payment_total_from_payment_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public.validate_expense_payment_total(coalesce(new.expense_id, old.expense_id));
+  if tg_op = 'UPDATE'
+     and old.expense_id is not null
+     and new.expense_id is not null
+     and old.expense_id <> new.expense_id then
+    perform public.validate_expense_payment_total(old.expense_id);
+  end if;
+
+  return coalesce(new, old);
+end;
+$$;
+
+create constraint trigger trg_expenses_payment_total
+  after insert or update of amount, deleted_at on public.expenses
+  deferrable initially deferred
+  for each row execute function public.validate_expense_payment_total_from_expense_trigger();
+
+create constraint trigger trg_expense_payments_total
+  after insert or update or delete on public.expense_payments
+  deferrable initially deferred
+  for each row execute function public.validate_expense_payment_total_from_payment_trigger();
 
 create table public.expense_splits (
   expense_id  uuid not null references public.expenses(id) on delete cascade,
@@ -895,8 +1022,9 @@ alter table public.profiles        enable row level security;
 alter table public.trips           enable row level security;
 alter table public.trip_members    enable row level security;
 alter table public.categories      enable row level security;
-alter table public.expenses        enable row level security;
-alter table public.expense_splits  enable row level security;
+alter table public.expenses          enable row level security;
+alter table public.expense_payments  enable row level security;
+alter table public.expense_splits    enable row level security;
 alter table public.settlements     enable row level security;
 alter table public.activity_log    enable row level security;
 alter table public.push_devices    enable row level security;
@@ -954,7 +1082,6 @@ create policy expenses_insert_member on public.expenses
   with check (
     private.is_trip_member(trip_id)
     and created_by = (select auth.uid())
-    and private.is_profile_trip_member(trip_id, payer_id)
     and (
       category_id is null
       or exists (
@@ -970,7 +1097,6 @@ create policy expenses_update_member on public.expenses
   using (private.is_trip_member(trip_id))
   with check (
     private.is_trip_member(trip_id)
-    and private.is_profile_trip_member(trip_id, payer_id)
     and private.is_profile_trip_member(trip_id, created_by)
     and (
       category_id is null
@@ -984,6 +1110,31 @@ create policy expenses_update_member on public.expenses
   );
 create policy expenses_delete_member on public.expenses
   for delete to authenticated using (private.is_trip_member(trip_id));
+
+-- expense_payments: visibility follows parent expense's trip membership.
+create policy expense_payments_select_member on public.expense_payments
+  for select to authenticated
+  using (exists (select 1 from public.expenses e where e.id = expense_payments.expense_id and private.is_trip_member(e.trip_id)));
+create policy expense_payments_insert_member on public.expense_payments
+  for insert to authenticated
+  with check (exists (
+    select 1 from public.expenses e
+    where e.id = expense_payments.expense_id
+      and private.is_trip_member(e.trip_id)
+      and private.is_profile_trip_member(e.trip_id, expense_payments.user_id)
+  ));
+create policy expense_payments_update_member on public.expense_payments
+  for update to authenticated
+  using  (exists (select 1 from public.expenses e where e.id = expense_payments.expense_id and private.is_trip_member(e.trip_id)))
+  with check (exists (
+    select 1 from public.expenses e
+    where e.id = expense_payments.expense_id
+      and private.is_trip_member(e.trip_id)
+      and private.is_profile_trip_member(e.trip_id, expense_payments.user_id)
+  ));
+create policy expense_payments_delete_member on public.expense_payments
+  for delete to authenticated
+  using (exists (select 1 from public.expenses e where e.id = expense_payments.expense_id and private.is_trip_member(e.trip_id)));
 
 -- expense_splits: visibility follows parent expense's trip membership.
 create policy expense_splits_select_member on public.expense_splits
@@ -1113,9 +1264,10 @@ create policy receipts_delete_member on storage.objects
 -- 12. Client RPCs
 -- ============================================================================
 
-create or replace function public.create_expense_with_splits(
-    p_expense jsonb,
-    p_splits  jsonb
+create or replace function public.create_expense_with_payments_and_splits(
+    p_expense  jsonb,
+    p_payments jsonb,
+    p_splits   jsonb
 )
 returns uuid
 language plpgsql
@@ -1123,10 +1275,11 @@ security definer
 set search_path = public, private
 as $$
 declare
-    v_actor       uuid := auth.uid();
-    v_expense_id  uuid;
-    v_trip_id     uuid;
-    v_split       jsonb;
+    v_actor      uuid := auth.uid();
+    v_expense_id uuid;
+    v_trip_id    uuid;
+    v_payment    jsonb;
+    v_split      jsonb;
 begin
     if v_actor is null then
         raise exception 'Authentication required' using errcode = '28000';
@@ -1153,13 +1306,12 @@ begin
     end if;
 
     insert into public.expenses (
-        id, trip_id, payer_id, amount, currency, category_id,
+        id, trip_id, amount, currency, category_id,
         description, expense_date, receipt_storage_path, created_by
     )
     values (
         v_expense_id,
         v_trip_id,
-        (p_expense->>'payer_id')::uuid,
         (p_expense->>'amount')::numeric(14, 2),
         p_expense->>'currency',
         nullif(p_expense->>'category_id', '')::uuid,
@@ -1169,7 +1321,6 @@ begin
         v_actor
     )
     on conflict (id) do update set
-        payer_id             = excluded.payer_id,
         amount               = excluded.amount,
         currency             = excluded.currency,
         category_id          = excluded.category_id,
@@ -1177,7 +1328,21 @@ begin
         expense_date         = excluded.expense_date,
         receipt_storage_path = excluded.receipt_storage_path;
 
-    delete from public.expense_splits where expense_id = v_expense_id;
+    delete from public.expense_payments where expense_id = v_expense_id;
+    delete from public.expense_splits   where expense_id = v_expense_id;
+
+    for v_payment in select * from jsonb_array_elements(p_payments)
+    loop
+        insert into public.expense_payments (
+            expense_id, user_id, amount_paid, payment_mode
+        )
+        values (
+            v_expense_id,
+            (v_payment->>'user_id')::uuid,
+            (v_payment->>'amount_paid')::numeric(14, 2),
+            v_payment->>'payment_mode'
+        );
+    end loop;
 
     for v_split in select * from jsonb_array_elements(p_splits)
     loop
@@ -1196,8 +1361,8 @@ begin
 end;
 $$;
 
-comment on function public.create_expense_with_splits(jsonb, jsonb) is
-    'Atomically upserts an expense and replaces its splits. Required because the split-total constraint is deferred and would fail on separate REST writes.';
+comment on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) is
+    'Atomically upserts an expense and replaces its payments + splits. Required because the deferred payment-sum and split-sum constraints would fail on separate REST writes.';
 
 
 -- ============================================================================
@@ -1215,6 +1380,10 @@ revoke execute on function public.validate_expense_split_row() from public, anon
 revoke execute on function public.validate_expense_split_total(uuid) from public, anon, authenticated;
 revoke execute on function public.validate_expense_split_total_from_expense_trigger() from public, anon, authenticated;
 revoke execute on function public.validate_expense_split_total_from_split_trigger() from public, anon, authenticated;
+revoke execute on function public.validate_expense_payment_row() from public, anon, authenticated;
+revoke execute on function public.validate_expense_payment_total(uuid) from public, anon, authenticated;
+revoke execute on function public.validate_expense_payment_total_from_expense_trigger() from public, anon, authenticated;
+revoke execute on function public.validate_expense_payment_total_from_payment_trigger() from public, anon, authenticated;
 revoke execute on function public.validate_settlement_row() from public, anon, authenticated;
 revoke execute on function public.validate_trip_mute_pref_row() from public, anon, authenticated;
 revoke execute on function public.purge_soft_deleted_records(timestamptz) from public, anon, authenticated;
@@ -1225,8 +1394,8 @@ revoke execute on function public.join_trip_with_invite(uuid, uuid, text) from p
 grant  execute on function public.join_trip_with_invite(uuid, uuid, text) to authenticated;
 revoke execute on function public.revoke_trip_invite(uuid) from public, anon;
 grant  execute on function public.revoke_trip_invite(uuid) to authenticated;
-revoke execute on function public.create_expense_with_splits(jsonb, jsonb) from public, anon;
-grant  execute on function public.create_expense_with_splits(jsonb, jsonb) to authenticated;
+revoke execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) from public, anon;
+grant  execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) to authenticated;
 
 -- private helpers are not PostgREST-exposed, but authenticated sessions need
 -- EXECUTE for policy evaluation.

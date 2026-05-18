@@ -79,11 +79,20 @@ struct ExpenseDetailView: View {
         let categoryTone = expense.categoryID.map { DefaultCategories.tone(for: $0) } ?? Sage.text
         let categoryIcon = category?.icon ?? "tag"
 
-        let payerIsYou = expense.payerID == userID
-        let payerName = payerIsYou
-            ? "You"
-            : (profilesByID[expense.payerID]?.displayName ?? "Member")
-        let payerMember = MemberCard(id: expense.payerID, displayName: payerName)
+        let isMultiPayer = expense.payments.count > 1
+        let payerIsYou = !isMultiPayer && expense.primaryPayerID == userID
+        let payerMember: MemberCard = {
+            if isMultiPayer {
+                return MemberCard(id: expense.id, displayName: "\(expense.payments.count) people")
+            }
+            if let payerID = expense.primaryPayerID {
+                let name = payerID == userID
+                    ? "You"
+                    : (profilesByID[payerID]?.displayName ?? "Member")
+                return MemberCard(id: payerID, displayName: name)
+            }
+            return MemberCard(id: expense.id, displayName: "—")
+        }()
 
         let splitRows = buildSplitRows(expense: expense, currentUserID: userID)
         let splitType = expense.splits.first?.splitType ?? .equal

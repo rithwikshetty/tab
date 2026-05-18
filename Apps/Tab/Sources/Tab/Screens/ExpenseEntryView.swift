@@ -32,6 +32,10 @@ struct ExpenseEntryView: View {
     @State private var currency: String = "EUR"
     @State private var expenseDate: Date = .now
 
+    /// Empty = single-payer with the recorder paying the full amount (default).
+    /// Non-empty = explicit ledger from PaidByView. Sum must equal totalAmount.
+    @State private var paymentEntries: [Payment] = []
+
     @State private var receiptPickerItem: PhotosPickerItem?
     @State private var receiptThumbnail: UIImage?
     @State private var receiptJPEG: Data?
@@ -76,7 +80,16 @@ struct ExpenseEntryView: View {
             && !participantSet.isEmpty
             && auth.currentUser != nil
             && computedSplits != nil
+            && paymentLedgerValid
             && !isPreparingReceipt
+    }
+
+    /// Empty ledger = OK (defaults to single-payer at save time).
+    /// Non-empty ledger = sum must equal totalAmount.
+    private var paymentLedgerValid: Bool {
+        if paymentEntries.isEmpty { return true }
+        let sum = paymentEntries.reduce(Decimal(0)) { $0 + $1.amountPaid }
+        return sum == totalAmount
     }
 
     private var computedSplits: [ExpenseSplit]? {
@@ -248,7 +261,12 @@ struct ExpenseEntryView: View {
             .frame(height: 62)
             .frame(maxWidth: .infinity, alignment: .leading)
             .onChange(of: amountText) { _, new in
-                amountText = sanitizeAmount(new)
+                let sanitized = sanitizeAmount(new)
+                if sanitized != new {
+                    amountText = sanitized
+                } else {
+                    refreshEqualPaymentsForCurrentTotal()
+                }
             }
 
             Menu {
@@ -341,22 +359,60 @@ struct ExpenseEntryView: View {
     }
 
     private var paidByRow: some View {
-        HStack(spacing: 12) {
-            Text("Paid by")
-                .font(.formRowLabel)
-                .tracking(-0.07)
-                .foregroundStyle(Sage.text)
-            Spacer()
-            HStack(spacing: 4) {
-                Text("You")
-                    .font(.formRowValue.weight(.medium))
+        NavigationLink {
+            PaidByView(
+                tripID: tripID,
+                totalAmount: totalAmount,
+                currency: currency,
+                payments: $paymentEntries
+            )
+        } label: {
+            HStack(spacing: 12) {
+                Text("Paid by")
+                    .font(.formRowLabel)
                     .tracking(-0.07)
                     .foregroundStyle(Sage.text)
-                Chevron(size: 9)
+                Spacer()
+                HStack(spacing: 4) {
+                    Text(paidByLabel)
+                        .font(.formRowValue.weight(.medium))
+                        .tracking(-0.07)
+                        .foregroundStyle(paidByLedgerReconciles ? Sage.text : Sage.warning)
+                    Chevron(size: 9)
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, Layout.rowVPad)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, Layout.rowVPad)
+        .buttonStyle(.plain)
+        .disabled(totalAmount <= 0)
+        .opacity(totalAmount > 0 ? 1 : 0.5)
+    }
+
+    private var paidByLabel: String {
+        if paymentEntries.isEmpty {
+            return "You"
+        }
+        let mismatched = !paidByLedgerReconciles
+        let names: String
+        if paymentEntries.count == 1, let only = paymentEntries.first {
+            names = only.payerID == auth.currentUser?.id
+                ? "You"
+                : (profilesByID[only.payerID]?.displayName ?? "Member")
+        } else {
+            names = "\(paymentEntries.count) people"
+        }
+        if mismatched {
+            return "\(names) · ≠ \(MoneyFormatter.format(totalAmount, currency: currency))"
+        }
+        return names
+    }
+
+    private var paidByLedgerReconciles: Bool {
+        if paymentEntries.isEmpty { return true }
+        let sum = paymentEntries.reduce(Decimal(0)) { $0 + $1.amountPaid }
+        return sum == totalAmount
     }
 
     private var splitRow: some View {
@@ -669,6 +725,20 @@ struct ExpenseEntryView: View {
         }
     }
 
+    private func refreshEqualPaymentsForCurrentTotal() {
+        guard totalAmount > 0, !paymentEntries.isEmpty else { return }
+        guard paymentEntries.allSatisfy({ $0.paymentMode == .equal }) else { return }
+
+        let payerIDs = paymentEntries.map(\.payerID)
+        guard let recalculated = try? PaymentCalculator.calculate(
+            totalAmount: totalAmount,
+            currency: currency,
+            payers: payerIDs,
+            paymentMode: .equal
+        ) else { return }
+        paymentEntries = recalculated
+    }
+
     private func save() {
         guard canSave, let trip, let user = auth.currentUser else { return }
         guard let splits = computedSplits else { return }
@@ -693,7 +763,6 @@ struct ExpenseEntryView: View {
 
         let expense = ExpenseEntity(
             id: expenseID,
-            payerID: user.id,
             amount: totalAmount,
             currency: currency,
             categoryID: selectedCategoryID,
@@ -704,6 +773,19 @@ struct ExpenseEntryView: View {
             trip: trip
         )
         context.insert(expense)
+
+        let payments = paymentEntries.isEmpty
+            ? [Payment(payerID: user.id, amountPaid: totalAmount, paymentMode: .equal)]
+            : paymentEntries
+        for payment in payments {
+            let entity = PaymentEntity(
+                userID: payment.payerID,
+                amountPaid: payment.amountPaid,
+                paymentModeRaw: payment.paymentMode.rawValue,
+                expense: expense
+            )
+            context.insert(entity)
+        }
 
         for split in splits {
             let entity = ExpenseSplitEntity(

@@ -24,7 +24,7 @@ final class AuthService {
     init() {
         #if DEBUG
         if Self.useMockAuth() {
-            let id = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+            let id = Self.mockUserID
             currentUser = CurrentUser(id: id, email: "mock@tab.local", displayName: "Test User")
             phase = .signedIn(id)
             return
@@ -37,8 +37,18 @@ final class AuthService {
     }
 
     #if DEBUG
+    static let mockUserID = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+
+    var isUsingMockAuth: Bool {
+        Self.useMockAuth()
+    }
+
     private static func useMockAuth() -> Bool {
-        ProcessInfo.processInfo.environment["TAB_MOCK_AUTH"] == "1"
+        let environment = ProcessInfo.processInfo.environment
+        if environment["TAB_REAL_AUTH"] == "1" || environment["TAB_MOCK_AUTH"] == "0" {
+            return false
+        }
+        return true
     }
     #endif
 

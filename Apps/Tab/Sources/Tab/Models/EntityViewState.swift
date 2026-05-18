@@ -11,17 +11,30 @@ extension ExpenseSplitEntity {
     }
 }
 
+extension PaymentEntity {
+    var paymentMode: PaymentMode { PaymentMode(rawValue: paymentModeRaw) ?? .equal }
+
+    func toCorePayment() -> Payment {
+        Payment(payerID: userID, amountPaid: amountPaid, paymentMode: paymentMode)
+    }
+}
+
 extension ExpenseEntity {
+    /// First payer by deterministic ordering. Suitable for single-payer display only.
+    var primaryPayerID: UUID? {
+        payments.sorted { $0.userID.uuidString < $1.userID.uuidString }.first?.userID
+    }
+
     func toCoreExpense() -> Expense {
         Expense(
             id: id,
             tripID: trip?.id ?? UUID(),
-            payerID: payerID,
             amount: Money(amount: amount, currency: currency),
             categoryID: categoryID,
             descriptionText: descriptionText,
             receiptStoragePath: receiptStoragePath,
             expenseDate: expenseDate,
+            payments: payments.map { $0.toCorePayment() },
             splits: splits.map { $0.toCoreSplit() },
             createdBy: createdByID,
             createdAt: createdAt,
@@ -68,8 +81,10 @@ enum TripPresenter {
             return MemberCard(id: member.userID, displayName: displayName)
         }
 
-        let coreExpenses = trip.expenses.filter { $0.deletedAt == nil }.map { $0.toCoreExpense() }
-        let coreSettlements = trip.settlements.filter { $0.deletedAt == nil }.map { $0.toCoreSettlement() }
+        let activeExpenses = trip.expenses.filter { $0.deletedAt == nil }
+        let activeSettlements = trip.settlements.filter { $0.deletedAt == nil }
+        let coreExpenses = activeExpenses.map { $0.toCoreExpense() }
+        let coreSettlements = activeSettlements.map { $0.toCoreSettlement() }
         let balances = BalanceEngine.compute(expenses: coreExpenses, settlements: coreSettlements)
         let state = TripStateDeriver.derive(balances: balances, lastActivityAt: trip.lastActivityAt, now: now)
 
@@ -82,7 +97,7 @@ enum TripPresenter {
         if state == .completed {
             status = .settled("settled · \(monthYear(trip.lastActivityAt))")
         } else if netByCurrency.isEmpty {
-            status = .empty
+            status = activeExpenses.isEmpty && activeSettlements.isEmpty ? .empty : .settled("all settled")
         } else {
             let owed = netByCurrency.filter { $0.value > 0 }
             let owe = netByCurrency.filter { $0.value < 0 }
@@ -144,10 +159,20 @@ enum ExpenseListPresenter {
             let dayExpenses = (grouped[day] ?? []).sorted { $0.createdAt > $1.createdAt }
             let items = dayExpenses.map { e -> ExpenseRowItem in
                 let category = categoryFor(e.categoryID)
-                let payerIsYou = e.payerID == currentUserID
-                let payerName = payerIsYou
-                    ? "you"
-                    : (profileFor(e.payerID)?.displayName ?? "Member")
+                let payerName: String
+                let payerIsYou: Bool
+                if e.payments.count > 1 {
+                    payerName = "\(e.payments.count) people"
+                    payerIsYou = false
+                } else if let firstPayer = e.primaryPayerID {
+                    payerIsYou = firstPayer == currentUserID
+                    payerName = payerIsYou
+                        ? "you"
+                        : (profileFor(firstPayer)?.displayName ?? "Member")
+                } else {
+                    payerName = "—"
+                    payerIsYou = false
+                }
                 let yourShare = e.splits
                     .first(where: { $0.userID == currentUserID })?.amountOwed ?? 0
                 return ExpenseRowItem(

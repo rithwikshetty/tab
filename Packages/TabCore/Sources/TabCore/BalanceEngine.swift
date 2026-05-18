@@ -23,11 +23,13 @@ public enum BalanceEngine {
 
         for expense in expenses where expense.deletedAt == nil {
             let currency = expense.amount.currency
-            let payer = expense.payerID
-            for split in expense.splits where split.participantID != payer {
-                let debtor = split.participantID
-                let key = PairKey(payer, debtor)
-                let signed = key.signedAmount(creditor: payer, debtor: debtor, amount: split.amountOwed)
+            distributePairs(for: expense).forEach { (pair, amount) in
+                let key = PairKey(pair.creditor, pair.debtor)
+                let signed = key.signedAmount(
+                    creditor: pair.creditor,
+                    debtor: pair.debtor,
+                    amount: amount
+                )
                 canonical[key, default: [:]][currency, default: 0] += signed
             }
         }
@@ -35,7 +37,6 @@ public enum BalanceEngine {
         for settlement in settlements where settlement.deletedAt == nil {
             let currency = settlement.amount.currency
             let key = PairKey(settlement.fromUserID, settlement.toUserID)
-            // Settlement: debtor pays creditor → reduces what debtor owes creditor.
             let signed = key.signedAmount(
                 creditor: settlement.toUserID,
                 debtor: settlement.fromUserID,
@@ -47,7 +48,6 @@ public enum BalanceEngine {
         var balances: [UserBalance] = []
         for (key, byCurrency) in canonical {
             for (currency, amount) in byCurrency where amount != 0 {
-                // canonical convention: positive amount means `key.hi` owes `key.lo`.
                 balances.append(UserBalance(
                     forUser: key.lo, withUser: key.hi, currency: currency, amount: amount
                 ))
@@ -57,6 +57,44 @@ public enum BalanceEngine {
             }
         }
         return balances
+    }
+
+    /// For one expense, distribute its pair debts using net-per-user.
+    /// Returns (creditor, debtor) → amount the debtor owes the creditor for this expense.
+    /// Multi-payer formula: each debtor's shortfall is split across creditors proportionally
+    /// to each creditor's surplus.
+    static func distributePairs(for expense: Expense) -> [(pair: (creditor: UUID, debtor: UUID), amount: Decimal)] {
+        var nets: [UUID: Decimal] = [:]
+        for payment in expense.payments {
+            nets[payment.payerID, default: 0] += payment.amountPaid
+        }
+        for split in expense.splits {
+            nets[split.participantID, default: 0] -= split.amountOwed
+        }
+
+        var creditors: [(id: UUID, surplus: Decimal)] = []
+        var debtors: [(id: UUID, shortfall: Decimal)] = []
+        for (user, net) in nets {
+            if net > 0 { creditors.append((user, net)) }
+            else if net < 0 { debtors.append((user, -net)) }
+        }
+        let totalSurplus = creditors.reduce(Decimal(0)) { $0 + $1.surplus }
+        guard totalSurplus > 0 else { return [] }
+
+        // Deterministic ordering for reproducibility.
+        creditors.sort { $0.id.uuidString < $1.id.uuidString }
+        debtors.sort { $0.id.uuidString < $1.id.uuidString }
+
+        var result: [(pair: (creditor: UUID, debtor: UUID), amount: Decimal)] = []
+        for debtor in debtors {
+            for creditor in creditors {
+                let share = debtor.shortfall * creditor.surplus / totalSurplus
+                if share != 0 {
+                    result.append((pair: (creditor: creditor.id, debtor: debtor.id), amount: share))
+                }
+            }
+        }
+        return result
     }
 }
 

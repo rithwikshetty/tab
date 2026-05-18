@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tab — Expense entry flow mockups</title>
+  <style>
+    :root {
+      --sage-accent: #6F9866;
+      --sage-accent-strong: #4F7549;
+      --sage-accent-soft: #C6D6BA;
+      --sage-bg: #FAF7F0;
+      --sage-surface: #FFFFFF;
+      --sage-surface2: #F1ECE2;
+      --sage-text: #28281F;
+      --sage-text-secondary: #777267;
+      --sage-card-border: rgba(60, 50, 30, 0.06);
+      --sage-row-divider: rgba(60, 50, 30, 0.07);
+      --sage-segmented-bg: rgba(60, 50, 30, 0.06);
+      --sage-shadow: rgba(50, 60, 40, 0.06);
+      --sage-warn: #C46A4E;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ECE7DC;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+      color: var(--sage-text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page {
+      max-width: 1340px;
+      margin: 0 auto;
+      padding: 48px 28px 96px;
+    }
+
+    .page-head {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .page-head h1 {
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      margin: 0 0 8px;
+    }
+    .page-head p {
+      font-size: 14px;
+      color: var(--sage-text-secondary);
+      margin: 0;
+      line-height: 1.55;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .variant {
+      margin-bottom: 64px;
+      padding: 32px 24px 28px;
+      background: rgba(255,255,255,0.4);
+      border-radius: 24px;
+      border: 1px solid var(--sage-card-border);
+    }
+    .variant.recommended {
+      background: linear-gradient(180deg, rgba(198, 214, 186, 0.45), rgba(198, 214, 186, 0.18));
+      border-color: var(--sage-accent-soft);
+    }
+    .variant-head {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .variant-head h2 {
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+      margin: 0;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      background: var(--sage-accent);
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    .badge.warn { background: var(--sage-warn); }
+    .badge.muted { background: var(--sage-surface); color: var(--sage-text-secondary); border: 1px solid var(--sage-card-border); }
+
+    .variant-sub {
+      text-align: center;
+      color: var(--sage-text-secondary);
+      font-size: 13px;
+      margin: 0 0 28px;
+      line-height: 1.5;
+    }
+
+    .frames {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 28px;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .frame-col { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 390px; }
+    .frame-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--sage-text-secondary);
+    }
+    .frame-arrow {
+      align-self: center;
+      color: var(--sage-text-secondary);
+      font-size: 28px;
+      padding-top: 380px;
+      user-select: none;
+    }
+    .frame-caption {
+      font-size: 12px;
+      color: var(--sage-text-secondary);
+      text-align: center;
+      max-width: 330px;
+      line-height: 1.45;
+      margin-top: 2px;
+    }
+
+    /* phone */
+    .phone {
+      width: 390px;
+      height: 844px;
+      background: var(--sage-bg);
+      border-radius: 44px;
+      border: 8px solid #1A1814;
+      box-shadow: 0 30px 60px -20px rgba(50, 60, 40, 0.25), 0 6px 12px rgba(0,0,0,0.04);
+      position: relative;
+      overflow: hidden;
+    }
+    .phone.tall { height: 980px; }
+
+    .status-bar {
+      height: 47px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 24px 0 28px;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.1px;
+    }
+    .status-bar .notch {
+      position: absolute;
+      top: 11px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 124px;
+      height: 32px;
+      background: #1A1814;
+      border-radius: 999px;
+    }
+    .battery {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--sage-text);
+    }
+    .battery::after {
+      content: "";
+      width: 22px;
+      height: 11px;
+      background: var(--sage-accent);
+      border-radius: 3px;
+    }
+
+    .nav-bar {
+      height: 52px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: 4px 14px 8px;
+    }
+    .nav-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      background: var(--sage-surface);
+      border-radius: 999px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      font-size: 17px;
+      letter-spacing: -0.1px;
+      color: var(--sage-text);
+      font-weight: 400;
+    }
+    .nav-pill.action { color: var(--sage-accent); font-weight: 600; }
+    .nav-pill.disabled { color: rgba(111, 152, 102, 0.4); font-weight: 500; }
+    .nav-bar .left { justify-self: start; }
+    .nav-bar .right { justify-self: end; }
+    .nav-bar .title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.07px;
+    }
+
+    /* amount block */
+    .amount-block {
+      padding: 18px 22px 18px;
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      border-bottom: 1px solid var(--sage-row-divider);
+    }
+    .amount {
+      flex: 1;
+      font-size: 50px;
+      font-weight: 300;
+      letter-spacing: -1px;
+      line-height: 1;
+      color: var(--sage-text);
+    }
+    .amount.placeholder { color: rgba(119, 114, 103, 0.45); }
+    .currency-pill {
+      background: var(--sage-surface);
+      border: 1px solid var(--sage-card-border);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.2px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .currency-pill .chev { font-size: 9px; opacity: 0.6; }
+
+    .desc-row {
+      padding: 14px 22px;
+      font-size: 17px;
+      letter-spacing: -0.07px;
+      color: var(--sage-text);
+    }
+    .desc-row.placeholder { color: rgba(119, 114, 103, 0.55); }
+
+    .cat-strip {
+      padding: 16px 22px 4px;
+      display: flex;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .cat-chip {
+      flex-shrink: 0;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: var(--sage-surface);
+      border: 1px solid var(--sage-card-border);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--sage-text);
+    }
+    .cat-chip.active {
+      background: var(--sage-accent);
+      color: #fff;
+      border-color: var(--sage-accent);
+    }
+    .cat-chip .em { font-size: 14px; }
+
+    .sec-label {
+      padding: 18px 22px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--sage-text-secondary);
+    }
+
+    .card {
+      margin: 6px 18px 0;
+      background: var(--sage-surface);
+      border-radius: 14px;
+      border: 1px solid var(--sage-card-border);
+      overflow: hidden;
+    }
+    .row {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 15px;
+      letter-spacing: -0.07px;
+    }
+    .row + .row { border-top: 1px solid var(--sage-row-divider); }
+    .row .label { color: var(--sage-text); }
+    .row .value { color: var(--sage-text); font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
+    .row .value.muted { color: var(--sage-text-secondary); font-weight: 400; }
+    .row .chev { font-size: 11px; color: var(--sage-text-secondary); }
+
+    .seg {
+      display: inline-flex;
+      background: var(--sage-segmented-bg);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .seg-opt {
+      padding: 6px 12px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--sage-text-secondary);
+    }
+    .seg-opt.active {
+      background: var(--sage-surface);
+      color: var(--sage-text);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    }
+
+    .pcard {
+      margin: 4px 18px 0;
+      background: var(--sage-surface);
+      border-radius: 14px;
+      border: 1px solid var(--sage-card-border);
+      overflow: hidden;
+    }
+    .p-row {
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .p-row + .p-row { border-top: 1px solid var(--sage-row-divider); }
+    .check {
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--sage-accent);
+    }
+    .check.off { background: rgba(119, 114, 103, 0.4); }
+    .p-name { flex: 1; font-size: 15px; font-weight: 500; letter-spacing: -0.07px; }
+    .p-amount {
+      font-size: 13px;
+      font-feature-settings: "tnum";
+      color: var(--sage-text-secondary);
+    }
+    .p-amount.input {
+      background: var(--sage-surface2);
+      padding: 4px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--sage-card-border);
+      color: var(--sage-text);
+      font-weight: 500;
+    }
+    .p-footer {
+      padding: 10px 14px;
+      border-top: 1px solid var(--sage-row-divider);
+      text-align: right;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--sage-text-secondary);
+    }
+    .p-footer.warn { color: var(--sage-warn); }
+    .p-footer.ok { color: var(--sage-accent-strong); }
+
+    .photo-add {
+      margin: 18px 18px 0;
+      border: 1.5px dashed var(--sage-accent-soft);
+      border-radius: 14px;
+      padding: 22px;
+      text-align: center;
+      color: var(--sage-accent);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    /* sheet overlay */
+    .sheet-dim {
+      position: absolute;
+      inset: 0;
+      background: rgba(28, 28, 24, 0.35);
+      backdrop-filter: blur(2px);
+    }
+    .sheet {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--sage-bg);
+      border-top-left-radius: 22px;
+      border-top-right-radius: 22px;
+      padding: 10px 0 26px;
+      box-shadow: 0 -10px 30px rgba(0,0,0,0.18);
+      max-height: 64%;
+      overflow: hidden;
+    }
+    .grabber {
+      width: 38px;
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(60, 50, 30, 0.18);
+      margin: 4px auto 14px;
+    }
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px 12px;
+    }
+    .sheet-head h3 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+    .close-x {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: var(--sage-surface);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--sage-text-secondary);
+      border: 1px solid var(--sage-card-border);
+    }
+    .sheet-mode {
+      display: flex;
+      justify-content: center;
+      padding: 4px 20px 12px;
+    }
+    .sheet-payers { padding: 0 14px; }
+    .done-btn {
+      margin: 14px 18px 0;
+      background: var(--sage-accent);
+      color: #fff;
+      text-align: center;
+      padding: 13px;
+      border-radius: 14px;
+      font-weight: 600;
+      letter-spacing: -0.1px;
+    }
+
+    /* push-page header for subpages */
+    .sub-total {
+      padding: 18px 22px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--sage-row-divider);
+    }
+    .sub-total .label { font-size: 13px; color: var(--sage-text-secondary); }
+    .sub-total .v { font-size: 22px; font-weight: 600; letter-spacing: -0.4px; }
+
+    .mode-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 22px 6px;
+    }
+    .mode-row .label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--sage-text-secondary);
+    }
+
+    /* annotations */
+    .summary {
+      margin-top: 64px;
+      padding: 28px 32px;
+      background: var(--sage-surface);
+      border-radius: 18px;
+      border: 1px solid var(--sage-card-border);
+    }
+    .summary h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+    .summary p { color: var(--sage-text-secondary); font-size: 13.5px; margin: 0 0 14px; line-height: 1.5; }
+    .summary table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .summary th, .summary td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--sage-row-divider);
+      vertical-align: top;
+    }
+    .summary th { font-weight: 600; color: var(--sage-text-secondary); text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
+    .summary td:first-child { font-weight: 600; width: 18%; }
+    .summary tr:last-child td { border-bottom: 0; }
+
+    .tap-hint {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 5px 10px;
+      background: rgba(111, 152, 102, 0.12);
+      color: var(--sage-accent-strong);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="page-head">
+    <h1>Expense entry — multi-payer flow options</h1>
+    <p>
+      Same data, four different ways to ask for it. All optimised for the 90% case
+      (single payer = "You") staying frictionless, with the multi-payer interaction
+      revealed only when needed. Sage palette. iPhone 16 frame.
+    </p>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- VARIANT B — PUSH-NAV PAYER SUBPAGE (recommended)                    -->
+  <!-- ================================================================= -->
+  <div class="variant recommended">
+    <div class="variant-head">
+      <h2>Variant B — Push-nav payer subpage</h2>
+      <span class="badge">Recommended</span>
+    </div>
+    <p class="variant-sub">
+      Main form stays the current single-screen layout. Tap "Paid by" only when
+      you need to change it → pushes a dedicated subpage with mode toggle,
+      per-payer rows, and a sum footer. "Done" pops back; the row now reads
+      "3 people · 250.00".
+    </p>
+
+    <div class="frames">
+      <!-- Phone 1: main form, paid-by collapsed -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">New expense</span>
+            <span class="right"><span class="nav-pill action">Save</span></span>
+          </div>
+          <div class="amount-block">
+            <div class="amount">250.00</div>
+            <span class="currency-pill">EUR <span class="chev">▾</span></span>
+          </div>
+          <div class="desc-row">Dinner at Trattoria</div>
+          <div class="cat-strip">
+            <span class="cat-chip active"><span class="em">🍽</span> Food</span>
+            <span class="cat-chip"><span class="em">🚗</span></span>
+            <span class="cat-chip"><span class="em">🏨</span></span>
+            <span class="cat-chip"><span class="em">🎟</span></span>
+            <span class="cat-chip"><span class="em">🛍</span></span>
+          </div>
+          <div class="card" style="margin-top:18px;">
+            <div class="row">
+              <span class="label">Paid by</span>
+              <span class="value"><span style="color: var(--sage-accent-strong); font-weight:600;">You</span> <span class="chev">›</span></span>
+            </div>
+            <div class="row">
+              <span class="label">Split</span>
+              <span class="value">
+                <span class="seg">
+                  <span class="seg-opt active">Equal</span>
+                  <span class="seg-opt">Exact</span>
+                </span>
+              </span>
+            </div>
+            <div class="row">
+              <span class="label">Date</span>
+              <span class="value muted">Today</span>
+            </div>
+          </div>
+          <div class="sec-label">Split between</div>
+          <div class="pcard">
+            <div class="p-row">
+              <span class="check">✓</span>
+              <span class="p-name">You</span>
+              <span class="p-amount">83.33</span>
+            </div>
+            <div class="p-row">
+              <span class="check">✓</span>
+              <span class="p-name">Alice</span>
+              <span class="p-amount">83.33</span>
+            </div>
+            <div class="p-row">
+              <span class="check">✓</span>
+              <span class="p-name">Bob</span>
+              <span class="p-amount">83.34</span>
+            </div>
+          </div>
+          <div class="photo-add">+ Add receipt photo</div>
+        </div>
+        <div class="frame-label">Main form (default)</div>
+        <div class="frame-caption">Single-payer ("You") never triggers nav. Same scroll length as today.</div>
+      </div>
+
+      <div class="frame-arrow">→</div>
+
+      <!-- Phone 2: pushed payer subpage -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">‹ Back</span></span>
+            <span class="title">Paid by</span>
+            <span class="right"><span class="nav-pill action">Done</span></span>
+          </div>
+          <div class="sub-total">
+            <span class="label">Total</span>
+            <span class="v">250.00 EUR</span>
+          </div>
+          <div class="mode-row">
+            <span class="label">Mode</span>
+            <span class="seg">
+              <span class="seg-opt">Equal</span>
+              <span class="seg-opt active">Exact</span>
+            </span>
+          </div>
+          <div class="sec-label" style="padding-top:8px;">Payers</div>
+          <div class="pcard">
+            <div class="p-row">
+              <span class="check">✓</span>
+              <span class="p-name">You</span>
+              <span class="p-amount input">100.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check">✓</span>
+              <span class="p-name">Alice</span>
+              <span class="p-amount input">100.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check">✓</span>
+              <span class="p-name">Bob</span>
+              <span class="p-amount input">50.00</span>
+            </div>
+            <div class="p-row">
+              <span class="check off">✓</span>
+              <span class="p-name" style="color: var(--sage-text-secondary);">Carol</span>
+              <span class="p-amount">—</span>
+            </div>
+            <div class="p-footer ok">✓ Reconciles 250.00</div>
+          </div>
+          <div style="margin: 22px 18px 0; font-size: 12px; color: var(--sage-text-secondary); line-height: 1.5;">
+            Sum of payments must equal total. Footer shows remaining / over while
+            you type. "Done" disabled until reconciled.
+          </div>
+        </div>
+        <div class="frame-label">Paid by — pushed page</div>
+        <div class="frame-caption">Roomy. Mode toggle, sum reconciliation, never feels cramped — even with 8 trip members.</div>
+      </div>
+    </div>
+
+    <p style="text-align:center; color: var(--sage-text-secondary); font-size: 12.5px; margin-top: 18px;">
+      <strong>Cost:</strong> 1 push + back, only when payer ≠ "You". Single-payer case = zero transitions.
+    </p>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- VARIANT C — BOTTOM SHEET                                            -->
+  <!-- ================================================================= -->
+  <div class="variant">
+    <div class="variant-head">
+      <h2>Variant C — Modal bottom sheet</h2>
+      <span class="badge muted">Alternative</span>
+    </div>
+    <p class="variant-sub">
+      Same data as Variant B, but the payer editor rises as a half-sheet over a
+      dimmed main form. Lighter-weight transition. Risk: vertical room is tight
+      once you add mode toggle + 6+ payers + sum footer + Done button.
+    </p>
+
+    <div class="frames">
+      <!-- Phone 1: main form, with paid-by tap target -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">New expense</span>
+            <span class="right"><span class="nav-pill action">Save</span></span>
+          </div>
+          <div class="amount-block">
+            <div class="amount">250.00</div>
+            <span class="currency-pill">EUR <span class="chev">▾</span></span>
+          </div>
+          <div class="desc-row">Dinner at Trattoria</div>
+          <div class="cat-strip">
+            <span class="cat-chip active"><span class="em">🍽</span> Food</span>
+            <span class="cat-chip"><span class="em">🚗</span></span>
+            <span class="cat-chip"><span class="em">🏨</span></span>
+          </div>
+          <div class="card" style="margin-top:18px;">
+            <div class="row">
+              <span class="label">Paid by</span>
+              <span class="value"><span style="color: var(--sage-accent-strong); font-weight:600;">You</span> <span class="chev">›</span></span>
+            </div>
+            <div class="row">
+              <span class="label">Split</span>
+              <span class="value">
+                <span class="seg">
+                  <span class="seg-opt active">Equal</span>
+                  <span class="seg-opt">Exact</span>
+                </span>
+              </span>
+            </div>
+            <div class="row">
+              <span class="label">Date</span>
+              <span class="value muted">Today</span>
+            </div>
+          </div>
+          <div class="sec-label">Split between</div>
+          <div class="pcard">
+            <div class="p-row"><span class="check">✓</span><span class="p-name">You</span><span class="p-amount">83.33</span></div>
+            <div class="p-row"><span class="check">✓</span><span class="p-name">Alice</span><span class="p-amount">83.33</span></div>
+            <div class="p-row"><span class="check">✓</span><span class="p-name">Bob</span><span class="p-amount">83.34</span></div>
+          </div>
+          <div class="photo-add">+ Add receipt photo</div>
+        </div>
+        <div class="frame-label">Main form</div>
+        <div class="frame-caption">Identical to B's main form.</div>
+      </div>
+
+      <div class="frame-arrow">→</div>
+
+      <!-- Phone 2: sheet rising -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">New expense</span>
+            <span class="right"><span class="nav-pill action disabled">Save</span></span>
+          </div>
+          <div class="amount-block">
+            <div class="amount">250.00</div>
+            <span class="currency-pill">EUR <span class="chev">▾</span></span>
+          </div>
+          <div class="desc-row">Dinner at Trattoria</div>
+
+          <!-- dimmed -->
+          <div class="sheet-dim"></div>
+          <div class="sheet">
+            <div class="grabber"></div>
+            <div class="sheet-head">
+              <h3>Who paid?</h3>
+              <span class="close-x">✕</span>
+            </div>
+            <div class="sheet-mode">
+              <span class="seg">
+                <span class="seg-opt">Equal</span>
+                <span class="seg-opt active">Exact</span>
+              </span>
+            </div>
+            <div class="sheet-payers">
+              <div class="pcard" style="margin: 0;">
+                <div class="p-row"><span class="check">✓</span><span class="p-name">You</span><span class="p-amount input">100.00</span></div>
+                <div class="p-row"><span class="check">✓</span><span class="p-name">Alice</span><span class="p-amount input">100.00</span></div>
+                <div class="p-row"><span class="check">✓</span><span class="p-name">Bob</span><span class="p-amount input">50.00</span></div>
+                <div class="p-footer ok">✓ Reconciles 250.00</div>
+              </div>
+            </div>
+            <div class="done-btn">Done</div>
+          </div>
+        </div>
+        <div class="frame-label">Paid by — half sheet</div>
+        <div class="frame-caption">Carol (the 4th member) is offscreen — sheet scroll required. Gets ugly fast on bigger trips.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- VARIANT A — INLINE EXPAND                                           -->
+  <!-- ================================================================= -->
+  <div class="variant">
+    <div class="variant-head">
+      <h2>Variant A — Inline expand (current pattern, extended)</h2>
+      <span class="badge warn">Rejected</span>
+    </div>
+    <p class="variant-sub">
+      Multi-payer card expands inline below the "Paid by" row — same pattern as
+      the existing split card. No nav, no sheet. But the page grows tall fast
+      and the split section gets pushed off-screen. You called this "ugly".
+      Included for comparison.
+    </p>
+
+    <div class="frames">
+      <div class="frame-col">
+        <div class="phone tall">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">New expense</span>
+            <span class="right"><span class="nav-pill action">Save</span></span>
+          </div>
+          <div class="amount-block">
+            <div class="amount">250.00</div>
+            <span class="currency-pill">EUR <span class="chev">▾</span></span>
+          </div>
+          <div class="desc-row">Dinner at Trattoria</div>
+          <div class="cat-strip">
+            <span class="cat-chip active"><span class="em">🍽</span> Food</span>
+            <span class="cat-chip"><span class="em">🚗</span></span>
+            <span class="cat-chip"><span class="em">🏨</span></span>
+          </div>
+          <div class="card" style="margin-top:18px;">
+            <div class="row">
+              <span class="label">Paid by</span>
+              <span class="value">
+                <span class="seg">
+                  <span class="seg-opt">Equal</span>
+                  <span class="seg-opt active">Exact</span>
+                </span>
+              </span>
+            </div>
+          </div>
+          <!-- inline expanded payer card -->
+          <div class="pcard" style="margin-top: 10px;">
+            <div class="p-row"><span class="check">✓</span><span class="p-name">You</span><span class="p-amount input">100.00</span></div>
+            <div class="p-row"><span class="check">✓</span><span class="p-name">Alice</span><span class="p-amount input">100.00</span></div>
+            <div class="p-row"><span class="check">✓</span><span class="p-name">Bob</span><span class="p-amount input">50.00</span></div>
+            <div class="p-row"><span class="check off">✓</span><span class="p-name" style="color: var(--sage-text-secondary);">Carol</span><span class="p-amount">—</span></div>
+            <div class="p-footer ok">✓ Reconciles 250.00</div>
+          </div>
+          <div class="card" style="margin-top: 12px;">
+            <div class="row">
+              <span class="label">Split</span>
+              <span class="value">
+                <span class="seg">
+                  <span class="seg-opt active">Equal</span>
+                  <span class="seg-opt">Exact</span>
+                </span>
+              </span>
+            </div>
+            <div class="row">
+              <span class="label">Date</span>
+              <span class="value muted">Today</span>
+            </div>
+          </div>
+          <div class="sec-label">Split between</div>
+          <div class="pcard">
+            <div class="p-row"><span class="check">✓</span><span class="p-name">You</span><span class="p-amount">83.33</span></div>
+            <div class="p-row"><span class="check">✓</span><span class="p-name">Alice</span><span class="p-amount">83.33</span></div>
+            <div class="p-row"><span class="check">✓</span><span class="p-name">Bob</span><span class="p-amount">83.34</span></div>
+          </div>
+        </div>
+        <div class="frame-label">Inline expanded (extra-tall frame)</div>
+        <div class="frame-caption">
+          Notice: photo-add row no longer fits on screen. Two stacked
+          equal/exact toggles, two participant-style cards, lots of vertical
+          visual noise. Hard to scan.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- VARIANT D — FULL WIZARD                                             -->
+  <!-- ================================================================= -->
+  <div class="variant">
+    <div class="variant-head">
+      <h2>Variant D — Full wizard (3 pushed pages)</h2>
+      <span class="badge warn">Slow</span>
+    </div>
+    <p class="variant-sub">
+      Amount → Paid by → Split, each its own page. Every expense pays a 3-page
+      tax even for a $5 coffee. For ~10 people using this daily, this means
+      hundreds of extra taps per trip.
+    </p>
+
+    <div class="frames">
+      <!-- Page 1 -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><div class="notch"></div><span class="battery">100</span></div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">Step 1 of 3</span>
+            <span class="right"><span class="nav-pill action">Next</span></span>
+          </div>
+          <div class="amount-block">
+            <div class="amount">250.00</div>
+            <span class="currency-pill">EUR <span class="chev">▾</span></span>
+          </div>
+          <div class="desc-row">Dinner at Trattoria</div>
+          <div class="cat-strip">
+            <span class="cat-chip active"><span class="em">🍽</span> Food</span>
+            <span class="cat-chip"><span class="em">🚗</span></span>
+            <span class="cat-chip"><span class="em">🏨</span></span>
+          </div>
+          <div class="card" style="margin-top:18px;">
+            <div class="row">
+              <span class="label">Date</span>
+              <span class="value muted">Today</span>
+            </div>
+          </div>
+        </div>
+        <div class="frame-label">Page 1 — Amount</div>
+      </div>
+
+      <div class="frame-arrow">→</div>
+
+      <!-- Page 2 -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><div class="notch"></div><span class="battery">100</span></div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">‹ Back</span></span>
+            <span class="title">Step 2 of 3</span>
+            <span class="right"><span class="nav-pill action">Next</span></span>
+          </div>
+          <div class="sub-total">
+            <span class="label">Total</span>
+            <span class="v">250.00 EUR</span>
+          </div>
+          <div class="mode-row">
+            <span class="label">Mode</span>
+            <span class="seg"><span class="seg-opt">Equal</span><span class="seg-opt active">Exact</span></span>
+          </div>
+          <div class="sec-label" style="padding-top:8px;">Payers</div>
+          <div class="pcard">
+            <div class="p-row"><span class="check">✓</span><span class="p-name">You</span><span class="p-amount input">100.00</span></div>
+            <div class="p-row"><span class="check">✓</span><span class="p-name">Alice</span><span class="p-amount input">100.00</span></div>
+            <div class="p-row"><span class="check">✓</span><span class="p-name">Bob</span><span class="p-amount input">50.00</span></div>
+            <div class="p-footer ok">✓ Reconciles 250.00</div>
+          </div>
+        </div>
+        <div class="frame-label">Page 2 — Paid by</div>
+      </div>
+
+      <div class="frame-arrow">→</div>
+
+      <!-- Page 3 -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><div class="notch"></div><span class="battery">100</span></div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">‹ Back</span></span>
+            <span class="title">Step 3 of 3</span>
+            <span class="right"><span class="nav-pill action">Save</span></span>
+          </div>
+          <div class="mode-row">
+            <span class="label">Split</span>
+            <span class="seg"><span class="seg-opt active">Equal</span><span class="seg-opt">Exact</span></span>
+          </div>
+          <div class="sec-label" style="padding-top:8px;">Between</div>
+          <div class="pcard">
+            <div class="p-row"><span class="check">✓</span><span class="p-name">You</span><span class="p-amount">83.33</span></div>
+            <div class="p-row"><span class="check">✓</span><span class="p-name">Alice</span><span class="p-amount">83.33</span></div>
+            <div class="p-row"><span class="check">✓</span><span class="p-name">Bob</span><span class="p-amount">83.34</span></div>
+          </div>
+        </div>
+        <div class="frame-label">Page 3 — Split</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- SUMMARY TABLE                                                       -->
+  <!-- ================================================================= -->
+  <div class="summary">
+    <h2>At a glance</h2>
+    <p>Optimise for the everyday case — one person buys a coffee, taps in
+    amount, hits Save. Multi-payer should be available but never tax the
+    common case.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Variant</th>
+          <th>Single-payer cost</th>
+          <th>Multi-payer cost</th>
+          <th>Pretty?</th>
+          <th>Risk</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>B · Push subpage</td>
+          <td>0 extra taps</td>
+          <td>1 tap → subpage → Done</td>
+          <td>Yes — subpage gets room</td>
+          <td>Slight extra nav stack on multi-payer entries</td>
+        </tr>
+        <tr>
+          <td>C · Bottom sheet</td>
+          <td>0 extra taps</td>
+          <td>1 tap → sheet → Done</td>
+          <td>OK at 2–4 payers; cramps with bigger trips</td>
+          <td>Limited vertical room; mode + sum + button competing</td>
+        </tr>
+        <tr>
+          <td>A · Inline expand</td>
+          <td>0 extra taps</td>
+          <td>0 — but page is much taller</td>
+          <td>Cluttered: two equal/exact toggles, two payer-style cards</td>
+          <td>Visual noise; split section pushed off-screen</td>
+        </tr>
+        <tr>
+          <td>D · Full wizard</td>
+          <td>+2 extra page transitions</td>
+          <td>+2 extra page transitions</td>
+          <td>Spacious — but always</td>
+          <td>Every single expense pays the wizard tax</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+</body>
+</html>

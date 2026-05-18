@@ -158,7 +158,6 @@ final class ExpenseEntity {
     #Unique<ExpenseEntity>([\.id])
 
     var id: UUID
-    var payerID: UUID
     var amount: Decimal
     var currency: String
     var categoryID: UUID?
@@ -174,12 +173,14 @@ final class ExpenseEntity {
 
     var trip: TripEntity?
 
+    @Relationship(deleteRule: .cascade, inverse: \PaymentEntity.expense)
+    var payments: [PaymentEntity] = []
+
     @Relationship(deleteRule: .cascade, inverse: \ExpenseSplitEntity.expense)
     var splits: [ExpenseSplitEntity] = []
 
     init(
         id: UUID = UUID(),
-        payerID: UUID,
         amount: Decimal,
         currency: String,
         categoryID: UUID? = nil,
@@ -195,7 +196,6 @@ final class ExpenseEntity {
         pushedWriteID: UUID? = nil
     ) {
         self.id = id
-        self.payerID = payerID
         self.amount = amount
         self.currency = currency
         self.categoryID = categoryID
@@ -207,6 +207,42 @@ final class ExpenseEntity {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.deletedAt = deletedAt
+        self.writeID = writeID
+        self.pushedWriteID = pushedWriteID
+    }
+}
+
+// MARK: - Payment
+
+@Model
+final class PaymentEntity {
+    #Unique<PaymentEntity>([\.id])
+
+    var id: UUID
+    var userID: UUID
+    var amountPaid: Decimal
+    var paymentModeRaw: String
+    var updatedAt: Date
+    var writeID: UUID
+    var pushedWriteID: UUID?
+
+    var expense: ExpenseEntity?
+
+    init(
+        userID: UUID,
+        amountPaid: Decimal,
+        paymentModeRaw: String,
+        expense: ExpenseEntity? = nil,
+        updatedAt: Date = .now,
+        writeID: UUID = UUID(),
+        pushedWriteID: UUID? = nil
+    ) {
+        self.id = UUID()
+        self.userID = userID
+        self.amountPaid = amountPaid
+        self.paymentModeRaw = paymentModeRaw
+        self.expense = expense
+        self.updatedAt = updatedAt
         self.writeID = writeID
         self.pushedWriteID = pushedWriteID
     }

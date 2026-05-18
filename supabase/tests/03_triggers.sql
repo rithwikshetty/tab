@@ -57,10 +57,9 @@ insert into public.trip_members (trip_id, user_id)
 values ('11111111-1111-1111-1111-111111111111'::uuid, '00000000-0000-0000-0000-000000000002'::uuid);
 
 -- ===== set_sync_fields on INSERT =====
-insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
+insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
 values ('aaaaaaaa-0000-0000-0000-000000000001'::uuid,
         '11111111-1111-1111-1111-111111111111'::uuid,
-        '00000000-0000-0000-0000-000000000001'::uuid,
         10, 'EUR', 'first', '2026-05-01',
         '00000000-0000-0000-0000-000000000001'::uuid);
 
@@ -114,10 +113,9 @@ select last_activity_at from public.trips where id = '11111111-1111-1111-1111-11
 
 select pg_sleep(0.05);
 
-insert into public.expenses (id, trip_id, payer_id, amount, currency, description, expense_date, created_by)
+insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
 values ('aaaaaaaa-0000-0000-0000-000000000002'::uuid,
         '11111111-1111-1111-1111-111111111111'::uuid,
-        '00000000-0000-0000-0000-000000000001'::uuid,
         20, 'EUR', 'second', '2026-05-02',
         '00000000-0000-0000-0000-000000000001'::uuid);
 
