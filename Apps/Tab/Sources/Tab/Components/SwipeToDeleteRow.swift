@@ -18,6 +18,8 @@ struct SwipeToDeleteRow<Content: View>: View {
     @State private var offset: CGFloat = 0
     @State private var isOpen: Bool = false
     @State private var didCrossFullSwipe: Bool = false
+    @State private var dragAxis: DragAxis?
+    @State private var lastDragX: CGFloat = 0
 
     private let actionWidth: CGFloat = 88
     private let fullSwipeThreshold: CGFloat = 140
@@ -81,15 +83,21 @@ struct SwipeToDeleteRow<Content: View>: View {
             .onChanged { value in
                 let dx = value.translation.width
                 let dy = value.translation.height
-                guard abs(dx) > abs(dy) else { return }
+                if dragAxis == nil {
+                    dragAxis = abs(dx) > abs(dy) ? .horizontal : .vertical
+                }
+                guard dragAxis == .horizontal else { return }
 
                 let base: CGFloat = isOpen ? -actionWidth : 0
-                offset = min(0, base + dx)
+                let rawOffset = min(0, base + dx)
+                let delta = dx - lastDragX
+                lastDragX = dx
+                offset = clampedOffset(offset + delta)
 
-                if !didCrossFullSwipe && offset <= -fullSwipeThreshold {
+                if !didCrossFullSwipe && rawOffset <= -fullSwipeThreshold {
                     Haptics.light()
                     didCrossFullSwipe = true
-                } else if didCrossFullSwipe && offset > -fullSwipeThreshold {
+                } else if didCrossFullSwipe && rawOffset > -fullSwipeThreshold {
                     didCrossFullSwipe = false
                 }
             }
@@ -98,23 +106,37 @@ struct SwipeToDeleteRow<Content: View>: View {
                 let dy = value.translation.height
                 let predicted = value.predictedEndTranslation.width
                 let base: CGFloat = isOpen ? -actionWidth : 0
+                let rawOffset = min(0, base + dx)
+
+                defer {
+                    dragAxis = nil
+                    lastDragX = 0
+                    didCrossFullSwipe = false
+                }
+
+                guard dragAxis == .horizontal else {
+                    if isOpen { open() } else { close() }
+                    return
+                }
 
                 if abs(dx) < abs(dy) {
                     close()
-                    didCrossFullSwipe = false
                     return
                 }
 
                 let predictedFinal = base + predicted
-                if offset <= -fullSwipeThreshold || predictedFinal <= -fullSwipeThreshold {
+                if rawOffset <= -fullSwipeThreshold || predictedFinal <= -fullSwipeThreshold {
                     fire()
-                } else if offset <= -actionWidth / 2 {
+                } else if rawOffset <= -actionWidth / 2 {
                     open()
                 } else {
                     close()
                 }
-                didCrossFullSwipe = false
             }
+    }
+
+    private func clampedOffset(_ value: CGFloat) -> CGFloat {
+        min(0, max(-actionWidth, value))
     }
 
     private func open() {
@@ -132,6 +154,11 @@ struct SwipeToDeleteRow<Content: View>: View {
         Haptics.warning()
         close()
         onTrigger()
+    }
+
+    private enum DragAxis {
+        case horizontal
+        case vertical
     }
 }
 
