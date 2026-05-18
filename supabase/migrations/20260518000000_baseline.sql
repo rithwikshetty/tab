@@ -99,10 +99,10 @@ stable
 set search_path = public, private
 as $$
   select exists (
-    select 1 from public.trip_people
-    where trip_id = p_trip_id
-      and user_id = p_user_id
-      and joined_at is not null
+    select 1 from public.trip_people tp
+    where tp.trip_id = p_trip_id
+      and tp.user_id = p_user_id
+      and tp.joined_at is not null
   );
 $$;
 
@@ -130,9 +130,9 @@ stable
 set search_path = public, private
 as $$
   select exists (
-    select 1 from public.trip_people
-    where id = p_person_id
-      and trip_id = p_trip_id
+    select 1 from public.trip_people tp
+    where tp.id = p_person_id
+      and tp.trip_id = p_trip_id
   );
 $$;
 
@@ -1243,7 +1243,7 @@ begin
     where public.trips.created_by = v_actor
        or private.is_profile_trip_member(public.trips.id, v_actor);
 
-  if not exists (select 1 from public.trips where id = p_trip_id) then
+  if not exists (select 1 from public.trips t where t.id = p_trip_id) then
     raise exception 'Trip could not be created' using errcode = '42501';
   end if;
 
@@ -1253,7 +1253,7 @@ begin
   values (
     p_person_id, p_trip_id, v_actor, v_email, v_display_name, v_actor, clock_timestamp()
   )
-  on conflict (trip_id, email) do update
+  on conflict on constraint trip_people_email_unique do update
     set user_id = v_actor,
         display_name = excluded.display_name,
         joined_at = coalesce(public.trip_people.joined_at, clock_timestamp())
@@ -1293,7 +1293,7 @@ begin
     raise exception 'A valid email is required' using errcode = '22023';
   end if;
 
-  if not exists (select 1 from public.trips where id = p_trip_id and deleted_at is null) then
+  if not exists (select 1 from public.trips t where t.id = p_trip_id and t.deleted_at is null) then
     raise exception 'Trip not found or deleted' using errcode = 'P0002';
   end if;
 
@@ -1311,18 +1311,24 @@ begin
   v_display_name := left(coalesce(nullif(trim(p_display_name), ''), nullif(trim(v_display_name), ''), split_part(v_email, '@', 1)), 60);
 
   if v_user_id is not null then
-    select * into v_person
-    from public.trip_people
-    where trip_id = p_trip_id
-      and user_id = v_user_id;
+    insert into public.profiles (id, display_name)
+    values (v_user_id, v_display_name)
+    on conflict (id) do nothing;
+  end if;
+
+  if v_user_id is not null then
+    select tp.* into v_person
+    from public.trip_people tp
+    where tp.trip_id = p_trip_id
+      and tp.user_id = v_user_id;
 
     if found then
       update public.trip_people
       set email = v_email,
           display_name = v_display_name,
-          joined_at = coalesce(joined_at, clock_timestamp())
-      where id = v_person.id
-      returning * into v_person;
+          joined_at = coalesce(public.trip_people.joined_at, clock_timestamp())
+      where public.trip_people.id = v_person.id
+      returning public.trip_people.* into v_person;
 
       return v_person;
     end if;
@@ -1340,7 +1346,7 @@ begin
     v_actor,
     case when v_user_id is null then null else clock_timestamp() end
   )
-  on conflict (trip_id, email) do update
+  on conflict on constraint trip_people_email_unique do update
     set user_id = coalesce(public.trip_people.user_id, excluded.user_id),
         display_name = excluded.display_name,
         joined_at = case
@@ -1348,7 +1354,7 @@ begin
           when excluded.user_id is not null then clock_timestamp()
           else null
         end
-  returning * into v_person;
+  returning public.trip_people.* into v_person;
 
   return v_person;
 end;
@@ -1379,6 +1385,10 @@ begin
   select display_name into v_display_name
   from public.profiles
   where id = v_actor;
+
+  insert into public.profiles (id, display_name)
+  values (v_actor, left(coalesce(nullif(trim(v_display_name), ''), split_part(v_email, '@', 1)), 60))
+  on conflict (id) do nothing;
 
   return query
   update public.trip_people tp
