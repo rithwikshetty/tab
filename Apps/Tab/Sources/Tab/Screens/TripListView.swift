@@ -15,23 +15,17 @@ struct TripListView: View {
     )
     private var trips: [TripEntity]
 
-    @Query private var profiles: [ProfileEntity]
-
     @State private var showingNewTrip = false
     @State private var pendingDeletion: TripEntity?
 
-    private var profilesByID: [UUID: ProfileEntity] {
-        Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
-    }
-
     private var cards: [TripCard] {
         guard let userID = auth.currentUser?.id else { return [] }
-        return trips.map { trip in
-            TripPresenter.card(
+        return trips.compactMap { trip in
+            guard let currentPerson = trip.people.first(where: { $0.userID == userID }) else { return nil }
+            return TripPresenter.card(
                 from: trip,
-                currentUserID: userID,
-                currentUserDisplayName: auth.currentUser?.displayName,
-                profileFor: { id in profilesByID[id] }
+                currentPersonID: currentPerson.id,
+                currentUserDisplayName: auth.currentUser?.displayName
             )
         }
     }

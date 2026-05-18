@@ -1,264 +1,112 @@
--- 02_constraints.sql — CHECK / UNIQUE / FK constraints (positive + negative).
--- Bypasses RLS by inserting as the postgres owner; we're testing constraint
--- enforcement, not access control.
+-- 02_constraints.sql — constraints for trip_people and ledger references.
 
 begin;
-set local search_path = extensions, public, pg_temp;
+set search_path = extensions, public, pg_temp;
 
-select plan(39);
+select plan(18);
 create temp table _r (line text);
 
--- Fixture: minimal auth user + auto-created profile via handle_new_user trigger.
 insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
-values (
-  '00000000-0000-0000-0000-000000000001'::uuid,
-  'alice@test.tab',
-  '00000000-0000-0000-0000-000000000000'::uuid,
-  'authenticated', 'authenticated',
-  '{"display_name":"Alice"}'::jsonb
-);
-insert into public.trips (id, name, created_by)
-values ('11111111-1111-1111-1111-111111111111'::uuid, 'Lisbon', '00000000-0000-0000-0000-000000000001'::uuid);
+values
+  ('00000000-0000-0000-0000-000000000001', 'alice@test.tab', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', '{"display_name":"Alice"}'),
+  ('00000000-0000-0000-0000-000000000002', 'bob@test.tab',   '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', '{"display_name":"Bob"}'),
+  ('00000000-0000-0000-0000-000000000003', 'carol@test.tab', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', '{"display_name":"Carol"}');
 
--- ===== expenses.amount > 0 =====
+insert into public.trips (id, name, created_by)
+values
+  ('11111111-1111-1111-1111-111111111111', 'Lisbon', '00000000-0000-0000-0000-000000000001'),
+  ('22222222-2222-2222-2222-222222222222', 'Solo',   '00000000-0000-0000-0000-000000000003');
+
+insert into public.trip_people (id, trip_id, user_id, email, display_name, invited_by, joined_at)
+values
+  ('10000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 'alice@test.tab', 'Alice', '00000000-0000-0000-0000-000000000001', now()),
+  ('10000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000002', 'bob@test.tab',   'Bob',   '00000000-0000-0000-0000-000000000001', now()),
+  ('20000000-0000-0000-0000-000000000003', '22222222-2222-2222-2222-222222222222', '00000000-0000-0000-0000-000000000003', 'carol@test.tab', 'Carol', '00000000-0000-0000-0000-000000000003', now());
+
 insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', 0, 'EUR', 'zero', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
+  $$insert into public.trip_people (trip_id, email, display_name) values ('11111111-1111-1111-1111-111111111111', 'UPPER@test.tab', 'Upper')$$,
+  '23514', null, 'trip_people.email must be normalized');
+
+insert into _r select throws_ok(
+  $$insert into public.trip_people (trip_id, email, display_name, joined_at) values ('11111111-1111-1111-1111-111111111111', 'pending@test.tab', 'Pending', now())$$,
+  '23514', null, 'pending trip person cannot have joined_at without user_id');
+
+insert into _r select throws_ok(
+  $$insert into public.trip_people (trip_id, email, display_name) values ('11111111-1111-1111-1111-111111111111', 'alice@test.tab', 'Alice Duplicate')$$,
+  '23505', null, 'duplicate person email per trip rejected');
+
+insert into _r select throws_ok(
+  $$insert into public.trip_people (trip_id, user_id, email, display_name, joined_at) values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000002', 'bob2@test.tab', 'Bob Duplicate', now())$$,
+  '23505', null, 'duplicate joined user per trip rejected');
+
+insert into _r select lives_ok(
+  $$insert into public.trip_people (trip_id, email, display_name) values ('11111111-1111-1111-1111-111111111111', 'new@test.tab', 'New Person')$$,
+  'pending trip person accepted');
+
+insert into _r select throws_ok(
+  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by) values ('11111111-1111-1111-1111-111111111111', 0, 'EUR', 'zero', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
   '23514', null, 'expense amount = 0 rejected');
 
 insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', -1, 'EUR', 'neg', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'expense amount = -1 rejected');
+  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by) values ('11111111-1111-1111-1111-111111111111', 10, 'eur', 'lower currency', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
+  '23514', null, 'lowercase currency rejected');
+
+insert into _r select throws_ok(
+  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by) values ('11111111-1111-1111-1111-111111111111', 10, 'EUR', '', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
+  '23514', null, 'empty expense description rejected');
 
 insert into _r select lives_ok(
   $$insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
-    values ('aaaaaaaa-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 0.01, 'EUR', 'one cent', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
-  'expense amount = 0.01 accepted (positive boundary)');
-
--- ===== currency: length 3, uppercase =====
-insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', 10, 'EU', 'short', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'currency length 2 rejected');
-
-insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', 10, 'EURO', 'long', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'currency length 4 rejected');
+      values ('aaaaaaaa-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 10, 'EUR', 'Dinner', '2026-05-01', '00000000-0000-0000-0000-000000000001');
+    insert into public.expense_payments (expense_id, trip_person_id, amount_paid, payment_mode)
+      values ('aaaaaaaa-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 10, 'equal');
+    insert into public.expense_splits (expense_id, trip_person_id, amount_owed, split_type)
+      values ('aaaaaaaa-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 10, 'equal');
+    set constraints all immediate; set constraints all deferred;$$,
+  'valid one-person expense accepted');
 
 insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', 10, 'eur', 'lower', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'currency lowercase rejected');
+  $$insert into public.expense_payments (expense_id, trip_person_id, amount_paid, payment_mode)
+      values ('aaaaaaaa-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000003', 1, 'equal')$$,
+  '23514', null, 'payment person from another trip rejected');
+
+insert into _r select throws_ok(
+  $$insert into public.expense_splits (expense_id, trip_person_id, amount_owed, split_type)
+      values ('aaaaaaaa-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000003', 1, 'equal')$$,
+  '23514', null, 'split person from another trip rejected');
+
+insert into _r select throws_ok(
+  $$insert into public.expense_splits (expense_id, trip_person_id, amount_owed, split_type)
+      values ('aaaaaaaa-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', -1, 'equal')$$,
+  '23514', null, 'negative split rejected');
+
+insert into _r select throws_ok(
+  $$insert into public.expense_splits (expense_id, trip_person_id, amount_owed, split_type)
+      values ('aaaaaaaa-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 1, 'lol')$$,
+  '23514', null, 'invalid split type rejected');
+
+insert into _r select throws_ok(
+  $$insert into public.settlements (trip_id, from_person_id, to_person_id, amount, currency, created_by)
+      values ('11111111-1111-1111-1111-111111111111', '10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 10, 'EUR', '00000000-0000-0000-0000-000000000001')$$,
+  '23514', null, 'settlement from_person = to_person rejected');
+
+insert into _r select throws_ok(
+  $$insert into public.settlements (trip_id, from_person_id, to_person_id, amount, currency, created_by)
+      values ('11111111-1111-1111-1111-111111111111', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000003', 10, 'EUR', '00000000-0000-0000-0000-000000000001')$$,
+  '23514', null, 'settlement person from another trip rejected');
 
 insert into _r select lives_ok(
-  $$insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
-    values ('aaaaaaaa-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 10, 'EUR', 'valid', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
-  'currency EUR accepted');
-
--- ===== description trimmed-length > 0 =====
-insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', 10, 'EUR', '', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'empty description rejected');
+  $$insert into public.settlements (trip_id, from_person_id, to_person_id, amount, currency, created_by)
+      values ('11111111-1111-1111-1111-111111111111', '10000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 5, 'EUR', '00000000-0000-0000-0000-000000000001')$$,
+  'valid settlement accepted');
 
 insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', 10, 'EUR', '   ', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'whitespace-only description rejected');
-
--- ===== trips.name trimmed-length > 0 =====
-insert into _r select throws_ok(
-  $$insert into public.trips (name, created_by) values ('', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'empty trip name rejected');
-
--- ===== expense_splits.amount_owed >= 0 =====
-insert into _r select lives_ok(
-  $$insert into public.expense_splits (expense_id, user_id, amount_owed, split_type)
-    values ('aaaaaaaa-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 0, 'equal')$$,
-  'expense_split amount_owed = 0 accepted');
-
-insert into _r select throws_ok(
-  $$insert into public.expense_splits (expense_id, user_id, amount_owed, split_type)
-    values ('aaaaaaaa-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', -1, 'equal')$$,
-  '23514', null, 'expense_split amount_owed = -1 rejected');
-
--- ===== expense_splits.split_type enum =====
-insert into _r select throws_ok(
-  $$insert into public.expense_splits (expense_id, user_id, amount_owed, split_type)
-    values ('aaaaaaaa-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 5, 'lol')$$,
-  '23514', null, 'invalid split_type rejected');
+  $$insert into public.trip_mute_prefs (trip_id, user_id) values ('22222222-2222-2222-2222-222222222222', '00000000-0000-0000-0000-000000000001')$$,
+  '23514', null, 'mute pref user must be a member of the trip');
 
 insert into _r select lives_ok(
-  $$insert into public.expense_splits (expense_id, user_id, amount_owed, split_type)
-    values ('aaaaaaaa-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 5, 'percentage')$$,
-  'split_type percentage accepted (V2 reserved)');
-
--- ===== settlements: from_user != to_user =====
-insert into _r select throws_ok(
-  $$insert into public.settlements (trip_id, from_user, to_user, amount, currency, created_by)
-    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 10, 'EUR', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'settlement from_user = to_user rejected');
-
--- ===== settlements: amount and membership =====
-insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
-values ('00000000-0000-0000-0000-000000000002'::uuid, 'bob@test.tab', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Bob"}'::jsonb);
-
-insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
-values ('00000000-0000-0000-0000-000000000003'::uuid, 'carol@test.tab', '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated', '{"display_name":"Carol"}'::jsonb);
-
-insert into public.trip_members (trip_id, user_id)
-values ('11111111-1111-1111-1111-111111111111'::uuid, '00000000-0000-0000-0000-000000000002'::uuid);
-
-insert into _r select throws_ok(
-  $$insert into public.settlements (trip_id, from_user, to_user, amount, currency, created_by)
-    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 0, 'EUR', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'settlement amount 0 rejected (CHECK)');
-
-insert into _r select throws_ok(
-  $$insert into public.settlements (trip_id, from_user, to_user, amount, currency, created_by)
-    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 10, 'EUR', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'settlement parties must be trip members');
-
-insert into _r select throws_ok(
-  $$insert into public.expense_splits (expense_id, user_id, amount_owed, split_type)
-    values ('aaaaaaaa-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', 1, 'equal')$$,
-  '23514', null, 'expense split user must be a trip member');
-
--- Earlier constraint probes intentionally create expenses without complete
--- payment + split rows. Mark them deleted before forcing deferred sum checks.
-update public.expenses set deleted_at = clock_timestamp() where deleted_at is null;
-
--- Bad split total (payments OK, splits mismatch) — expect rejection at commit-time check.
-set constraints all deferred;
-insert into _r select throws_ok(
-  $$insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
-      values ('eeeeeeee-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 10, 'EUR', 'bad split total', '2026-05-01', '00000000-0000-0000-0000-000000000001');
-    insert into public.expense_payments (expense_id, user_id, amount_paid, payment_mode)
-      values ('eeeeeeee-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 10, 'equal');
-    insert into public.expense_splits (expense_id, user_id, amount_owed, split_type)
-      values ('eeeeeeee-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 6, 'exact'),
-             ('eeeeeeee-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 3, 'exact');
-    set constraints all immediate$$,
-  '23514', null, 'expense split totals must equal expense amount');
-
-set constraints all deferred;
-insert into _r select lives_ok(
-  $$insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
-      values ('eeeeeeee-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 10, 'EUR', 'good split total', '2026-05-01', '00000000-0000-0000-0000-000000000001');
-    insert into public.expense_payments (expense_id, user_id, amount_paid, payment_mode)
-      values ('eeeeeeee-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 10, 'equal');
-    insert into public.expense_splits (expense_id, user_id, amount_owed, split_type)
-      values ('eeeeeeee-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 6, 'exact'),
-             ('eeeeeeee-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000002', 4, 'exact');
-    set constraints all immediate$$,
-  'valid expense with matching payment + split totals accepted');
-
-set constraints all deferred;
-
--- ===== categories: default_xor_trip constraint =====
-insert into _r select throws_ok(
-  $$insert into public.categories (trip_id, name, icon, is_default)
-    values ('11111111-1111-1111-1111-111111111111', 'bad-default', '?', true)$$,
-  '23514', null, 'built-in category with trip_id rejected');
-
-insert into _r select throws_ok(
-  $$insert into public.categories (trip_id, name, icon, is_default)
-    values (null, 'bad-custom', '?', false)$$,
-  '23514', null, 'custom category with null trip_id rejected');
-
-insert into _r select lives_ok(
-  $$insert into public.categories (trip_id, name, icon, is_default)
-    values ('11111111-1111-1111-1111-111111111111', 'BBQ', '🍖', false)$$,
-  'custom category with trip_id accepted');
-
-insert into public.trips (id, name, created_by)
-values ('22222222-2222-2222-2222-222222222222'::uuid, 'Porto', '00000000-0000-0000-0000-000000000001'::uuid);
-
-insert into public.categories (id, trip_id, name, icon, is_default)
-values ('cccccccc-0000-0000-0000-000000000002'::uuid, '22222222-2222-2222-2222-222222222222'::uuid, 'Porto-only', '?', false);
-
-insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, amount, currency, category_id, description, expense_date, created_by)
-    values ('11111111-1111-1111-1111-111111111111', 10, 'EUR', 'cccccccc-0000-0000-0000-000000000002', 'wrong category', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'expense category must be default or belong to expense trip');
-
--- ===== categories: case-insensitive unique within a trip =====
-insert into _r select throws_ok(
-  $$insert into public.categories (trip_id, name, icon, is_default)
-    values ('11111111-1111-1111-1111-111111111111', 'bbq', '🍖', false)$$,
-  '23505', null, 'case-insensitive duplicate category name in same trip rejected');
-
--- ===== categories: built-in name unique globally =====
-insert into _r select throws_ok(
-  $$insert into public.categories (trip_id, name, icon, is_default)
-    values (null, 'Food & Drink', '?', true)$$,
-  '23505', null, 'duplicate built-in category name rejected');
-
--- ===== activity_log: action + entity_type enums =====
-insert into _r select throws_ok(
-  $$insert into public.activity_log (trip_id, actor_id, action, entity_type, entity_id)
-    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 'made_up_action', 'expense', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'invalid activity action rejected');
-
-insert into _r select throws_ok(
-  $$insert into public.activity_log (trip_id, actor_id, action, entity_type, entity_id)
-    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 'expense_created', 'made_up_entity', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'invalid activity entity_type rejected');
-
--- ===== Validation triggers fire BEFORE FK constraints (defense in depth) =====
-insert into _r select throws_ok(
-  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by)
-    values ('99999999-9999-9999-9999-999999999999', 10, 'EUR', 'no trip', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
-  '23514', null, 'expense with nonexistent trip_id rejected (validate trigger fires before FK)');
-
-insert into _r select throws_ok(
-  $$insert into public.expense_payments (expense_id, user_id, amount_paid, payment_mode)
-    values ('eeeeeeee-0000-0000-0000-000000000002', '99999999-9999-9999-9999-999999999999', 5, 'equal')$$,
-  '23514', null, 'expense_payment with non-member user_id rejected (validate trigger fires before FK)');
-
--- ===== profiles.display_name boundaries =====
-insert into _r select throws_ok(
-  $$update public.profiles set display_name = '' where id = '00000000-0000-0000-0000-000000000001'$$,
-  '23514', null, 'empty display_name rejected on update');
-
-insert into _r select throws_ok(
-  $$update public.profiles set display_name = repeat('x', 61) where id = '00000000-0000-0000-0000-000000000001'$$,
-  '23514', null, 'display_name length > 60 rejected');
-
-insert into _r select lives_ok(
-  $$update public.profiles set display_name = repeat('x', 60) where id = '00000000-0000-0000-0000-000000000001'$$,
-  'display_name length = 60 accepted (boundary)');
-
--- ===== push_devices: unique (user_id, apns_token) =====
-insert into _r select lives_ok(
-  $$insert into public.push_devices (user_id, apns_token) values ('00000000-0000-0000-0000-000000000001', 'token-A')$$,
-  'first push token accepted');
-
-insert into _r select throws_ok(
-  $$insert into public.push_devices (user_id, apns_token) values ('00000000-0000-0000-0000-000000000001', 'token-A')$$,
-  '23505', null, 'duplicate push token for same user rejected');
-
-insert into _r select lives_ok(
-  $$insert into public.push_devices (user_id, apns_token) values ('00000000-0000-0000-0000-000000000002', 'token-A')$$,
-  'same push token for different user accepted');
-
--- ===== push_devices: empty apns_token rejected =====
-insert into _r select throws_ok(
-  $$insert into public.push_devices (user_id, apns_token) values ('00000000-0000-0000-0000-000000000001', '')$$,
-  '23514', null, 'empty apns_token rejected');
-
--- ===== trip_members: composite uniqueness =====
-insert into _r select throws_ok(
-  $$insert into public.trip_members (trip_id, user_id)
-    values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001')$$,
-  '23505', null, 'duplicate trip_members row (same trip+user) rejected (creator already added)');
-
--- ===== profiles.avatar_url length boundary =====
-insert into _r select throws_ok(
-  $$update public.profiles set avatar_url = repeat('x', 2049) where id = '00000000-0000-0000-0000-000000000001'$$,
-  '23514', null, 'avatar_url length > 2048 rejected');
+  $$insert into public.trip_mute_prefs (trip_id, user_id) values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001')$$,
+  'mute pref for joined user accepted');
 
 insert into _r select * from finish();
 select line from _r;

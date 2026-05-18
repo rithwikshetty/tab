@@ -35,7 +35,7 @@ struct NewTripSheet: View {
                             Rectangle().fill(Sage.rowDivider).frame(height: 1)
                         }
 
-                    Text("Trips are private to members. You can invite people once it's created.")
+                    Text("Trips are private to people you add by email.")
                         .font(.system(size: 13))
                         .foregroundStyle(Sage.textSecondary)
                         .padding(.horizontal, 22)
@@ -89,12 +89,15 @@ struct NewTripSheet: View {
 
         let trip = TripEntity(name: trimmed, createdByID: user.id)
         context.insert(trip)
-        let member = TripMemberEntity(userID: user.id, trip: trip)
-        context.insert(member)
-
-        #if DEBUG
-        insertDemoMembers(into: trip, currentUserID: user.id)
-        #endif
+        let person = TripPersonEntity(
+            userID: user.id,
+            email: user.email.map(Self.normalizedEmail) ?? "\(user.id.uuidString.lowercased())@users.tab",
+            displayName: user.displayName,
+            invitedByID: user.id,
+            trip: trip,
+            joinedAt: .now
+        )
+        context.insert(person)
 
         try? context.save()
 
@@ -104,36 +107,7 @@ struct NewTripSheet: View {
         Task { await sync.pushPending() }
     }
 
-    #if DEBUG
-    private func insertDemoMembers(into trip: TripEntity, currentUserID: UUID) {
-        let existingProfiles = (try? context.fetch(FetchDescriptor<ProfileEntity>())) ?? []
-        var existingProfileIDs = Set(existingProfiles.map(\.id))
-
-        for demo in DemoTripMember.all where demo.id != currentUserID {
-            if !existingProfileIDs.contains(demo.id) {
-                context.insert(ProfileEntity(id: demo.id, displayName: demo.displayName))
-                existingProfileIDs.insert(demo.id)
-            }
-            context.insert(TripMemberEntity(userID: demo.id, trip: trip))
-        }
+    private static func normalizedEmail(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
-    #endif
 }
-
-#if DEBUG
-private struct DemoTripMember {
-    let id: UUID
-    let displayName: String
-
-    static let all: [DemoTripMember] = [
-        DemoTripMember(
-            id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
-            displayName: "Alex Demo"
-        ),
-        DemoTripMember(
-            id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!,
-            displayName: "Sam Demo"
-        ),
-    ]
-}
-#endif

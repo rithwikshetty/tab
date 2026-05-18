@@ -13,11 +13,10 @@ struct TripDetailView: View {
     @Environment(SyncService.self) private var sync
 
     @Query private var trips: [TripEntity]
-    @Query private var profiles: [ProfileEntity]
     @Query private var categories: [CategoryEntity]
 
     @State private var segment: Int = 0
-    @State private var showingInvite: Bool = false
+    @State private var showingPeople: Bool = false
     @State private var pendingDeletion: ExpenseEntity?
 
     init(
@@ -32,10 +31,6 @@ struct TripDetailView: View {
     }
 
     private var trip: TripEntity? { trips.first }
-
-    private var profilesByID: [UUID: ProfileEntity] {
-        Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
-    }
 
     private var categoriesByID: [UUID: CategoryEntity] {
         Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
@@ -76,29 +71,26 @@ struct TripDetailView: View {
     @ViewBuilder
     private func content(for trip: TripEntity) -> some View {
         let userID = auth.currentUser?.id ?? UUID()
-        let memberCards = trip.members.map { m -> MemberCard in
-            if m.userID == userID {
-                MemberCard(
-                    id: m.userID,
-                    displayName: "You",
-                    avatarName: profilesByID[m.userID]?.displayName ?? auth.currentUser?.displayName
-                )
-            } else {
-                MemberCard(id: m.userID, displayName: profilesByID[m.userID]?.displayName ?? "Member")
+        let currentPersonID = trip.people.first(where: { $0.userID == userID })?.id ?? UUID()
+        let peopleByID = Dictionary(uniqueKeysWithValues: trip.people.map { ($0.id, $0) })
+        let memberCards = trip.people.sortedForDisplay(currentPersonID: currentPersonID).map { person -> MemberCard in
+            if person.id == currentPersonID {
+                return MemberCard(id: person.id, displayName: "You", avatarName: auth.currentUser?.displayName ?? person.displayName)
             }
+            return MemberCard(id: person.id, displayName: person.displayName)
         }
         let summaries = BalancePresenter.summaries(
             expenses: trip.expenses,
             settlements: trip.settlements,
-            members: trip.members,
-            currentUserID: userID,
-            profileFor: { id in profilesByID[id] }
+            people: trip.people,
+            currentPersonID: currentPersonID,
+            personFor: { id in peopleByID[id] }
         )
         let activeExpenses = trip.expenses.filter { $0.deletedAt == nil }
         let days = ExpenseListPresenter.days(
             expenses: activeExpenses,
-            currentUserID: userID,
-            profileFor: { id in profilesByID[id] },
+            currentPersonID: currentPersonID,
+            personFor: { id in peopleByID[id] },
             categoryFor: { id in id.flatMap { categoriesByID[$0] } }
         )
 
@@ -111,7 +103,7 @@ struct TripDetailView: View {
                         members: memberCards,
                         size: 44,
                         borderWidth: 3,
-                        onAddTap: { showingInvite = true }
+                        onAddTap: { showingPeople = true }
                     )
                     Spacer()
                 }
@@ -156,8 +148,8 @@ struct TripDetailView: View {
                 .padding(.trailing, 18)
                 .padding(.bottom, 24)
         }
-        .sheet(isPresented: $showingInvite) {
-            InviteSheet(tripID: trip.id, tripName: trip.name)
+        .sheet(isPresented: $showingPeople) {
+            TripPeopleSheet(tripID: trip.id, tripName: trip.name)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }

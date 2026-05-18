@@ -5,11 +5,9 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(AuthService.self) private var auth
     @Environment(SyncService.self) private var sync
-    @Environment(InviteService.self) private var invites
 
     @State private var tab: RootTab = .trips
     @State private var path = NavigationPath()
-    @State private var joinError: String?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -53,31 +51,8 @@ struct RootView: View {
             bootstrapProfile()
             bootstrapDefaultCategories()
             await sync.pushPending()
+            await sync.claimTripPeopleForCurrentEmail()
             await sync.pullAll()
-        }
-        .task(id: invites.pending) {
-            await consumePendingInvite()
-        }
-        .alert("Couldn't join trip", isPresented: Binding(
-            get: { joinError != nil },
-            set: { if !$0 { joinError = nil } }
-        ), actions: {
-            Button("OK", role: .cancel) { joinError = nil }
-        }, message: {
-            Text(joinError ?? "")
-        })
-    }
-
-    private func consumePendingInvite() async {
-        guard let parsed = invites.consumePending() else { return }
-        do {
-            try await invites.joinTrip(parsed)
-            await sync.pullAll()
-            Haptics.success()
-            path.append(Route.trip(parsed.tripID))
-        } catch {
-            joinError = error.localizedDescription
-            Haptics.error()
         }
     }
 

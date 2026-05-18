@@ -11,7 +11,6 @@ struct ExpenseDetailView: View {
     @Environment(SyncService.self) private var sync
 
     @Query private var expenses: [ExpenseEntity]
-    @Query private var profiles: [ProfileEntity]
     @Query private var categories: [CategoryEntity]
 
     @State private var confirmDelete = false
@@ -26,10 +25,6 @@ struct ExpenseDetailView: View {
     }
 
     private var expense: ExpenseEntity? { expenses.first }
-
-    private var profilesByID: [UUID: ProfileEntity] {
-        Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
-    }
 
     private var categoriesByID: [UUID: CategoryEntity] {
         Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
@@ -73,39 +68,43 @@ struct ExpenseDetailView: View {
 
     @ViewBuilder
     private func content(for expense: ExpenseEntity) -> some View {
-        let userID = auth.currentUser?.id ?? UUID()
+        let userID = auth.currentUser?.id
+        let peopleByID = Dictionary(uniqueKeysWithValues: (expense.trip?.people ?? []).map { ($0.id, $0) })
+        let currentPersonID = userID.flatMap { id in
+            expense.trip?.people.first(where: { $0.userID == id })?.id
+        }
         let category = expense.categoryID.flatMap { categoriesByID[$0] }
         let categoryName = category?.name ?? "Other"
         let categoryTone = expense.categoryID.map { DefaultCategories.tone(for: $0) } ?? Sage.text
         let categoryIcon = category?.icon ?? "tag"
 
         let isMultiPayer = expense.payments.count > 1
-        let payerIsYou = !isMultiPayer && expense.primaryPayerID == userID
+        let payerIsYou = !isMultiPayer && expense.primaryPayerID == currentPersonID
         let payerMember: MemberCard = {
             if isMultiPayer {
                 return MemberCard(id: expense.id, displayName: "\(expense.payments.count) people")
             }
             if let payerID = expense.primaryPayerID {
-                if payerID == userID {
+                if payerID == currentPersonID {
                     return MemberCard(
                         id: payerID,
                         displayName: "You",
-                        avatarName: profilesByID[payerID]?.displayName ?? auth.currentUser?.displayName
+                        avatarName: auth.currentUser?.displayName ?? peopleByID[payerID]?.displayName
                     )
                 }
-                return MemberCard(id: payerID, displayName: profilesByID[payerID]?.displayName ?? "Member")
+                return MemberCard(id: payerID, displayName: peopleByID[payerID]?.displayName ?? "Member")
             }
             return MemberCard(id: expense.id, displayName: "—")
         }()
 
-        let splitRows = buildSplitRows(expense: expense, currentUserID: userID)
+        let splitRows = buildSplitRows(expense: expense, currentPersonID: currentPersonID)
         let splitType = expense.splits.first?.splitType ?? .equal
         let participantCount = expense.splits.count
 
-        let loggedByIsYou = expense.createdByID == userID
+        let loggedByIsYou = userID.map { $0 == expense.createdByID } ?? false
         let loggedByName = loggedByIsYou
             ? "You"
-            : (profilesByID[expense.createdByID]?.displayName ?? "Member")
+            : (expense.trip?.people.first(where: { $0.userID == expense.createdByID })?.displayName ?? "Member")
 
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -138,9 +137,7 @@ struct ExpenseDetailView: View {
                     receiptCard(path: expense.receiptStoragePath!)
                 }
 
-                deleteButton
-                    .padding(.top, 18)
-                    .padding(.bottom, 28)
+                Spacer(minLength: 28)
             }
         }
         .scrollIndicators(.hidden)
@@ -462,31 +459,6 @@ struct ExpenseDetailView: View {
         }
     }
 
-    private var deleteButton: some View {
-        Button {
-            Haptics.light()
-            confirmDelete = true
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(size: 14, weight: .medium))
-                Text("Delete expense")
-                    .font(.system(size: 14, weight: .semibold))
-                    .tracking(-0.07)
-            }
-            .foregroundStyle(Sage.warning)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(Sage.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Sage.warning.opacity(0.25), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 18)
-    }
-
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
             .font(.sectionLabel)
@@ -508,19 +480,20 @@ struct ExpenseDetailView: View {
         }
     }
 
-    private func buildSplitRows(expense: ExpenseEntity, currentUserID: UUID) -> [SplitRowItem] {
-        expense.splits
+    private func buildSplitRows(expense: ExpenseEntity, currentPersonID: UUID?) -> [SplitRowItem] {
+        let peopleByID = Dictionary(uniqueKeysWithValues: (expense.trip?.people ?? []).map { ($0.id, $0) })
+        return expense.splits
             .map { split -> SplitRowItem in
-                let isYou = split.userID == currentUserID
+                let isYou = split.tripPersonID == currentPersonID
                 let member = isYou
                     ? MemberCard(
-                        id: split.userID,
+                        id: split.tripPersonID,
                         displayName: "You",
-                        avatarName: profilesByID[split.userID]?.displayName ?? auth.currentUser?.displayName
+                        avatarName: auth.currentUser?.displayName ?? peopleByID[split.tripPersonID]?.displayName
                     )
-                    : MemberCard(id: split.userID, displayName: profilesByID[split.userID]?.displayName ?? "Member")
+                    : MemberCard(id: split.tripPersonID, displayName: peopleByID[split.tripPersonID]?.displayName ?? "Member")
                 return SplitRowItem(
-                    id: split.userID,
+                    id: split.tripPersonID,
                     member: member,
                     amount: split.amountOwed,
                     isYou: isYou

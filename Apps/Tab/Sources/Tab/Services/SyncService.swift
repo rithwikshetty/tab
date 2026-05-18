@@ -5,19 +5,14 @@ import os
 
 private let syncLog = Logger(subsystem: "com.rithwikshetty.tab", category: "sync")
 
-private struct TripMemberRemoteKey: Hashable, Sendable {
-    let tripID: UUID
-    let userID: UUID
-}
-
 private struct ExpensePaymentRemoteKey: Hashable, Sendable {
     let expenseID: UUID
-    let userID: UUID
+    let tripPersonID: UUID
 }
 
 private struct ExpenseSplitRemoteKey: Hashable, Sendable {
     let expenseID: UUID
-    let userID: UUID
+    let tripPersonID: UUID
 }
 
 @MainActor
@@ -85,6 +80,47 @@ final class SyncService {
         try ctx.save()
     }
 
+    func claimTripPeopleForCurrentEmail() async {
+        guard hasRealSession else { return }
+        do {
+            try await client
+                .rpc("claim_trip_people_for_current_email")
+                .execute()
+        } catch {
+            syncLog.error("trip people claim failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func addTripPerson(tripID: UUID, email: String, displayName: String? = nil) async throws {
+        try await ensureTripUploaded(tripID: tripID)
+
+        let personID = UUID()
+        let row: TripPersonDTO = try await client
+            .rpc("add_trip_person_by_email", params: [
+                "p_trip_id": AnyJSON.string(tripID.uuidString),
+                "p_email": AnyJSON.string(email),
+                "p_display_name": displayName.map { AnyJSON.string($0) } ?? .null,
+                "p_person_id": AnyJSON.string(personID.uuidString),
+            ])
+            .execute()
+            .value
+
+        let ctx = container.mainContext
+        try upsertTripPerson(row, in: ctx)
+        try ctx.save()
+    }
+
+    func suggestTripPeople(query: String? = nil) async throws -> [TripPersonSuggestionDTO] {
+        guard hasRealSession else { return [] }
+        return try await client
+            .rpc("suggest_trip_people", params: [
+                "p_query": query.map { AnyJSON.string($0) } ?? .null,
+                "p_limit": AnyJSON.integer(12),
+            ])
+            .execute()
+            .value
+    }
+
     // MARK: - Pull
 
     func pullAll() async {
@@ -93,7 +129,7 @@ final class SyncService {
         do {
             let profileIDs = try await pullProfiles()
             let tripIDs = try await pullTrips()
-            let tripMemberKeys = try await pullTripMembers()
+            let tripPersonIDs = try await pullTripPeople()
             let categoryIDs = try await pullCategories()
             let expenseIDs = try await pullExpenses()
             let expensePaymentKeys = try await pullExpensePayments()
@@ -102,7 +138,7 @@ final class SyncService {
             try reconcileLocalRows(
                 remoteProfileIDs: profileIDs,
                 remoteTripIDs: tripIDs,
-                remoteTripMemberKeys: tripMemberKeys,
+                remoteTripPersonIDs: tripPersonIDs,
                 remoteCategoryIDs: categoryIDs,
                 remoteExpenseIDs: expenseIDs,
                 remoteExpensePaymentKeys: expensePaymentKeys,
@@ -147,19 +183,19 @@ final class SyncService {
         return Set(rows.map(\.id))
     }
 
-    private func pullTripMembers() async throws -> Set<TripMemberRemoteKey> {
-        let rows: [TripMemberDTO] = try await client
-            .from("trip_members")
+    private func pullTripPeople() async throws -> Set<UUID> {
+        let rows: [TripPersonDTO] = try await client
+            .from("trip_people")
             .select()
             .execute()
             .value
 
         let ctx = container.mainContext
         for dto in rows {
-            try upsertTripMember(dto, in: ctx)
+            try upsertTripPerson(dto, in: ctx)
         }
         try ctx.save()
-        return Set(rows.map { TripMemberRemoteKey(tripID: $0.tripID, userID: $0.userID) })
+        return Set(rows.map(\.id))
     }
 
     private func pullCategories() async throws -> Set<UUID> {
@@ -204,7 +240,7 @@ final class SyncService {
             try upsertExpensePayment(dto, in: ctx)
         }
         try ctx.save()
-        return Set(rows.map { ExpensePaymentRemoteKey(expenseID: $0.expenseID, userID: $0.userID) })
+        return Set(rows.map { ExpensePaymentRemoteKey(expenseID: $0.expenseID, tripPersonID: $0.tripPersonID) })
     }
 
     private func pullExpenseSplits() async throws -> Set<ExpenseSplitRemoteKey> {
@@ -219,7 +255,7 @@ final class SyncService {
             try upsertExpenseSplit(dto, in: ctx)
         }
         try ctx.save()
-        return Set(rows.map { ExpenseSplitRemoteKey(expenseID: $0.expenseID, userID: $0.userID) })
+        return Set(rows.map { ExpenseSplitRemoteKey(expenseID: $0.expenseID, tripPersonID: $0.tripPersonID) })
     }
 
     private func pullSettlements() async throws -> Set<UUID> {
@@ -240,7 +276,7 @@ final class SyncService {
     private func reconcileLocalRows(
         remoteProfileIDs: Set<UUID>,
         remoteTripIDs: Set<UUID>,
-        remoteTripMemberKeys: Set<TripMemberRemoteKey>,
+        remoteTripPersonIDs: Set<UUID>,
         remoteCategoryIDs: Set<UUID>,
         remoteExpenseIDs: Set<UUID>,
         remoteExpensePaymentKeys: Set<ExpensePaymentRemoteKey>,
@@ -251,14 +287,14 @@ final class SyncService {
 
         for payment in try ctx.fetch(FetchDescriptor<PaymentEntity>()) {
             guard payment.pushedWriteID != nil, let expenseID = payment.expense?.id else { continue }
-            if !remoteExpensePaymentKeys.contains(ExpensePaymentRemoteKey(expenseID: expenseID, userID: payment.userID)) {
+            if !remoteExpensePaymentKeys.contains(ExpensePaymentRemoteKey(expenseID: expenseID, tripPersonID: payment.tripPersonID)) {
                 ctx.delete(payment)
             }
         }
 
         for split in try ctx.fetch(FetchDescriptor<ExpenseSplitEntity>()) {
             guard split.pushedWriteID != nil, let expenseID = split.expense?.id else { continue }
-            if !remoteExpenseSplitKeys.contains(ExpenseSplitRemoteKey(expenseID: expenseID, userID: split.userID)) {
+            if !remoteExpenseSplitKeys.contains(ExpenseSplitRemoteKey(expenseID: expenseID, tripPersonID: split.tripPersonID)) {
                 ctx.delete(split)
             }
         }
@@ -275,10 +311,10 @@ final class SyncService {
             }
         }
 
-        for member in try ctx.fetch(FetchDescriptor<TripMemberEntity>()) {
-            guard member.pushedWriteID != nil, let tripID = member.trip?.id else { continue }
-            if !remoteTripMemberKeys.contains(TripMemberRemoteKey(tripID: tripID, userID: member.userID)) {
-                ctx.delete(member)
+        for person in try ctx.fetch(FetchDescriptor<TripPersonEntity>()) {
+            guard person.pushedWriteID != nil else { continue }
+            if !remoteTripPersonIDs.contains(person.id) {
+                ctx.delete(person)
             }
         }
 
@@ -363,9 +399,9 @@ final class SyncService {
         }
     }
 
-    private func upsertTripMember(_ dto: TripMemberDTO, in ctx: ModelContext) throws {
+    private func upsertTripPerson(_ dto: TripPersonDTO, in ctx: ModelContext) throws {
         let tripID = dto.tripID
-        let userID = dto.userID
+        let id = dto.id
 
         let trip = try ctx.fetch(FetchDescriptor<TripEntity>(
             predicate: #Predicate { $0.id == tripID }
@@ -373,18 +409,30 @@ final class SyncService {
 
         guard let trip else { return }
 
-        let existing = trip.members.first(where: { $0.userID == userID })
+        let existing = try ctx.fetch(FetchDescriptor<TripPersonEntity>(
+            predicate: #Predicate { $0.id == id }
+        )).first
         if let entity = existing {
             if entity.writeID == dto.writeID { return }
+            entity.userID = dto.userID
+            entity.email = dto.email
+            entity.displayName = dto.displayName
+            entity.invitedByID = dto.invitedBy
             entity.joinedAt = dto.joinedAt
+            entity.createdAt = dto.createdAt
             entity.updatedAt = dto.updatedAt
             entity.writeID = dto.writeID
             entity.pushedWriteID = dto.writeID
         } else {
-            ctx.insert(TripMemberEntity(
+            ctx.insert(TripPersonEntity(
+                id: dto.id,
                 userID: dto.userID,
+                email: dto.email,
+                displayName: dto.displayName,
+                invitedByID: dto.invitedBy,
                 trip: trip,
                 joinedAt: dto.joinedAt,
+                createdAt: dto.createdAt,
                 updatedAt: dto.updatedAt,
                 writeID: dto.writeID,
                 pushedWriteID: dto.writeID
@@ -469,13 +517,13 @@ final class SyncService {
 
     private func upsertExpensePayment(_ dto: ExpensePaymentDTO, in ctx: ModelContext) throws {
         let expenseID = dto.expenseID
-        let userID = dto.userID
+        let tripPersonID = dto.tripPersonID
         let expense = try ctx.fetch(FetchDescriptor<ExpenseEntity>(
             predicate: #Predicate { $0.id == expenseID }
         )).first
         guard let expense else { return }
 
-        let existing = expense.payments.first(where: { $0.userID == userID })
+        let existing = expense.payments.first(where: { $0.tripPersonID == tripPersonID })
         if let entity = existing {
             if entity.writeID == dto.writeID { return }
             entity.amountPaid = dto.amountPaid
@@ -485,7 +533,7 @@ final class SyncService {
             entity.pushedWriteID = dto.writeID
         } else {
             ctx.insert(PaymentEntity(
-                userID: dto.userID,
+                tripPersonID: dto.tripPersonID,
                 amountPaid: dto.amountPaid,
                 paymentModeRaw: dto.paymentMode,
                 expense: expense,
@@ -498,13 +546,13 @@ final class SyncService {
 
     private func upsertExpenseSplit(_ dto: ExpenseSplitDTO, in ctx: ModelContext) throws {
         let expenseID = dto.expenseID
-        let userID = dto.userID
+        let tripPersonID = dto.tripPersonID
         let expense = try ctx.fetch(FetchDescriptor<ExpenseEntity>(
             predicate: #Predicate { $0.id == expenseID }
         )).first
         guard let expense else { return }
 
-        let existing = expense.splits.first(where: { $0.userID == userID })
+        let existing = expense.splits.first(where: { $0.tripPersonID == tripPersonID })
         if let entity = existing {
             if entity.writeID == dto.writeID { return }
             entity.amountOwed = dto.amountOwed
@@ -514,7 +562,7 @@ final class SyncService {
             entity.pushedWriteID = dto.writeID
         } else {
             ctx.insert(ExpenseSplitEntity(
-                userID: dto.userID,
+                tripPersonID: dto.tripPersonID,
                 amountOwed: dto.amountOwed,
                 splitTypeRaw: dto.splitType,
                 expense: expense,
@@ -538,8 +586,8 @@ final class SyncService {
 
         if let entity = existing {
             if entity.writeID == dto.writeID { return }
-            entity.fromUserID = dto.fromUser
-            entity.toUserID = dto.toUser
+            entity.fromPersonID = dto.fromPersonID
+            entity.toPersonID = dto.toPersonID
             entity.amount = dto.amount
             entity.currency = dto.currency
             entity.note = dto.note
@@ -552,8 +600,8 @@ final class SyncService {
         } else {
             ctx.insert(SettlementEntity(
                 id: dto.id,
-                fromUserID: dto.fromUser,
-                toUserID: dto.toUser,
+                fromPersonID: dto.fromPersonID,
+                toPersonID: dto.toPersonID,
                 amount: dto.amount,
                 currency: dto.currency,
                 note: dto.note,
@@ -639,11 +687,27 @@ final class SyncService {
 
     private func pushTrip(_ trip: TripEntity) async throws {
         if trip.pushedWriteID == nil {
-            let insert = TripInsertDTO(id: trip.id, name: trip.name, createdBy: trip.createdByID)
+            guard let user = auth?.currentUser else { throw SyncError.signInRequired }
+            let creatorPerson = trip.people.first { $0.userID == user.id }
+            let person = creatorPerson ?? TripPersonEntity(
+                userID: user.id,
+                email: user.email.map(Self.normalizedEmail) ?? "\(user.id.uuidString.lowercased())@users.tab",
+                displayName: user.displayName,
+                invitedByID: user.id,
+                trip: trip,
+                joinedAt: .now
+            )
+            if creatorPerson == nil {
+                container.mainContext.insert(person)
+            }
             try await client
-                .from("trips")
-                .insert(insert)
+                .rpc("create_trip_with_self", params: [
+                    "p_trip_id": AnyJSON.string(trip.id.uuidString),
+                    "p_person_id": AnyJSON.string(person.id.uuidString),
+                    "p_name": AnyJSON.string(trip.name),
+                ])
                 .execute()
+            person.pushedWriteID = person.writeID
         } else {
             let update = TripUpdateDTO(name: trip.name, deletedAt: trip.deletedAt)
             try await client
@@ -663,8 +727,8 @@ final class SyncService {
             let insert = SettlementInsertDTO(
                 id: settlement.id,
                 tripID: settlement.trip?.id ?? UUID(),
-                fromUser: settlement.fromUserID,
-                toUser: settlement.toUserID,
+                fromPersonID: settlement.fromPersonID,
+                toPersonID: settlement.toPersonID,
                 amount: settlement.amount,
                 currency: settlement.currency,
                 note: settlement.note,
@@ -757,7 +821,7 @@ final class SyncService {
 
             let paymentsPayload: [AnyJSON] = expense.payments.map { payment in
                 AnyJSON.object([
-                    "user_id": .string(payment.userID.uuidString),
+                    "trip_person_id": .string(payment.tripPersonID.uuidString),
                     "amount_paid": .string(Self.decimalString(payment.amountPaid)),
                     "payment_mode": .string(payment.paymentModeRaw),
                 ])
@@ -765,7 +829,7 @@ final class SyncService {
 
             let splitsPayload: [AnyJSON] = expense.splits.map { split in
                 AnyJSON.object([
-                    "user_id": .string(split.userID.uuidString),
+                    "trip_person_id": .string(split.tripPersonID.uuidString),
                     "amount_owed": .string(Self.decimalString(split.amountOwed)),
                     "split_type": .string(split.splitTypeRaw),
                 ])
@@ -797,5 +861,9 @@ final class SyncService {
 
     private static func decimalString(_ value: Decimal) -> String {
         NSDecimalNumber(decimal: value).stringValue
+    }
+
+    private static func normalizedEmail(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

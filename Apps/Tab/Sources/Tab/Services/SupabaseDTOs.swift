@@ -64,23 +64,44 @@ struct TripUpdateDTO: Codable, Sendable {
     }
 }
 
-// MARK: - TripMember
+// MARK: - TripPerson
 
-struct TripMemberDTO: Codable, Sendable {
+struct TripPersonDTO: Codable, Sendable {
+    let id: UUID
     let tripID: UUID
-    let userID: UUID
-    let joinedAt: Date
+    let userID: UUID?
+    let email: String
+    let displayName: String
+    let invitedBy: UUID?
+    let joinedAt: Date?
     let createdAt: Date
     let updatedAt: Date
     let writeID: UUID
 
     enum CodingKeys: String, CodingKey {
+        case id
         case tripID = "trip_id"
         case userID = "user_id"
+        case email
+        case displayName = "display_name"
+        case invitedBy = "invited_by"
         case joinedAt = "joined_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case writeID = "write_id"
+    }
+}
+
+struct TripPersonSuggestionDTO: Codable, Sendable, Identifiable, Hashable {
+    var id: String { email }
+    let userID: UUID?
+    let email: String
+    let displayName: String
+
+    enum CodingKeys: String, CodingKey {
+        case userID = "user_id"
+        case email
+        case displayName = "display_name"
     }
 }
 
@@ -192,7 +213,7 @@ struct ExpenseDeleteUpdateDTO: Codable, Sendable {
 
 struct ExpensePaymentDTO: Codable, Sendable {
     let expenseID: UUID
-    let userID: UUID
+    let tripPersonID: UUID
     let amountPaid: Decimal
     let paymentMode: String
     let createdAt: Date
@@ -201,7 +222,7 @@ struct ExpensePaymentDTO: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case expenseID = "expense_id"
-        case userID = "user_id"
+        case tripPersonID = "trip_person_id"
         case amountPaid = "amount_paid"
         case paymentMode = "payment_mode"
         case createdAt = "created_at"
@@ -212,13 +233,13 @@ struct ExpensePaymentDTO: Codable, Sendable {
 
 struct ExpensePaymentInsertDTO: Codable, Sendable {
     let expenseID: UUID
-    let userID: UUID
+    let tripPersonID: UUID
     let amountPaid: Decimal
     let paymentMode: String
 
     enum CodingKeys: String, CodingKey {
         case expenseID = "expense_id"
-        case userID = "user_id"
+        case tripPersonID = "trip_person_id"
         case amountPaid = "amount_paid"
         case paymentMode = "payment_mode"
     }
@@ -228,7 +249,7 @@ struct ExpensePaymentInsertDTO: Codable, Sendable {
 
 struct ExpenseSplitDTO: Codable, Sendable {
     let expenseID: UUID
-    let userID: UUID
+    let tripPersonID: UUID
     let amountOwed: Decimal
     let splitType: String
     let createdAt: Date
@@ -237,7 +258,7 @@ struct ExpenseSplitDTO: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case expenseID = "expense_id"
-        case userID = "user_id"
+        case tripPersonID = "trip_person_id"
         case amountOwed = "amount_owed"
         case splitType = "split_type"
         case createdAt = "created_at"
@@ -248,13 +269,13 @@ struct ExpenseSplitDTO: Codable, Sendable {
 
 struct ExpenseSplitInsertDTO: Codable, Sendable {
     let expenseID: UUID
-    let userID: UUID
+    let tripPersonID: UUID
     let amountOwed: Decimal
     let splitType: String
 
     enum CodingKeys: String, CodingKey {
         case expenseID = "expense_id"
-        case userID = "user_id"
+        case tripPersonID = "trip_person_id"
         case amountOwed = "amount_owed"
         case splitType = "split_type"
     }
@@ -265,8 +286,8 @@ struct ExpenseSplitInsertDTO: Codable, Sendable {
 struct SettlementDTO: Codable, Sendable {
     let id: UUID
     let tripID: UUID
-    let fromUser: UUID
-    let toUser: UUID
+    let fromPersonID: UUID
+    let toPersonID: UUID
     let amount: Decimal
     let currency: String
     let note: String?
@@ -280,8 +301,8 @@ struct SettlementDTO: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id
         case tripID = "trip_id"
-        case fromUser = "from_user"
-        case toUser = "to_user"
+        case fromPersonID = "from_person_id"
+        case toPersonID = "to_person_id"
         case amount, currency, note
         case settledAt = "settled_at"
         case createdBy = "created_by"
@@ -295,8 +316,8 @@ struct SettlementDTO: Codable, Sendable {
 struct SettlementInsertDTO: Codable, Sendable {
     let id: UUID
     let tripID: UUID
-    let fromUser: UUID
-    let toUser: UUID
+    let fromPersonID: UUID
+    let toPersonID: UUID
     let amount: Decimal
     let currency: String
     let note: String?
@@ -306,8 +327,8 @@ struct SettlementInsertDTO: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id
         case tripID = "trip_id"
-        case fromUser = "from_user"
-        case toUser = "to_user"
+        case fromPersonID = "from_person_id"
+        case toPersonID = "to_person_id"
         case amount, currency, note
         case settledAt = "settled_at"
         case createdBy = "created_by"

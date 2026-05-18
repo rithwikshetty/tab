@@ -60,7 +60,7 @@ struct AvatarGroup: View {
                     AvatarAdd(size: size, borderWidth: borderWidth)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Invite to trip")
+                .accessibilityLabel("Add people")
             }
         }
     }

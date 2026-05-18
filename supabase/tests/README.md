@@ -24,8 +24,8 @@ trigger then auto-creates `public.profiles`). Fixture UUIDs:
 
 | Role  | UUID                                   | Role in fixture                                       |
 |-------|----------------------------------------|-------------------------------------------------------|
-| Alice | `00000000-0000-0000-0000-000000000001` | Trip creator + member of "Lisbon"                     |
-| Bob   | `00000000-0000-0000-0000-000000000002` | Member of "Lisbon" (added)                            |
+| Alice | `00000000-0000-0000-0000-000000000001` | Trip creator + joined person in "Lisbon"              |
+| Bob   | `00000000-0000-0000-0000-000000000002` | Joined person in "Lisbon"                             |
 | Carol | `00000000-0000-0000-0000-000000000003` | Non-member (used to assert RLS denial paths)          |
 | Dave  | `00000000-0000-0000-0000-000000000004` | Non-member, owns their own trip "Solo"                |
 
@@ -33,8 +33,9 @@ trigger then auto-creates `public.profiles`). Fixture UUIDs:
 
 | File                      | Tests | Concern                                                |
 |---------------------------|-------|--------------------------------------------------------|
-| `01_schema.sql`           | ~50   | Tables/columns/PKs/FKs/RLS-enabled existence, invite/storage primitives |
-| `02_constraints.sql`      | ~40   | CHECK / UNIQUE / FK constraints plus cross-table money/trip invariants |
-| `03_triggers.sql`         | ~12   | set_sync_fields, handle_new_user, auto_add_creator, touch_trip_last_activity |
-| `04_rls.sql`              | ~40   | RLS allow + deny per table, invite-only joining, per role (member/non/anon) |
-| `05_edge_cases.sql`       | ~15   | Soft-delete, cascade vs restrict, helper-fn behavior   |
+| `01_schema.sql`           | 42    | Tables/PKs/FKs/RLS-enabled existence and email-person RPCs |
+| `02_constraints.sql`      | 18    | CHECK / UNIQUE / FK constraints plus trip-person ledger invariants |
+| `03_triggers.sql`         | 9     | `handle_new_user`, sync/touch triggers, transactional trip creation |
+| `04_rls.sql`              | 16    | RLS allow + deny paths and email-claim joining          |
+| `05_edge_cases.sql`       | 10    | Soft-delete purge, cascade vs restrict, helper-fn behavior |
+| `06_expense_payments.sql` | 10    | Transactional expense RPC with trip-person payments/splits |

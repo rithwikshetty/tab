@@ -13,7 +13,6 @@ struct ExpenseEntryView: View {
     @Environment(SyncService.self) private var sync
 
     @Query private var trips: [TripEntity]
-    @Query private var profiles: [ProfileEntity]
 
     @Query(filter: #Predicate<CategoryEntity> { $0.isDefault && $0.deletedAt == nil })
     private var categories: [CategoryEntity]
@@ -27,7 +26,7 @@ struct ExpenseEntryView: View {
     @State private var description: String = ""
     @State private var selectedCategoryID: UUID = DefaultCategories.food.id
     @State private var splitMode: Int = 0
-    @State private var exactAmountTextByUserID: [UUID: String] = [:]
+    @State private var exactAmountTextByPersonID: [UUID: String] = [:]
     @State private var participantSet: Set<UUID> = []
     @State private var currency: String = "EUR"
     @State private var expenseDate: Date = .now
@@ -62,10 +61,6 @@ struct ExpenseEntryView: View {
     }
 
     private var trip: TripEntity? { trips.first }
-
-    private var profilesByID: [UUID: ProfileEntity] {
-        Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
-    }
 
     private var totalAmount: Decimal {
         Decimal(string: amountText.replacingOccurrences(of: ",", with: ".")) ?? 0
@@ -121,17 +116,17 @@ struct ExpenseEntryView: View {
     private var exactAmounts: [UUID: Decimal]? {
         guard selectedSplitType == .exact else { return nil }
         var amounts: [UUID: Decimal] = [:]
-        for userID in participantSet {
-            let raw = exactAmountTextByUserID[userID, default: ""].trimmingCharacters(in: .whitespaces)
+        for personID in participantSet {
+            let raw = exactAmountTextByPersonID[personID, default: ""].trimmingCharacters(in: .whitespaces)
             guard !raw.isEmpty, let amount = decimalAmount(from: raw) else { return nil }
-            amounts[userID] = amount
+            amounts[personID] = amount
         }
         return amounts
     }
 
     private var exactEnteredTotal: Decimal {
-        participantSet.reduce(Decimal(0)) { total, userID in
-            total + (decimalAmount(from: exactAmountTextByUserID[userID, default: ""]) ?? 0)
+        participantSet.reduce(Decimal(0)) { total, personID in
+            total + (decimalAmount(from: exactAmountTextByPersonID[personID, default: ""]) ?? 0)
         }
     }
 
@@ -148,16 +143,17 @@ struct ExpenseEntryView: View {
     }
 
     private var participantRows: [ParticipantRow] {
-        guard let trip, let userID = auth.currentUser?.id else { return [] }
+        guard let trip else { return [] }
+        let currentPersonID = auth.currentUser.flatMap { user in
+            trip.people.first(where: { $0.userID == user.id })?.id
+        }
         let splits = computedSplits ?? []
-        return trip.members.map { member in
-            let name = member.userID == userID
-                ? "You"
-                : (profilesByID[member.userID]?.displayName ?? "Member")
-            let isOn = participantSet.contains(member.userID)
-            let share = splits.first(where: { $0.participantID == member.userID })?.amountOwed ?? 0
+        return trip.people.sortedForDisplay(currentPersonID: currentPersonID).map { person in
+            let name = person.id == currentPersonID ? "You" : person.displayName
+            let isOn = participantSet.contains(person.id)
+            let share = splits.first(where: { $0.participantID == person.id })?.amountOwed ?? 0
             let shareText = isOn ? MoneyFormatter.format(share, currency: currency) : "—"
-            return ParticipantRow(userID: member.userID, name: name, share: shareText, isOn: isOn)
+            return ParticipantRow(personID: person.id, name: name, share: shareText, isOn: isOn)
         }
     }
 
@@ -186,7 +182,7 @@ struct ExpenseEntryView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .onAppear {
             if participantSet.isEmpty, let trip {
-                participantSet = Set(trip.members.map(\.userID))
+                participantSet = Set(trip.people.map(\.id))
             }
             if selectedSplitType == .exact {
                 seedMissingExactAmountsFromEqual()
@@ -368,7 +364,7 @@ struct ExpenseEntryView: View {
                 payments: $paymentEntries,
                 splitMode: $splitMode,
                 participantSet: $participantSet,
-                exactSplitAmountText: $exactAmountTextByUserID
+                exactSplitAmountText: $exactAmountTextByPersonID
             )
         } label: {
             HStack(spacing: 12) {
@@ -408,9 +404,12 @@ struct ExpenseEntryView: View {
     private var paidByShortLabel: String {
         if paymentEntries.isEmpty { return "You" }
         if paymentEntries.count == 1, let only = paymentEntries.first {
-            return only.payerID == auth.currentUser?.id
+            let currentPersonID = auth.currentUser.flatMap { user in
+                trip?.people.first(where: { $0.userID == user.id })?.id
+            }
+            return only.payerID == currentPersonID
                 ? "You"
-                : (profilesByID[only.payerID]?.displayName ?? "Member")
+                : (trip?.people.first(where: { $0.id == only.payerID })?.displayName ?? "Member")
         }
         return "\(paymentEntries.count) people"
     }
@@ -464,7 +463,7 @@ struct ExpenseEntryView: View {
 
     private var participantsCard: some View {
         VStack(spacing: 0) {
-            ForEach(Array(participantRows.enumerated()), id: \.element.userID) { index, row in
+            ForEach(Array(participantRows.enumerated()), id: \.element.personID) { index, row in
                 participantRow(row)
                 if index < participantRows.count - 1 { RowDivider() }
             }
@@ -654,7 +653,7 @@ struct ExpenseEntryView: View {
             Button {
                 Haptics.light()
                 withAnimation(.snappy(duration: 0.18)) {
-                    toggleParticipant(row.userID)
+                    toggleParticipant(row.personID)
                 }
             } label: {
                 Image(systemName: "checkmark")
@@ -680,10 +679,10 @@ struct ExpenseEntryView: View {
             if selectedSplitType == .exact, row.isOn {
                 InlineDecimalTextField(
                     text: Binding(
-                        get: { exactAmountTextByUserID[row.userID, default: ""] },
-                        set: { exactAmountTextByUserID[row.userID] = sanitizeAmount($0) }
+                        get: { exactAmountTextByPersonID[row.personID, default: ""] },
+                        set: { exactAmountTextByPersonID[row.personID] = sanitizeAmount($0) }
                     ),
-                    accessibilityIdentifier: "expense.splitAmount.\(row.userID.uuidString)"
+                    accessibilityIdentifier: "expense.splitAmount.\(row.personID.uuidString)"
                 )
                 .frame(width: 88, height: 28)
                 .padding(.horizontal, 8)
@@ -707,13 +706,13 @@ struct ExpenseEntryView: View {
         .contentShape(Rectangle())
     }
 
-    private func toggleParticipant(_ userID: UUID) {
-        if participantSet.contains(userID) {
+    private func toggleParticipant(_ personID: UUID) {
+        if participantSet.contains(personID) {
             if participantSet.count > 1 {
-                participantSet.remove(userID)
+                participantSet.remove(personID)
             }
         } else {
-            participantSet.insert(userID)
+            participantSet.insert(personID)
         }
     }
 
@@ -727,9 +726,9 @@ struct ExpenseEntryView: View {
         ) else { return }
 
         for split in splits {
-            let current = exactAmountTextByUserID[split.participantID, default: ""]
+            let current = exactAmountTextByPersonID[split.participantID, default: ""]
             if current.trimmingCharacters(in: .whitespaces).isEmpty {
-                exactAmountTextByUserID[split.participantID] = plainAmountString(split.amountOwed)
+                exactAmountTextByPersonID[split.participantID] = plainAmountString(split.amountOwed)
             }
         }
     }
@@ -750,6 +749,7 @@ struct ExpenseEntryView: View {
 
     private func save() {
         guard canSave, let trip, let user = auth.currentUser else { return }
+        guard let currentPersonID = trip.people.first(where: { $0.userID == user.id })?.id else { return }
         guard let splits = computedSplits else { return }
 
         let expenseID = UUID()
@@ -784,11 +784,11 @@ struct ExpenseEntryView: View {
         context.insert(expense)
 
         let payments = paymentEntries.isEmpty
-            ? [Payment(payerID: user.id, amountPaid: totalAmount, paymentMode: .equal)]
+            ? [Payment(payerID: currentPersonID, amountPaid: totalAmount, paymentMode: .equal)]
             : paymentEntries
         for payment in payments {
             let entity = PaymentEntity(
-                userID: payment.payerID,
+                tripPersonID: payment.payerID,
                 amountPaid: payment.amountPaid,
                 paymentModeRaw: payment.paymentMode.rawValue,
                 expense: expense
@@ -798,7 +798,7 @@ struct ExpenseEntryView: View {
 
         for split in splits {
             let entity = ExpenseSplitEntity(
-                userID: split.participantID,
+                tripPersonID: split.participantID,
                 amountOwed: split.amountOwed,
                 splitTypeRaw: split.splitType.rawValue,
                 expense: expense
@@ -879,7 +879,7 @@ private struct InlineDatePicker: UIViewRepresentable {
 }
 
 private struct ParticipantRow: Hashable {
-    let userID: UUID
+    let personID: UUID
     let name: String
     let share: String
     let isOn: Bool

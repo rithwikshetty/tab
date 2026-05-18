@@ -15,7 +15,6 @@ struct PaymentSplitView: View {
     @Environment(AuthService.self) private var auth
 
     @Query private var trips: [TripEntity]
-    @Query private var profiles: [ProfileEntity]
 
     @State private var draft = PaymentSplitDraft()
 
@@ -45,11 +44,14 @@ struct PaymentSplitView: View {
 
     private var trip: TripEntity? { trips.first }
 
-    private var profilesByID: [UUID: ProfileEntity] {
-        Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+    private var currentPersonID: UUID? {
+        guard let trip, let userID = auth.currentUser?.id else { return nil }
+        return trip.people.first(where: { $0.userID == userID })?.id
     }
 
-    private var members: [UUID] { trip?.members.map(\.userID) ?? [] }
+    private var members: [TripPersonEntity] {
+        trip?.people.sortedForDisplay(currentPersonID: currentPersonID) ?? []
+    }
 
     private var computedPayments: [Payment]? {
         draft.computedPayments(totalAmount: totalAmount, currency: currency)
@@ -91,8 +93,8 @@ struct PaymentSplitView: View {
                 splitMode: splitMode,
                 participantSet: participantSet,
                 exactSplitAmountText: exactSplitAmountText,
-                currentUserID: auth.currentUser?.id,
-                members: members
+                currentPersonID: currentPersonID,
+                members: members.map(\.id)
             )
         }
     }
@@ -183,9 +185,9 @@ struct PaymentSplitView: View {
 
     private var payerCard: some View {
         VStack(spacing: 0) {
-            ForEach(members, id: \.self) { userID in
-                payerRow(userID: userID)
-                if userID != members.last { RowDivider() }
+            ForEach(Array(members.enumerated()), id: \.element.id) { index, person in
+                payerRow(person: person)
+                if index < members.count - 1 { RowDivider() }
             }
             if let footer = payerReconcileFooter {
                 RowDivider()
@@ -208,11 +210,12 @@ struct PaymentSplitView: View {
         .animation(.snappy(duration: 0.2), value: draft.payerMode)
     }
 
-    private func payerRow(userID: UUID) -> some View {
-        let isOn = draft.selectedPayerIDs.contains(userID)
-        let isYou = userID == auth.currentUser?.id
-        let name = isYou ? "You" : (profilesByID[userID]?.displayName ?? "Member")
-        let payment = computedPayments?.first { $0.payerID == userID }
+    private func payerRow(person: TripPersonEntity) -> some View {
+        let personID = person.id
+        let isOn = draft.selectedPayerIDs.contains(personID)
+        let isYou = personID == currentPersonID
+        let name = isYou ? "You" : person.displayName
+        let payment = computedPayments?.first { $0.payerID == personID }
         let displayShare = isOn
             ? MoneyFormatter.format(payment?.amountPaid ?? 0, currency: currency)
             : "—"
@@ -221,7 +224,7 @@ struct PaymentSplitView: View {
             Button {
                 Haptics.light()
                 withAnimation(.snappy(duration: 0.18)) {
-                    draft.togglePayer(userID, totalAmount: totalAmount, currency: currency)
+                    draft.togglePayer(personID, totalAmount: totalAmount, currency: currency)
                 }
             } label: {
                 Image(systemName: "checkmark")
@@ -233,7 +236,7 @@ struct PaymentSplitView: View {
                     .animation(.snappy(duration: 0.18), value: isOn)
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("paidBy.toggle.\(userID.uuidString)")
+            .accessibilityIdentifier("paidBy.toggle.\(personID.uuidString)")
             .accessibilityLabel("Toggle payer \(name)")
 
             Text(name)
@@ -246,10 +249,10 @@ struct PaymentSplitView: View {
             if draft.payerMode == .exact, isOn, draft.selectedPayerIDs.count > 1 {
                 InlineDecimalTextField(
                     text: Binding(
-                        get: { draft.exactPayerAmountText[userID, default: ""] },
-                        set: { draft.setExactPayerAmount($0, for: userID) }
+                        get: { draft.exactPayerAmountText[personID, default: ""] },
+                        set: { draft.setExactPayerAmount($0, for: personID) }
                     ),
-                    accessibilityIdentifier: "paidBy.exactAmount.\(userID.uuidString)"
+                    accessibilityIdentifier: "paidBy.exactAmount.\(personID.uuidString)"
                 )
                 .frame(width: 88, height: 28)
                 .padding(.horizontal, 8)
@@ -259,7 +262,7 @@ struct PaymentSplitView: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(Sage.cardBorder, lineWidth: 1)
                 )
-                .focused($focused, equals: .payer(userID))
+                .focused($focused, equals: .payer(personID))
             } else {
                 Text(displayShare)
                     .font(.system(size: 13))
@@ -346,9 +349,9 @@ struct PaymentSplitView: View {
 
     private var splitCard: some View {
         VStack(spacing: 0) {
-            ForEach(members, id: \.self) { userID in
-                splitRow(userID: userID)
-                if userID != members.last { RowDivider() }
+            ForEach(Array(members.enumerated()), id: \.element.id) { index, person in
+                splitRow(person: person)
+                if index < members.count - 1 { RowDivider() }
             }
             if let footer = splitReconcileFooter {
                 RowDivider()
@@ -371,11 +374,12 @@ struct PaymentSplitView: View {
         .animation(.snappy(duration: 0.2), value: draft.selectedSplitType)
     }
 
-    private func splitRow(userID: UUID) -> some View {
-        let isOn = draft.selectedParticipants.contains(userID)
-        let isYou = userID == auth.currentUser?.id
-        let name = isYou ? "You" : (profilesByID[userID]?.displayName ?? "Member")
-        let split = computedSplits?.first { $0.participantID == userID }
+    private func splitRow(person: TripPersonEntity) -> some View {
+        let personID = person.id
+        let isOn = draft.selectedParticipants.contains(personID)
+        let isYou = personID == currentPersonID
+        let name = isYou ? "You" : person.displayName
+        let split = computedSplits?.first { $0.participantID == personID }
         let displayShare = isOn
             ? MoneyFormatter.format(split?.amountOwed ?? 0, currency: currency)
             : "—"
@@ -384,7 +388,7 @@ struct PaymentSplitView: View {
             Button {
                 Haptics.light()
                 withAnimation(.snappy(duration: 0.18)) {
-                    draft.toggleParticipant(userID, totalAmount: totalAmount, currency: currency)
+                    draft.toggleParticipant(personID, totalAmount: totalAmount, currency: currency)
                 }
             } label: {
                 Image(systemName: "checkmark")
@@ -396,7 +400,7 @@ struct PaymentSplitView: View {
                     .animation(.snappy(duration: 0.18), value: isOn)
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("split.toggle.\(userID.uuidString)")
+            .accessibilityIdentifier("split.toggle.\(personID.uuidString)")
 
             Text(name)
                 .font(.formRow.weight(.medium))
@@ -408,10 +412,10 @@ struct PaymentSplitView: View {
             if draft.selectedSplitType == .exact, isOn {
                 InlineDecimalTextField(
                     text: Binding(
-                        get: { draft.exactSplitAmountText[userID, default: ""] },
-                        set: { draft.setExactSplitAmount($0, for: userID) }
+                        get: { draft.exactSplitAmountText[personID, default: ""] },
+                        set: { draft.setExactSplitAmount($0, for: personID) }
                     ),
-                    accessibilityIdentifier: "split.exactAmount.\(userID.uuidString)"
+                    accessibilityIdentifier: "split.exactAmount.\(personID.uuidString)"
                 )
                 .frame(width: 88, height: 28)
                 .padding(.horizontal, 8)
@@ -421,7 +425,7 @@ struct PaymentSplitView: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(Sage.cardBorder, lineWidth: 1)
                 )
-                .focused($focused, equals: .split(userID))
+                .focused($focused, equals: .split(personID))
             } else {
                 Text(displayShare)
                     .font(.system(size: 13))
@@ -515,12 +519,12 @@ final class PaymentSplitDraft: @unchecked Sendable {
     // MARK: Seed
 
     func seed(payments: [Payment], splitMode: Int, participantSet: Set<UUID>,
-              exactSplitAmountText: [UUID: String], currentUserID: UUID?, members: [UUID]) {
+              exactSplitAmountText: [UUID: String], currentPersonID: UUID?, members: [UUID]) {
         guard !hasSeeded else { return }
         hasSeeded = true
 
         if payments.isEmpty {
-            selectedPayerIDs = Set([currentUserID ?? members.first].compactMap { $0 })
+            selectedPayerIDs = Set([currentPersonID ?? members.first].compactMap { $0 })
             payerMode = .equal
         } else {
             selectedPayerIDs = Set(payments.map(\.payerID))

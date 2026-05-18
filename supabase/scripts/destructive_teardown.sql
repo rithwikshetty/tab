@@ -18,7 +18,9 @@ drop table if exists
   public.expense_splits,
   public.expenses,
   public.categories,
+  public.trip_invites,
   public.trip_members,
+  public.trip_people,
   public.trips,
   public.profiles
 cascade;
@@ -28,10 +30,10 @@ drop schema if exists private cascade;
 drop function if exists public.set_sync_fields() cascade;
 drop function if exists public.handle_new_user() cascade;
 drop function if exists public.ensure_current_profile(text, text) cascade;
-drop function if exists public.auto_add_creator_as_member() cascade;
-drop function if exists public.create_trip_invite(uuid, timestamptz) cascade;
-drop function if exists public.join_trip_with_invite(uuid, uuid, text) cascade;
-drop function if exists public.revoke_trip_invite(uuid) cascade;
+drop function if exists public.create_trip_with_self(uuid, uuid, text) cascade;
+drop function if exists public.add_trip_person_by_email(uuid, text, text, uuid) cascade;
+drop function if exists public.claim_trip_people_for_current_email() cascade;
+drop function if exists public.suggest_trip_people(text, int) cascade;
 drop function if exists public.validate_category_row() cascade;
 drop function if exists public.validate_expense_row() cascade;
 drop function if exists public.touch_trip_last_activity() cascade;

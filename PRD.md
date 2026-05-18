@@ -8,7 +8,7 @@ Our friend group uses Splitwise to track shared expenses on trips. Over time, Sp
 
 ## Solution
 
-**tab** is an iOS-first, offline-first group expense tracker built for trips. Each Trip is a container for members and expenses. Anyone in the trip can log an expense (with payer, participants, amount, currency, category, optional receipt photo). The app computes per-currency pairwise balances and lets members record settlements when they pay each other back. Designed for a small private friend group: invite-only via deep link, distributed via TestFlight, free forever for us.
+**tab** is an iOS-first, offline-first group expense tracker built for trips. Each Trip is a container for people and expenses. Organizers can add people by email before they have opened the app; when someone signs in with that email, the server automatically links them to the trip. Anyone in the trip can log an expense (with payer, participants, amount, currency, category, optional receipt photo). The app computes per-currency pairwise balances and lets members record settlements when they pay each other back. Designed for a small private friend group, distributed via TestFlight, free forever for us.
 
 V1 is intentionally minimal: trip + expenses + splits + settlement. Future versions will add itinerary, analytics, simplified debts, and richer split types — but the data model is shaped to absorb those without rewrite.
 
@@ -22,8 +22,8 @@ V1 is intentionally minimal: trip + expenses + splits + settlement. Future versi
 
 ### Trip creation & membership
 5. As a trip organizer, I want to create a new trip with just a name, so that I can start logging expenses immediately without filling out a form.
-6. As a trip organizer, I want to generate a shareable invite link, so that I can send it to friends via iMessage / WhatsApp / AirDrop.
-7. As an invited user, I want to tap an invite link, so that I'm taken into the app and joined to the trip in one step.
+6. As a trip organizer, I want to add people by email, so that the trip roster is ready before everyone has installed or opened the app.
+7. As an added user, I want to sign in with my email and automatically see trips I was added to, so that I do not have to request approval or tap a fragile share link.
 8. As a user, I want to see all my trips on the home screen separated into Active and Completed sections, so that I can find what I need.
 9. As a user, I want to see who's in a trip, so that I know who I can split expenses with.
 10. As a user, I want to leave a trip (with confirmation), so that I can exit a trip I'm no longer part of.
@@ -104,7 +104,7 @@ V1 is intentionally minimal: trip + expenses + splits + settlement. Future versi
 - **AuthService** — wraps Supabase Auth + Apple Sign-In + email magic link. Interface: `signIn()`, `signOut()`, `currentUser`.
 - **MediaStore** — receipt photo lifecycle. Client-side JPEG preparation, downsize only when needed to stay under the 10 MiB Supabase Storage limit, lazy download, local cache.
 - **PushNotificationService** — APNs registration, device-token sync with Supabase, payload parsing, deep-link routing.
-- **InviteLinkService** — call invite RPCs, generate deep links with trip/invite/token values, parse incoming links, validate, perform idempotent join.
+- **TripPeopleService / SyncService membership RPCs** — add people by email, fetch suggestions from people the current user has shared trips with, and claim pending email rows on sign-in.
 - **ActivityLogger** — append-only event recording (actor, action, entity, timestamp, optional snapshot). Stored, not surfaced in UI for v1.
 
 **Data layer**
@@ -121,16 +121,15 @@ V1 is intentionally minimal: trip + expenses + splits + settlement. Future versi
 ```
 users             (id, apple_user_id?, email?, display_name, avatar_url?)
 trips             (id, name, created_by, created_at, last_activity_at)
-trip_members      (trip_id, user_id, joined_at)
-private.trip_invites (id, trip_id, token_hash, created_by, expires_at,
-                   revoked_at?, used_at?, created_at, updated_at, deleted_at?)
+trip_people       (id, trip_id, user_id?, email, display_name, invited_by?,
+                   joined_at?, created_at, updated_at, write_id)
 categories        (id, trip_id?, name, icon, is_default)
 expenses          (id, trip_id, amount, currency, category_id,
                    description, expense_date, receipt_storage_path?,
                    created_by, created_at, updated_at, deleted_at?)
-expense_payments  (expense_id, user_id, amount_paid, payment_mode)
-expense_splits    (expense_id, user_id, amount_owed, split_type)
-settlements       (id, trip_id, from_user, to_user, amount, currency,
+expense_payments  (expense_id, trip_person_id, amount_paid, payment_mode)
+expense_splits    (expense_id, trip_person_id, amount_owed, split_type)
+settlements       (id, trip_id, from_person_id, to_person_id, amount, currency,
                    note?, settled_at, created_by, created_at, deleted_at?)
 activity_log      (id, trip_id, actor_id, action, entity_type, entity_id,
                    timestamp, snapshot_json?)
@@ -142,23 +141,24 @@ Notes:
 - `categories.trip_id` is nullable to support the global default set (Food & Drink, Transport, Lodging, Activities, Shopping, Other).
 - `expense_splits.split_type` and `expense_payments.payment_mode` share the enum `equal | exact | percentage | shares | adjustment`. V1 writes only `equal` and `exact`; the others remain available for v2. The mode is stored per row so that edit-restore reopens the correct picker.
 - Expense writes are transactional: an expense, all `expense_payments`, and all `expense_splits` must be written together. The DB enforces both `sum(expense_payments.amount_paid) = expenses.amount` and `sum(expense_splits.amount_owed) = expenses.amount` for active expenses, via per-ledger triggers.
-- Payers, split participants, settlement parties, creators, custom categories, and mute prefs must belong to the target trip at the DB boundary, not just in the app.
-- Soft-delete on user-visible mutable records (`trips`, `categories`, `expenses`, `settlements`, and invite records) via nullable `deleted_at`. Membership/mute/device rows use row presence because they are preference or join rows; `activity_log` is append-only.
+- Payers, split participants, settlement parties, creators, custom categories, and mute prefs must belong to the target trip at the DB boundary, not just in the app. Ledger references use `trip_people.id`, not auth profile IDs, so pending people can be included before they sign in.
+- Soft-delete on user-visible mutable records (`trips`, `categories`, `expenses`, and `settlements`) via nullable `deleted_at`. Trip people, mute, and device rows use row presence because they are preference or join rows; `activity_log` is append-only.
 - `trips.last_activity_at` is updated by Postgres triggers on expense/settlement writes (used by TripStateDeriver).
 - Receipt photos live in the private Supabase Storage bucket `receipts`; object paths are `<trip_id>/<expense_id>.jpg` and storage RLS derives access from trip membership.
 
 ### Sync architecture
 - SwiftData is the source of truth on-device. All reads come from local; all writes go local first, then enqueue to SyncEngine.
 - SyncEngine pushes pending changes to Supabase when online, then pulls remote deltas since `last_synced_at` per table.
-- Multi-row mutations that must be atomic, especially expense + payments + splits and invite joins, go through Supabase RPCs or another transactional server path. The app should not issue independent REST writes that can leave partial-ledger state.
+- Multi-row mutations that must be atomic, especially trip creation with the creator person row, email-based person adds, sign-in claims, and expense + payments + splits, go through Supabase RPCs or another transactional server path. The app should not issue independent REST writes that can leave partial-ledger state.
 - Realtime subscription opens only on the currently-viewed trip detail screen; unsubscribes on navigation away.
 - Conflict resolution is delegated to ConflictResolver. Policy: deletes win; otherwise highest `updated_at` wins.
 
 ### Auth & joining
 - Apple Sign-In is the primary path. Email magic link is the fallback.
-- A new user becomes a `users` row on first sign-in; identity is keyed by Apple user ID (preferred) or email.
-- Invite links are deep links: `tab://join/<trip_id>?invite=<invite_id>&token=<secret>`. Raw invite tokens are returned once by `create_trip_invite`, stored only as SHA-256 hashes in the private schema, expire after ~7 days by default, and are validated by `join_trip_with_invite`.
-- Joining a trip is idempotent (re-tapping the link does not duplicate membership).
+- A new user becomes a `users` row on first sign-in; identity is keyed by Apple user ID (preferred) plus verified email.
+- Trip access is email-preauthorized. A member adds `email@example.com` via `add_trip_person_by_email`; if that auth user already exists, the person row is joined immediately. Otherwise it remains pending until a user signs in with the same normalized email.
+- On sign-in, the app calls `claim_trip_people_for_current_email()` before pulling trips. Claiming is idempotent and links all pending person rows for that email.
+- Suggestions are scoped to people the current user has already shared trips with. There is no global user directory or arbitrary prefix search across all users.
 
 ### Currency model
 - No automatic conversion. Each expense stores its own amount + currency.
@@ -187,7 +187,7 @@ Notes:
 - **ConflictResolver** — LWW for concurrent edits, delete-wins regardless of timestamps, identical timestamps tiebreaker, missing tombstone fields.
 
 ### Prior art
-- None — this is a greenfield repo. The four modules above will set the testing pattern for the rest of the project. Subsequent modules (SyncEngine integration tests, InviteLinkService unit tests) will inherit the same "test external behavior" discipline.
+- None — this is a greenfield repo. The four modules above will set the testing pattern for the rest of the project. Subsequent modules (SyncEngine integration tests, trip-people RPC tests) will inherit the same "test external behavior" discipline.
 
 ## Out of Scope
 
@@ -196,7 +196,6 @@ Explicitly NOT in v1 (deferred to v2 or later):
 - Spending analytics / category breakdowns / per-trip dashboards.
 - Simplified-debt computation (always-pairwise in v1).
 - Percentage, shares, and adjustment split types (data model supports them; UI does not).
-- Placeholder / ghost members (everyone in a trip must be a signed-in app user).
 - Real payment integration or deep-links to Venmo / Apple Cash / etc.
 - Activity log UI (data is captured, no screen for it).
 - Currency conversion / FX rate fetching.

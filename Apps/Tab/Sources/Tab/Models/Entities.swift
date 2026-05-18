@@ -47,8 +47,8 @@ final class TripEntity {
     var writeID: UUID
     var pushedWriteID: UUID?
 
-    @Relationship(deleteRule: .cascade, inverse: \TripMemberEntity.trip)
-    var members: [TripMemberEntity] = []
+    @Relationship(deleteRule: .cascade, inverse: \TripPersonEntity.trip)
+    var people: [TripPersonEntity] = []
 
     @Relationship(deleteRule: .cascade, inverse: \ExpenseEntity.trip)
     var expenses: [ExpenseEntity] = []
@@ -79,15 +79,19 @@ final class TripEntity {
     }
 }
 
-// MARK: - TripMember
+// MARK: - TripPerson
 
 @Model
-final class TripMemberEntity {
-    #Unique<TripMemberEntity>([\.id])
+final class TripPersonEntity {
+    #Unique<TripPersonEntity>([\.id])
 
     var id: UUID
-    var userID: UUID
-    var joinedAt: Date
+    var userID: UUID?
+    var email: String
+    var displayName: String
+    var invitedByID: UUID?
+    var joinedAt: Date?
+    var createdAt: Date
     var updatedAt: Date
     var writeID: UUID
     var pushedWriteID: UUID?
@@ -95,17 +99,26 @@ final class TripMemberEntity {
     var trip: TripEntity?
 
     init(
-        userID: UUID,
+        id: UUID = UUID(),
+        userID: UUID? = nil,
+        email: String,
+        displayName: String,
+        invitedByID: UUID? = nil,
         trip: TripEntity? = nil,
-        joinedAt: Date = .now,
+        joinedAt: Date? = nil,
+        createdAt: Date = .now,
         updatedAt: Date = .now,
         writeID: UUID = UUID(),
         pushedWriteID: UUID? = nil
     ) {
-        self.id = UUID()
+        self.id = id
         self.userID = userID
+        self.email = email
+        self.displayName = displayName
+        self.invitedByID = invitedByID
         self.trip = trip
         self.joinedAt = joinedAt
+        self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.writeID = writeID
         self.pushedWriteID = pushedWriteID
@@ -219,7 +232,7 @@ final class PaymentEntity {
     #Unique<PaymentEntity>([\.id])
 
     var id: UUID
-    var userID: UUID
+    var tripPersonID: UUID
     var amountPaid: Decimal
     var paymentModeRaw: String
     var updatedAt: Date
@@ -229,7 +242,7 @@ final class PaymentEntity {
     var expense: ExpenseEntity?
 
     init(
-        userID: UUID,
+        tripPersonID: UUID,
         amountPaid: Decimal,
         paymentModeRaw: String,
         expense: ExpenseEntity? = nil,
@@ -238,7 +251,7 @@ final class PaymentEntity {
         pushedWriteID: UUID? = nil
     ) {
         self.id = UUID()
-        self.userID = userID
+        self.tripPersonID = tripPersonID
         self.amountPaid = amountPaid
         self.paymentModeRaw = paymentModeRaw
         self.expense = expense
@@ -255,7 +268,7 @@ final class ExpenseSplitEntity {
     #Unique<ExpenseSplitEntity>([\.id])
 
     var id: UUID
-    var userID: UUID
+    var tripPersonID: UUID
     var amountOwed: Decimal
     var splitTypeRaw: String
     var updatedAt: Date
@@ -265,7 +278,7 @@ final class ExpenseSplitEntity {
     var expense: ExpenseEntity?
 
     init(
-        userID: UUID,
+        tripPersonID: UUID,
         amountOwed: Decimal,
         splitTypeRaw: String,
         expense: ExpenseEntity? = nil,
@@ -274,7 +287,7 @@ final class ExpenseSplitEntity {
         pushedWriteID: UUID? = nil
     ) {
         self.id = UUID()
-        self.userID = userID
+        self.tripPersonID = tripPersonID
         self.amountOwed = amountOwed
         self.splitTypeRaw = splitTypeRaw
         self.expense = expense
@@ -291,8 +304,8 @@ final class SettlementEntity {
     #Unique<SettlementEntity>([\.id])
 
     var id: UUID
-    var fromUserID: UUID
-    var toUserID: UUID
+    var fromPersonID: UUID
+    var toPersonID: UUID
     var amount: Decimal
     var currency: String
     var note: String?
@@ -308,8 +321,8 @@ final class SettlementEntity {
 
     init(
         id: UUID = UUID(),
-        fromUserID: UUID,
-        toUserID: UUID,
+        fromPersonID: UUID,
+        toPersonID: UUID,
         amount: Decimal,
         currency: String,
         note: String? = nil,
@@ -323,8 +336,8 @@ final class SettlementEntity {
         pushedWriteID: UUID? = nil
     ) {
         self.id = id
-        self.fromUserID = fromUserID
-        self.toUserID = toUserID
+        self.fromPersonID = fromPersonID
+        self.toPersonID = toPersonID
         self.amount = amount
         self.currency = currency
         self.note = note

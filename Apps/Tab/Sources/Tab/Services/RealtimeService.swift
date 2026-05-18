@@ -19,7 +19,7 @@ final class RealtimeService {
         self.sync = sync
     }
 
-    /// Subscribe to live changes on the given trip's expenses/splits/settlements/members.
+    /// Subscribe to live changes on the given trip's expenses/splits/settlements/people.
     /// Any change triggers a sync pull so local SwiftData stays in sync.
     func subscribe(to tripID: UUID) async {
         guard client.auth.currentSession != nil else { return }
@@ -36,7 +36,7 @@ final class RealtimeService {
             AnyAction.self, schema: "public", table: "settlements", filter: filter
         )
         let memberStream = channel.postgresChange(
-            AnyAction.self, schema: "public", table: "trip_members", filter: filter
+            AnyAction.self, schema: "public", table: "trip_people", filter: filter
         )
         // expense_splits has no trip_id; gets updated via the parent expense pull.
 

@@ -7,7 +7,7 @@ extension ExpenseSplitEntity {
     var splitType: SplitType { SplitType(rawValue: splitTypeRaw) ?? .equal }
 
     func toCoreSplit() -> ExpenseSplit {
-        ExpenseSplit(participantID: userID, amountOwed: amountOwed, splitType: splitType)
+        ExpenseSplit(participantID: tripPersonID, amountOwed: amountOwed, splitType: splitType)
     }
 }
 
@@ -15,14 +15,14 @@ extension PaymentEntity {
     var paymentMode: PaymentMode { PaymentMode(rawValue: paymentModeRaw) ?? .equal }
 
     func toCorePayment() -> Payment {
-        Payment(payerID: userID, amountPaid: amountPaid, paymentMode: paymentMode)
+        Payment(payerID: tripPersonID, amountPaid: amountPaid, paymentMode: paymentMode)
     }
 }
 
 extension ExpenseEntity {
     /// First payer by deterministic ordering. Suitable for single-payer display only.
     var primaryPayerID: UUID? {
-        payments.sorted { $0.userID.uuidString < $1.userID.uuidString }.first?.userID
+        payments.sorted { $0.tripPersonID.uuidString < $1.tripPersonID.uuidString }.first?.tripPersonID
     }
 
     func toCoreExpense() -> Expense {
@@ -49,8 +49,8 @@ extension SettlementEntity {
         Settlement(
             id: id,
             tripID: trip?.id ?? UUID(),
-            fromUserID: fromUserID,
-            toUserID: toUserID,
+            fromUserID: fromPersonID,
+            toUserID: toPersonID,
             amount: Money(amount: amount, currency: currency),
             note: note,
             settledAt: settledAt,
@@ -69,18 +69,15 @@ enum TripPresenter {
     /// Builds the trip-list card view-state. Computes balances via TabCore.
     static func card(
         from trip: TripEntity,
-        currentUserID: UUID,
+        currentPersonID: UUID,
         currentUserDisplayName: String? = nil,
-        profileFor: (UUID) -> ProfileEntity?,
         now: Date = .now
     ) -> TripCard {
-        let members = trip.members.map { member -> MemberCard in
-            if member.userID == currentUserID {
-                let avatarName = profileFor(member.userID)?.displayName ?? currentUserDisplayName
-                return MemberCard(id: member.userID, displayName: "You", avatarName: avatarName)
+        let members = trip.people.sortedForDisplay(currentPersonID: currentPersonID).map { person -> MemberCard in
+            if person.id == currentPersonID {
+                return MemberCard(id: person.id, displayName: "You", avatarName: currentUserDisplayName ?? person.displayName)
             }
-            let displayName = profileFor(member.userID)?.displayName ?? "Member"
-            return MemberCard(id: member.userID, displayName: displayName)
+            return MemberCard(id: person.id, displayName: person.displayName)
         }
 
         let activeExpenses = trip.expenses.filter { $0.deletedAt == nil }
@@ -90,7 +87,7 @@ enum TripPresenter {
         let balances = BalanceEngine.compute(expenses: coreExpenses, settlements: coreSettlements)
         let state = TripStateDeriver.derive(balances: balances, lastActivityAt: trip.lastActivityAt, now: now)
 
-        let mine = balances.filter { $0.forUser == currentUserID }
+        let mine = balances.filter { $0.forUser == currentPersonID }
         let netByCurrency = Dictionary(grouping: mine, by: \.currency)
             .mapValues { $0.reduce(Decimal(0)) { $0 + $1.amount } }
             .filter { $0.value != 0 }
@@ -145,8 +142,8 @@ enum TripPresenter {
 enum ExpenseListPresenter {
     static func days(
         expenses: [ExpenseEntity],
-        currentUserID: UUID,
-        profileFor: (UUID) -> ProfileEntity?,
+        currentPersonID: UUID,
+        personFor: (UUID) -> TripPersonEntity?,
         categoryFor: (UUID?) -> CategoryEntity?
     ) -> [ExpenseDay] {
         let calendar = Calendar.current
@@ -167,16 +164,16 @@ enum ExpenseListPresenter {
                     payerName = "\(e.payments.count) people"
                     payerIsYou = false
                 } else if let firstPayer = e.primaryPayerID {
-                    payerIsYou = firstPayer == currentUserID
+                    payerIsYou = firstPayer == currentPersonID
                     payerName = payerIsYou
                         ? "you"
-                        : (profileFor(firstPayer)?.displayName ?? "Member")
+                        : (personFor(firstPayer)?.displayName ?? "Member")
                 } else {
                     payerName = "—"
                     payerIsYou = false
                 }
                 let yourShare = e.splits
-                    .first(where: { $0.userID == currentUserID })?.amountOwed ?? 0
+                    .first(where: { $0.tripPersonID == currentPersonID })?.amountOwed ?? 0
                 return ExpenseRowItem(
                     id: e.id,
                     categoryID: category?.id ?? e.categoryID,
@@ -203,14 +200,14 @@ enum BalancePresenter {
     static func summaries(
         expenses: [ExpenseEntity],
         settlements: [SettlementEntity],
-        members: [TripMemberEntity],
-        currentUserID: UUID,
-        profileFor: (UUID) -> ProfileEntity?
+        people: [TripPersonEntity],
+        currentPersonID: UUID,
+        personFor: (UUID) -> TripPersonEntity?
     ) -> [BalanceSummary] {
         let coreExpenses = expenses.filter { $0.deletedAt == nil }.map { $0.toCoreExpense() }
         let coreSettlements = settlements.filter { $0.deletedAt == nil }.map { $0.toCoreSettlement() }
         let balances = BalanceEngine.compute(expenses: coreExpenses, settlements: coreSettlements)
-        let mine = balances.filter { $0.forUser == currentUserID }
+        let mine = balances.filter { $0.forUser == currentPersonID }
         let byCurrency = Dictionary(grouping: mine, by: \.currency)
 
         return byCurrency.keys.sorted().compactMap { currency -> BalanceSummary? in
@@ -225,7 +222,7 @@ enum BalancePresenter {
                 .filter { $0.amount != 0 }
                 .sorted { abs($0.amount) > abs($1.amount) }
                 .map { entry in
-                    let name = profileFor(entry.withUser)?.displayName ?? "Member"
+                    let name = personFor(entry.withUser)?.displayName ?? "Member"
                     let phrase = entry.amount > 0
                         ? "\(name) owes you"
                         : "You owe \(name)"
@@ -244,5 +241,18 @@ enum BalancePresenter {
 extension CategoryEntity {
     var asOption: CategoryOption {
         CategoryOption(id: id, icon: icon, name: name)
+    }
+}
+
+extension Sequence where Element == TripPersonEntity {
+    func sortedForDisplay(currentPersonID: UUID?) -> [TripPersonEntity] {
+        sorted { lhs, rhs in
+            if lhs.id == currentPersonID { return true }
+            if rhs.id == currentPersonID { return false }
+            if (lhs.joinedAt != nil) != (rhs.joinedAt != nil) {
+                return lhs.joinedAt != nil
+            }
+            return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+        }
     }
 }

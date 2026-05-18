@@ -7,9 +7,9 @@
 --
 -- Sections:
 --   1. Extensions + shared trigger functions
---   2. private schema + helpers + invite tokens
+--   2. private schema + helpers
 --   3. profiles
---   4. trips + trip_members + auto-add-creator trigger
+--   4. trips + trip_people + email-based membership RPCs
 --   5. categories (built-in defaults + per-trip custom)
 --   6. expenses + expense_payments + expense_splits + last_activity trigger
 --   7. settlements
@@ -27,6 +27,8 @@
 
 create extension if not exists pgcrypto with schema extensions;
 create extension if not exists pgtap     with schema extensions;
+
+grant usage on schema extensions to public;
 
 set check_function_bodies = off;
 
@@ -52,7 +54,7 @@ comment on function public.set_sync_fields() is
 
 
 -- ============================================================================
--- 2. private schema + helpers + invite tokens
+-- 2. private schema + helpers
 -- ============================================================================
 -- The `private` schema holds RLS helper functions. Postgres RLS can call
 -- across schemas, but PostgREST does NOT expose /rest/v1/rpc for anything
@@ -62,6 +64,33 @@ comment on function public.set_sync_fields() is
 create schema if not exists private;
 grant usage on schema private to authenticated;
 
+create or replace function private.normalized_email(p_email text)
+returns text
+language sql
+immutable
+set search_path = public, private
+as $$
+  select lower(trim(p_email));
+$$;
+
+comment on function private.normalized_email(text) is
+  'Canonical email form for trip-person matching: lowercase + trim.';
+
+create or replace function private.current_auth_email()
+returns text
+language sql
+security definer
+stable
+set search_path = public, private
+as $$
+  select private.normalized_email(email)
+  from auth.users
+  where id = auth.uid();
+$$;
+
+comment on function private.current_auth_email() is
+  'Returns auth.uid() email in canonical form. SECURITY DEFINER because auth.users is private to Supabase.';
+
 create or replace function private.is_profile_trip_member(p_trip_id uuid, p_user_id uuid)
 returns boolean
 language sql
@@ -70,13 +99,15 @@ stable
 set search_path = public, private
 as $$
   select exists (
-    select 1 from public.trip_members
-    where trip_id = p_trip_id and user_id = p_user_id
+    select 1 from public.trip_people
+    where trip_id = p_trip_id
+      and user_id = p_user_id
+      and joined_at is not null
   );
 $$;
 
 comment on function private.is_profile_trip_member(uuid, uuid) is
-  'True if the supplied user is a member of the supplied trip. SECURITY DEFINER to bypass RLS on trip_members.';
+  'True if the supplied auth profile has claimed a person row in the supplied trip. SECURITY DEFINER to bypass RLS on trip_people.';
 
 create or replace function private.is_trip_member(p_trip_id uuid)
 returns boolean
@@ -89,7 +120,24 @@ as $$
 $$;
 
 comment on function private.is_trip_member(uuid) is
-  'True if auth.uid() is a member of the given trip. Used by every RLS policy that scopes to trip access. SECURITY DEFINER to bypass RLS on trip_members (avoids self-recursion).';
+  'True if auth.uid() has a joined trip_people row for the given trip. Used by every RLS policy that scopes to trip access. SECURITY DEFINER to bypass self-recursion.';
+
+create or replace function private.is_trip_person(p_trip_id uuid, p_person_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public, private
+as $$
+  select exists (
+    select 1 from public.trip_people
+    where id = p_person_id
+      and trip_id = p_trip_id
+  );
+$$;
+
+comment on function private.is_trip_person(uuid, uuid) is
+  'True if the supplied trip_people.id belongs to the supplied trip.';
 
 create or replace function private.receipt_object_trip_id(p_name text)
 returns uuid
@@ -213,7 +261,7 @@ $$;
 
 
 -- ============================================================================
--- 4. trips + trip_members + auto-add-creator trigger
+-- 4. trips + trip_people + email-based membership RPCs
 -- ============================================================================
 
 create table public.trips (
@@ -239,209 +287,41 @@ create trigger trg_trips_sync_fields
   before insert or update on public.trips
   for each row execute function public.set_sync_fields();
 
-create table public.trip_members (
-  trip_id    uuid not null references public.trips(id) on delete cascade,
-  user_id    uuid not null references public.profiles(id) on delete restrict,
-  joined_at  timestamptz not null default now(),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  write_id   uuid not null default gen_random_uuid(),
-  primary key (trip_id, user_id)
+create table public.trip_people (
+  id           uuid primary key default gen_random_uuid(),
+  trip_id      uuid not null references public.trips(id) on delete cascade,
+  user_id      uuid references public.profiles(id) on delete restrict,
+  email        text not null check (
+    email = lower(trim(email))
+    and email like '%@%'
+    and char_length(email) <= 320
+  ),
+  display_name text not null check (
+    char_length(trim(display_name)) > 0 and char_length(display_name) <= 60
+  ),
+  invited_by   uuid references public.profiles(id) on delete set null,
+  joined_at    timestamptz,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  write_id     uuid not null default gen_random_uuid(),
+  constraint trip_people_join_state check (
+    (user_id is null and joined_at is null)
+    or (user_id is not null and joined_at is not null)
+  ),
+  constraint trip_people_email_unique unique (trip_id, email)
 );
 
-comment on table public.trip_members is 'Membership join. Hard-delete = leave trip (no soft delete).';
+comment on table public.trip_people is
+  'Trip-scoped ledger identities. A person can be pending by email, then claimed by a real auth profile when that email signs in.';
 
-create index trip_members_user_id_idx on public.trip_members(user_id);
+create unique index trip_people_trip_user_uniq on public.trip_people(trip_id, user_id)
+  where user_id is not null;
+create index trip_people_trip_id_idx on public.trip_people(trip_id);
+create index trip_people_user_id_idx on public.trip_people(user_id) where user_id is not null;
 
-create trigger trg_trip_members_sync_fields
-  before insert or update on public.trip_members
+create trigger trg_trip_people_sync_fields
+  before insert or update on public.trip_people
   for each row execute function public.set_sync_fields();
-
-create table private.trip_invites (
-  id         uuid primary key default gen_random_uuid(),
-  trip_id    uuid not null references public.trips(id) on delete cascade,
-  token_hash bytea not null unique,
-  created_by uuid not null references public.profiles(id) on delete restrict,
-  expires_at timestamptz not null,
-  revoked_at timestamptz,
-  used_at    timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  deleted_at timestamptz,
-  write_id   uuid not null default gen_random_uuid(),
-  constraint trip_invites_expiry_future check (expires_at > created_at)
-);
-
-alter table private.trip_invites enable row level security;
-
-comment on table private.trip_invites is
-  'Private invite-token store. Raw tokens are returned once by create_trip_invite; only SHA-256 hashes are persisted.';
-
-create index trip_invites_trip_id_idx on private.trip_invites(trip_id);
-create index trip_invites_active_idx  on private.trip_invites(trip_id, expires_at)
-  where revoked_at is null and deleted_at is null;
-
-create trigger trg_trip_invites_sync_fields
-  before insert or update on private.trip_invites
-  for each row execute function public.set_sync_fields();
-
--- Creator auto-joins the trip they create.
-create or replace function public.auto_add_creator_as_member()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.trip_members (trip_id, user_id)
-  values (new.id, new.created_by)
-  on conflict (trip_id, user_id) do nothing;
-  return new;
-end;
-$$;
-
-create trigger trg_trips_add_creator
-  after insert on public.trips
-  for each row execute function public.auto_add_creator_as_member();
-
-create or replace function public.create_trip_invite(
-  p_trip_id uuid,
-  p_expires_at timestamptz default null
-)
-returns table (
-  trip_id uuid,
-  invite_id uuid,
-  token text,
-  expires_at timestamptz
-)
-language plpgsql
-security definer
-set search_path = public, private, extensions
-as $$
-declare
-  v_actor uuid := auth.uid();
-  v_token text;
-  v_expires_at timestamptz := coalesce(p_expires_at, clock_timestamp() + interval '7 days');
-begin
-  if v_actor is null then
-    raise exception 'Authentication required' using errcode = '28000';
-  end if;
-
-  if not exists (select 1 from public.trips where id = p_trip_id and deleted_at is null) then
-    raise exception 'Trip not found or deleted' using errcode = 'P0002';
-  end if;
-
-  if not private.is_profile_trip_member(p_trip_id, v_actor) then
-    raise exception 'Only trip members can create invites' using errcode = '42501';
-  end if;
-
-  if v_expires_at <= clock_timestamp()
-     or v_expires_at > clock_timestamp() + interval '30 days' then
-    raise exception 'Invite expiry must be in the future and within 30 days' using errcode = '22023';
-  end if;
-
-  v_token := encode(gen_random_bytes(32), 'hex');
-
-  insert into private.trip_invites (trip_id, token_hash, created_by, expires_at)
-  values (p_trip_id, digest(v_token, 'sha256'), v_actor, v_expires_at)
-  returning id into invite_id;
-
-  trip_id := p_trip_id;
-  token := v_token;
-  expires_at := v_expires_at;
-  return next;
-end;
-$$;
-
-comment on function public.create_trip_invite(uuid, timestamptz) is
-  'Creates a short-lived invite token for a trip member. Return the raw token once; store only token_hash.';
-
-create or replace function public.join_trip_with_invite(
-  p_trip_id uuid,
-  p_invite_id uuid,
-  p_token text
-)
-returns uuid
-language plpgsql
-security definer
-set search_path = public, private, extensions
-as $$
-declare
-  v_actor uuid := auth.uid();
-  v_trip_id uuid;
-begin
-  if v_actor is null then
-    raise exception 'Authentication required' using errcode = '28000';
-  end if;
-
-  if p_token is null or char_length(p_token) < 32 then
-    raise exception 'Invalid invite token' using errcode = '22023';
-  end if;
-
-  select i.trip_id into v_trip_id
-  from private.trip_invites i
-  join public.trips t on t.id = i.trip_id
-  where i.id = p_invite_id
-    and i.trip_id = p_trip_id
-    and i.token_hash = digest(p_token, 'sha256')
-    and i.revoked_at is null
-    and i.deleted_at is null
-    and i.expires_at > clock_timestamp()
-    and t.deleted_at is null;
-
-  if v_trip_id is null then
-    raise exception 'Invite is invalid, expired, or revoked' using errcode = '22023';
-  end if;
-
-  insert into public.trip_members (trip_id, user_id)
-  values (v_trip_id, v_actor)
-  on conflict (trip_id, user_id) do nothing;
-
-  update private.trip_invites
-  set used_at = coalesce(used_at, clock_timestamp())
-  where id = p_invite_id;
-
-  return v_trip_id;
-end;
-$$;
-
-comment on function public.join_trip_with_invite(uuid, uuid, text) is
-  'Validates an invite token and idempotently joins auth.uid() to the trip.';
-
-create or replace function public.revoke_trip_invite(p_invite_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public, private
-as $$
-declare
-  v_actor uuid := auth.uid();
-  v_trip_id uuid;
-begin
-  if v_actor is null then
-    raise exception 'Authentication required' using errcode = '28000';
-  end if;
-
-  select trip_id into v_trip_id
-  from private.trip_invites
-  where id = p_invite_id and deleted_at is null;
-
-  if v_trip_id is null then
-    raise exception 'Invite not found' using errcode = 'P0002';
-  end if;
-
-  if not private.is_profile_trip_member(v_trip_id, v_actor) then
-    raise exception 'Only trip members can revoke invites' using errcode = '42501';
-  end if;
-
-  update private.trip_invites
-  set revoked_at = coalesce(revoked_at, clock_timestamp())
-  where id = p_invite_id;
-end;
-$$;
-
-comment on function public.revoke_trip_invite(uuid) is
-  'Revokes an active invite. Any trip member can revoke because all trip members are peers in V1.';
 
 
 -- ============================================================================
@@ -591,20 +471,20 @@ create trigger trg_expenses_touch_trip
   for each row execute function public.touch_trip_last_activity();
 
 create table public.expense_payments (
-  expense_id   uuid not null references public.expenses(id) on delete cascade,
-  user_id      uuid not null references public.profiles(id) on delete restrict,
-  amount_paid  numeric(14, 2) not null check (amount_paid >= 0),
-  payment_mode text not null check (payment_mode in ('equal', 'exact', 'percentage', 'shares', 'adjustment')),
-  created_at   timestamptz not null default now(),
-  updated_at   timestamptz not null default now(),
-  write_id     uuid not null default gen_random_uuid(),
-  primary key (expense_id, user_id)
+  expense_id     uuid not null references public.expenses(id) on delete cascade,
+  trip_person_id uuid not null references public.trip_people(id) on delete restrict,
+  amount_paid    numeric(14, 2) not null check (amount_paid >= 0),
+  payment_mode   text not null check (payment_mode in ('equal', 'exact', 'percentage', 'shares', 'adjustment')),
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  write_id       uuid not null default gen_random_uuid(),
+  primary key (expense_id, trip_person_id)
 );
 
 comment on table public.expense_payments is
   'Per-payer contribution to an expense. Mirrors expense_splits. Cascade-deletes if the parent expense is hard-deleted.';
 
-create index expense_payments_user_id_idx on public.expense_payments(user_id);
+create index expense_payments_trip_person_id_idx on public.expense_payments(trip_person_id);
 
 create trigger trg_expense_payments_sync_fields
   before insert or update on public.expense_payments
@@ -633,8 +513,8 @@ begin
     raise exception 'Cannot write payments for a deleted expense' using errcode = '23514';
   end if;
 
-  if not private.is_profile_trip_member(v_trip_id, new.user_id) then
-    raise exception 'Expense payment user must be a trip member' using errcode = '23514';
+  if not private.is_trip_person(v_trip_id, new.trip_person_id) then
+    raise exception 'Expense payment person must belong to the expense trip' using errcode = '23514';
   end if;
 
   return new;
@@ -642,7 +522,7 @@ end;
 $$;
 
 create trigger trg_expense_payments_validate
-  before insert or update of expense_id, user_id on public.expense_payments
+  before insert or update of expense_id, trip_person_id on public.expense_payments
   for each row execute function public.validate_expense_payment_row();
 
 create or replace function public.validate_expense_payment_total(p_expense_id uuid)
@@ -724,20 +604,20 @@ create constraint trigger trg_expense_payments_total
   for each row execute function public.validate_expense_payment_total_from_payment_trigger();
 
 create table public.expense_splits (
-  expense_id  uuid not null references public.expenses(id) on delete cascade,
-  user_id     uuid not null references public.profiles(id) on delete restrict,
-  amount_owed numeric(14, 2) not null check (amount_owed >= 0),
-  split_type  text not null check (split_type in ('equal', 'exact', 'percentage', 'shares', 'adjustment')),
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now(),
-  write_id    uuid not null default gen_random_uuid(),
-  primary key (expense_id, user_id)
+  expense_id     uuid not null references public.expenses(id) on delete cascade,
+  trip_person_id uuid not null references public.trip_people(id) on delete restrict,
+  amount_owed    numeric(14, 2) not null check (amount_owed >= 0),
+  split_type     text not null check (split_type in ('equal', 'exact', 'percentage', 'shares', 'adjustment')),
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  write_id       uuid not null default gen_random_uuid(),
+  primary key (expense_id, trip_person_id)
 );
 
 comment on table public.expense_splits is
   'Per-participant share of an expense. Cascade-deletes if the parent expense is hard-deleted.';
 
-create index expense_splits_user_id_idx on public.expense_splits(user_id);
+create index expense_splits_trip_person_id_idx on public.expense_splits(trip_person_id);
 
 create trigger trg_expense_splits_sync_fields
   before insert or update on public.expense_splits
@@ -766,8 +646,8 @@ begin
     raise exception 'Cannot write splits for a deleted expense' using errcode = '23514';
   end if;
 
-  if not private.is_profile_trip_member(v_trip_id, new.user_id) then
-    raise exception 'Expense split user must be a trip member' using errcode = '23514';
+  if not private.is_trip_person(v_trip_id, new.trip_person_id) then
+    raise exception 'Expense split person must belong to the expense trip' using errcode = '23514';
   end if;
 
   return new;
@@ -775,7 +655,7 @@ end;
 $$;
 
 create trigger trg_expense_splits_validate
-  before insert or update of expense_id, user_id on public.expense_splits
+  before insert or update of expense_id, trip_person_id on public.expense_splits
   for each row execute function public.validate_expense_split_row();
 
 create or replace function public.validate_expense_split_total(p_expense_id uuid)
@@ -862,20 +742,20 @@ create constraint trigger trg_expense_splits_total
 -- ============================================================================
 
 create table public.settlements (
-  id         uuid primary key default gen_random_uuid(),
-  trip_id    uuid not null references public.trips(id) on delete restrict,
-  from_user  uuid not null references public.profiles(id) on delete restrict,
-  to_user    uuid not null references public.profiles(id) on delete restrict,
-  amount     numeric(14, 2) not null check (amount > 0),
-  currency   text not null check (char_length(currency) = 3 and currency = upper(currency)),
-  note       text check (note is null or char_length(note) <= 200),
-  settled_at timestamptz not null default now(),
-  created_by uuid not null references public.profiles(id) on delete restrict,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  deleted_at timestamptz,
-  write_id   uuid not null default gen_random_uuid(),
-  constraint settlements_distinct_parties check (from_user <> to_user)
+  id             uuid primary key default gen_random_uuid(),
+  trip_id        uuid not null references public.trips(id) on delete restrict,
+  from_person_id uuid not null references public.trip_people(id) on delete restrict,
+  to_person_id   uuid not null references public.trip_people(id) on delete restrict,
+  amount         numeric(14, 2) not null check (amount > 0),
+  currency       text not null check (char_length(currency) = 3 and currency = upper(currency)),
+  note           text check (note is null or char_length(note) <= 200),
+  settled_at     timestamptz not null default now(),
+  created_by     uuid not null references public.profiles(id) on delete restrict,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  deleted_at     timestamptz,
+  write_id       uuid not null default gen_random_uuid(),
+  constraint settlements_distinct_parties check (from_person_id <> to_person_id)
 );
 
 comment on table public.settlements is
@@ -883,8 +763,8 @@ comment on table public.settlements is
 
 create index settlements_trip_id_idx     on public.settlements(trip_id);
 create index settlements_trip_active_idx on public.settlements(trip_id, settled_at desc) where deleted_at is null;
-create index settlements_from_user_idx   on public.settlements(from_user);
-create index settlements_to_user_idx     on public.settlements(to_user);
+create index settlements_from_person_id_idx on public.settlements(from_person_id);
+create index settlements_to_person_id_idx   on public.settlements(to_person_id);
 create index settlements_created_by_idx  on public.settlements(created_by);
 
 create trigger trg_settlements_sync_fields
@@ -902,12 +782,12 @@ begin
     raise exception 'Settlement trip must exist and be active' using errcode = '23514';
   end if;
 
-  if not private.is_profile_trip_member(new.trip_id, new.from_user) then
-    raise exception 'Settlement from_user must be a trip member' using errcode = '23514';
+  if not private.is_trip_person(new.trip_id, new.from_person_id) then
+    raise exception 'Settlement from_person must belong to the trip' using errcode = '23514';
   end if;
 
-  if not private.is_profile_trip_member(new.trip_id, new.to_user) then
-    raise exception 'Settlement to_user must be a trip member' using errcode = '23514';
+  if not private.is_trip_person(new.trip_id, new.to_person_id) then
+    raise exception 'Settlement to_person must belong to the trip' using errcode = '23514';
   end if;
 
   if not private.is_profile_trip_member(new.trip_id, new.created_by) then
@@ -919,7 +799,7 @@ end;
 $$;
 
 create trigger trg_settlements_validate
-  before insert or update of trip_id, from_user, to_user, created_by, deleted_at on public.settlements
+  before insert or update of trip_id, from_person_id, to_person_id, created_by, deleted_at on public.settlements
   for each row execute function public.validate_settlement_row();
 
 create trigger trg_settlements_touch_trip
@@ -1027,10 +907,6 @@ as $$
 declare
   v_count integer;
 begin
-  delete from private.trip_invites where deleted_at is not null and deleted_at < p_cutoff;
-  get diagnostics v_count = row_count;
-  table_name := 'private.trip_invites'; deleted_count := v_count; return next;
-
   delete from public.settlements where deleted_at is not null and deleted_at < p_cutoff;
   get diagnostics v_count = row_count;
   table_name := 'public.settlements'; deleted_count := v_count; return next;
@@ -1066,7 +942,7 @@ comment on function public.purge_soft_deleted_records(timestamptz) is
 
 alter table public.profiles        enable row level security;
 alter table public.trips           enable row level security;
-alter table public.trip_members    enable row level security;
+alter table public.trip_people     enable row level security;
 alter table public.categories      enable row level security;
 alter table public.expenses          enable row level security;
 alter table public.expense_payments  enable row level security;
@@ -1098,12 +974,12 @@ create policy trips_update_member on public.trips
 create policy trips_delete_member on public.trips
   for delete to authenticated using (private.is_trip_member(id));
 
--- trip_members: only members can read; users can leave themselves.
--- Creator auto-add and invite join both happen through SECURITY DEFINER code.
-create policy trip_members_select_member on public.trip_members
+-- trip_people: members can read the people in their trips. Inserts/claims go
+-- through SECURITY DEFINER RPCs so email matching stays server-side.
+create policy trip_people_select_member on public.trip_people
   for select to authenticated using (private.is_trip_member(trip_id));
-create policy trip_members_delete_self on public.trip_members
-  for delete to authenticated using (user_id = (select auth.uid()));
+create policy trip_people_delete_member on public.trip_people
+  for delete to authenticated using (private.is_trip_member(trip_id));
 
 -- categories: defaults are globally readable; trip-scoped readable+writable by members.
 create policy categories_select_default_or_member on public.categories
@@ -1167,7 +1043,7 @@ create policy expense_payments_insert_member on public.expense_payments
     select 1 from public.expenses e
     where e.id = expense_payments.expense_id
       and private.is_trip_member(e.trip_id)
-      and private.is_profile_trip_member(e.trip_id, expense_payments.user_id)
+      and private.is_trip_person(e.trip_id, expense_payments.trip_person_id)
   ));
 create policy expense_payments_update_member on public.expense_payments
   for update to authenticated
@@ -1176,7 +1052,7 @@ create policy expense_payments_update_member on public.expense_payments
     select 1 from public.expenses e
     where e.id = expense_payments.expense_id
       and private.is_trip_member(e.trip_id)
-      and private.is_profile_trip_member(e.trip_id, expense_payments.user_id)
+      and private.is_trip_person(e.trip_id, expense_payments.trip_person_id)
   ));
 create policy expense_payments_delete_member on public.expense_payments
   for delete to authenticated
@@ -1192,7 +1068,7 @@ create policy expense_splits_insert_member on public.expense_splits
     select 1 from public.expenses e
     where e.id = expense_splits.expense_id
       and private.is_trip_member(e.trip_id)
-      and private.is_profile_trip_member(e.trip_id, expense_splits.user_id)
+      and private.is_trip_person(e.trip_id, expense_splits.trip_person_id)
   ));
 create policy expense_splits_update_member on public.expense_splits
   for update to authenticated
@@ -1201,7 +1077,7 @@ create policy expense_splits_update_member on public.expense_splits
     select 1 from public.expenses e
     where e.id = expense_splits.expense_id
       and private.is_trip_member(e.trip_id)
-      and private.is_profile_trip_member(e.trip_id, expense_splits.user_id)
+      and private.is_trip_person(e.trip_id, expense_splits.trip_person_id)
   ));
 create policy expense_splits_delete_member on public.expense_splits
   for delete to authenticated
@@ -1215,16 +1091,16 @@ create policy settlements_insert_member on public.settlements
   with check (
     private.is_trip_member(trip_id)
     and created_by = (select auth.uid())
-    and private.is_profile_trip_member(trip_id, from_user)
-    and private.is_profile_trip_member(trip_id, to_user)
+    and private.is_trip_person(trip_id, from_person_id)
+    and private.is_trip_person(trip_id, to_person_id)
   );
 create policy settlements_update_member on public.settlements
   for update to authenticated
   using (private.is_trip_member(trip_id))
   with check (
     private.is_trip_member(trip_id)
-    and private.is_profile_trip_member(trip_id, from_user)
-    and private.is_profile_trip_member(trip_id, to_user)
+    and private.is_trip_person(trip_id, from_person_id)
+    and private.is_trip_person(trip_id, to_person_id)
     and private.is_profile_trip_member(trip_id, created_by)
   );
 create policy settlements_delete_member on public.settlements
@@ -1310,6 +1186,270 @@ create policy receipts_delete_member on storage.objects
 -- 12. Client RPCs
 -- ============================================================================
 
+create or replace function public.create_trip_with_self(
+  p_trip_id uuid,
+  p_person_id uuid,
+  p_name text
+)
+returns table (
+  trip_id uuid,
+  person_id uuid
+)
+language plpgsql
+security definer
+set search_path = public, private
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_email text := private.current_auth_email();
+  v_display_name text;
+begin
+  if v_actor is null then
+    raise exception 'Authentication required' using errcode = '28000';
+  end if;
+
+  if v_email is null or v_email = '' or v_email not like '%@%' then
+    raise exception 'A verified email is required to create trips' using errcode = '22023';
+  end if;
+
+  if p_trip_id is null or p_person_id is null then
+    raise exception 'trip_id and person_id are required' using errcode = '22023';
+  end if;
+
+  if nullif(trim(p_name), '') is null then
+    raise exception 'Trip name is required' using errcode = '22023';
+  end if;
+
+  select display_name into v_display_name
+  from public.profiles
+  where id = v_actor;
+
+  v_display_name := left(coalesce(nullif(trim(v_display_name), ''), split_part(v_email, '@', 1)), 60);
+
+  if exists (
+    select 1
+    from public.trips t
+    where t.id = p_trip_id
+      and t.created_by <> v_actor
+      and not private.is_profile_trip_member(t.id, v_actor)
+  ) then
+    raise exception 'Trip already exists and is not writable by current user' using errcode = '42501';
+  end if;
+
+  insert into public.trips (id, name, created_by)
+  values (p_trip_id, trim(p_name), v_actor)
+  on conflict (id) do update
+    set name = excluded.name
+    where public.trips.created_by = v_actor
+       or private.is_profile_trip_member(public.trips.id, v_actor);
+
+  if not exists (select 1 from public.trips where id = p_trip_id) then
+    raise exception 'Trip could not be created' using errcode = '42501';
+  end if;
+
+  insert into public.trip_people (
+    id, trip_id, user_id, email, display_name, invited_by, joined_at
+  )
+  values (
+    p_person_id, p_trip_id, v_actor, v_email, v_display_name, v_actor, clock_timestamp()
+  )
+  on conflict (trip_id, email) do update
+    set user_id = v_actor,
+        display_name = excluded.display_name,
+        joined_at = coalesce(public.trip_people.joined_at, clock_timestamp())
+  returning public.trip_people.id into person_id;
+
+  trip_id := p_trip_id;
+  return next;
+end;
+$$;
+
+comment on function public.create_trip_with_self(uuid, uuid, text) is
+  'Creates a trip and its creator trip_people row using client-provided UUIDs so offline ledger references remain stable.';
+
+create or replace function public.add_trip_person_by_email(
+  p_trip_id uuid,
+  p_email text,
+  p_display_name text default null,
+  p_person_id uuid default null
+)
+returns public.trip_people
+language plpgsql
+security definer
+set search_path = public, private
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_email text := private.normalized_email(p_email);
+  v_display_name text := nullif(trim(p_display_name), '');
+  v_user_id uuid;
+  v_person public.trip_people;
+begin
+  if v_actor is null then
+    raise exception 'Authentication required' using errcode = '28000';
+  end if;
+
+  if v_email is null or v_email = '' or v_email not like '%@%' or char_length(v_email) > 320 then
+    raise exception 'A valid email is required' using errcode = '22023';
+  end if;
+
+  if not exists (select 1 from public.trips where id = p_trip_id and deleted_at is null) then
+    raise exception 'Trip not found or deleted' using errcode = 'P0002';
+  end if;
+
+  if not private.is_profile_trip_member(p_trip_id, v_actor) then
+    raise exception 'Only trip members can add people' using errcode = '42501';
+  end if;
+
+  select u.id, coalesce(p.display_name, split_part(v_email, '@', 1))
+  into v_user_id, v_display_name
+  from auth.users u
+  left join public.profiles p on p.id = u.id
+  where private.normalized_email(u.email) = v_email
+  limit 1;
+
+  v_display_name := left(coalesce(nullif(trim(p_display_name), ''), nullif(trim(v_display_name), ''), split_part(v_email, '@', 1)), 60);
+
+  if v_user_id is not null then
+    select * into v_person
+    from public.trip_people
+    where trip_id = p_trip_id
+      and user_id = v_user_id;
+
+    if found then
+      update public.trip_people
+      set email = v_email,
+          display_name = v_display_name,
+          joined_at = coalesce(joined_at, clock_timestamp())
+      where id = v_person.id
+      returning * into v_person;
+
+      return v_person;
+    end if;
+  end if;
+
+  insert into public.trip_people (
+    id, trip_id, user_id, email, display_name, invited_by, joined_at
+  )
+  values (
+    coalesce(p_person_id, gen_random_uuid()),
+    p_trip_id,
+    v_user_id,
+    v_email,
+    v_display_name,
+    v_actor,
+    case when v_user_id is null then null else clock_timestamp() end
+  )
+  on conflict (trip_id, email) do update
+    set user_id = coalesce(public.trip_people.user_id, excluded.user_id),
+        display_name = excluded.display_name,
+        joined_at = case
+          when public.trip_people.joined_at is not null then public.trip_people.joined_at
+          when excluded.user_id is not null then clock_timestamp()
+          else null
+        end
+  returning * into v_person;
+
+  return v_person;
+end;
+$$;
+
+comment on function public.add_trip_person_by_email(uuid, text, text, uuid) is
+  'Adds a pending trip person by email, or immediately links the person if an auth account with that email already exists.';
+
+create or replace function public.claim_trip_people_for_current_email()
+returns setof public.trip_people
+language plpgsql
+security definer
+set search_path = public, private
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_email text := private.current_auth_email();
+  v_display_name text;
+begin
+  if v_actor is null then
+    raise exception 'Authentication required' using errcode = '28000';
+  end if;
+
+  if v_email is null or v_email = '' then
+    return;
+  end if;
+
+  select display_name into v_display_name
+  from public.profiles
+  where id = v_actor;
+
+  return query
+  update public.trip_people tp
+  set user_id = v_actor,
+      display_name = left(coalesce(nullif(trim(v_display_name), ''), tp.display_name), 60),
+      joined_at = clock_timestamp()
+  where tp.email = v_email
+    and tp.user_id is null
+    and not exists (
+      select 1
+      from public.trip_people existing
+      where existing.trip_id = tp.trip_id
+        and existing.user_id = v_actor
+    )
+  returning tp.*;
+end;
+$$;
+
+comment on function public.claim_trip_people_for_current_email() is
+  'Links pending trip_people rows for auth.uid() email. Called after sign-in before sync pull.';
+
+create or replace function public.suggest_trip_people(
+  p_query text default null,
+  p_limit int default 8
+)
+returns table (
+  user_id uuid,
+  email text,
+  display_name text
+)
+language plpgsql
+security definer
+stable
+set search_path = public, private
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_query text := nullif(trim(p_query), '');
+  v_limit int := least(greatest(coalesce(p_limit, 8), 1), 25);
+begin
+  if v_actor is null then
+    raise exception 'Authentication required' using errcode = '28000';
+  end if;
+
+  return query
+  select distinct on (tp.email)
+    tp.user_id,
+    tp.email,
+    tp.display_name
+  from public.trip_people tp
+  where coalesce(tp.user_id, '00000000-0000-0000-0000-000000000000'::uuid) <> v_actor
+    and exists (
+      select 1
+      from public.trip_people mine
+      where mine.trip_id = tp.trip_id
+        and mine.user_id = v_actor
+        and mine.joined_at is not null
+    )
+    and (
+      v_query is null
+      or tp.email ilike '%' || v_query || '%'
+      or tp.display_name ilike '%' || v_query || '%'
+    )
+  order by tp.email, tp.updated_at desc
+  limit v_limit;
+end;
+$$;
+
+comment on function public.suggest_trip_people(text, int) is
+  'Suggests people the current user has already shared a trip with. No global user search.';
+
 create or replace function public.create_expense_with_payments_and_splits(
     p_expense  jsonb,
     p_payments jsonb,
@@ -1380,11 +1520,11 @@ begin
     for v_payment in select * from jsonb_array_elements(p_payments)
     loop
         insert into public.expense_payments (
-            expense_id, user_id, amount_paid, payment_mode
+            expense_id, trip_person_id, amount_paid, payment_mode
         )
         values (
             v_expense_id,
-            (v_payment->>'user_id')::uuid,
+            (v_payment->>'trip_person_id')::uuid,
             (v_payment->>'amount_paid')::numeric(14, 2),
             v_payment->>'payment_mode'
         );
@@ -1393,11 +1533,11 @@ begin
     for v_split in select * from jsonb_array_elements(p_splits)
     loop
         insert into public.expense_splits (
-            expense_id, user_id, amount_owed, split_type
+            expense_id, trip_person_id, amount_owed, split_type
         )
         values (
             v_expense_id,
-            (v_split->>'user_id')::uuid,
+            (v_split->>'trip_person_id')::uuid,
             (v_split->>'amount_owed')::numeric(14, 2),
             v_split->>'split_type'
         );
@@ -1416,7 +1556,6 @@ comment on function public.create_expense_with_payments_and_splits(jsonb, jsonb,
 -- ============================================================================
 -- Trigger functions exist only to be invoked by their triggers — they should
 -- never be callable via /rest/v1/rpc. Revoke EXECUTE from public/anon/auth.
-revoke execute on function public.auto_add_creator_as_member() from public, anon, authenticated;
 revoke execute on function public.handle_new_user()            from public, anon, authenticated;
 revoke execute on function public.touch_trip_last_activity()   from public, anon, authenticated;
 revoke execute on function public.set_sync_fields()            from public, anon, authenticated;
@@ -1436,12 +1575,14 @@ revoke execute on function public.purge_soft_deleted_records(timestamptz) from p
 
 revoke execute on function public.ensure_current_profile(text, text) from public, anon;
 grant  execute on function public.ensure_current_profile(text, text) to authenticated;
-revoke execute on function public.create_trip_invite(uuid, timestamptz) from public, anon;
-grant  execute on function public.create_trip_invite(uuid, timestamptz) to authenticated;
-revoke execute on function public.join_trip_with_invite(uuid, uuid, text) from public, anon;
-grant  execute on function public.join_trip_with_invite(uuid, uuid, text) to authenticated;
-revoke execute on function public.revoke_trip_invite(uuid) from public, anon;
-grant  execute on function public.revoke_trip_invite(uuid) to authenticated;
+revoke execute on function public.create_trip_with_self(uuid, uuid, text) from public, anon;
+grant  execute on function public.create_trip_with_self(uuid, uuid, text) to authenticated;
+revoke execute on function public.add_trip_person_by_email(uuid, text, text, uuid) from public, anon;
+grant  execute on function public.add_trip_person_by_email(uuid, text, text, uuid) to authenticated;
+revoke execute on function public.claim_trip_people_for_current_email() from public, anon;
+grant  execute on function public.claim_trip_people_for_current_email() to authenticated;
+revoke execute on function public.suggest_trip_people(text, int) from public, anon;
+grant  execute on function public.suggest_trip_people(text, int) to authenticated;
 revoke execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) from public, anon;
 grant  execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) to authenticated;
 
@@ -1451,5 +1592,11 @@ revoke execute on function private.is_trip_member(uuid) from public, anon;
 grant  execute on function private.is_trip_member(uuid) to authenticated;
 revoke execute on function private.is_profile_trip_member(uuid, uuid) from public, anon;
 grant  execute on function private.is_profile_trip_member(uuid, uuid) to authenticated;
+revoke execute on function private.is_trip_person(uuid, uuid) from public, anon;
+grant  execute on function private.is_trip_person(uuid, uuid) to authenticated;
+revoke execute on function private.normalized_email(text) from public, anon;
+grant  execute on function private.normalized_email(text) to authenticated;
+revoke execute on function private.current_auth_email() from public, anon;
+grant  execute on function private.current_auth_email() to authenticated;
 revoke execute on function private.receipt_object_trip_id(text) from public, anon;
 grant  execute on function private.receipt_object_trip_id(text) to authenticated;

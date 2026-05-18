@@ -45,7 +45,7 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `T
 - **Multi-currency, no FX conversion** — per-currency pairwise balances only.
 - **Last-write-wins** conflict resolution with delete-wins + UUID `writeID` tiebreaker on identical timestamps.
 - **Soft delete** on mutable user-visible records (`deleted_at`); 30-day window before hard purge.
-- **Invite-link only** trip joining (deep links).
+- **Email pre-add** trip joining with automatic claim on sign-in.
 - **Realtime** on the currently-viewed trip only.
 
 ## Conventions
@@ -72,9 +72,9 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `T
 - DB tests live in `supabase/tests/` as pgTAP `.sql` files.
 - **RLS is mandatory** on every public table. Every test must verify both the allow and deny path.
 - Mutable synced row-tables use `updated_at` + `write_id` (UUID), plus `deleted_at` where the row is soft-deleted.
-- Direct `trip_members` insert is forbidden for clients. Trip creation auto-adds the creator; invite joins go through `create_trip_invite` + `join_trip_with_invite`.
-- Expense + split writes must be transactional; the DB enforces split totals and trip-member references for payers, participants, settlements, categories, and mute prefs.
-- Trip access derives from membership in `trip_members` — RLS policies all read from it.
+- Direct `trip_people` insert is forbidden for clients. Trip creation goes through `create_trip_with_self`; adding people goes through `add_trip_person_by_email`; sign-in claims go through `claim_trip_people_for_current_email`.
+- Expense + split writes must be transactional; the DB enforces split totals and trip-person references for payers, participants, settlements, categories, and mute prefs.
+- Trip access derives from joined `trip_people` rows — RLS policies all read from it.
 - Default remote apply path for agents is Supabase MCP. Use `./supabase/scripts/recreate_db.sh` when MCP is unavailable or when a human wants a terminal command.
 
 ## Design mockups
@@ -97,7 +97,7 @@ Mockups live in `design/` organised by feature area, one subfolder per area:
 
 ## What NOT to do
 
-- **No V2 scope creep.** Itinerary, analytics, simplified debts (Splitwise's "balance simplification"), multi-payer per expense, percentage/shares splits, placeholder members, payment-app deep links (Venmo/PayPal links), activity-log UI, currency conversion, Android — all explicitly deferred per PRD. Don't implement them speculatively.
+- **No V2 scope creep.** Itinerary, analytics, simplified debts (Splitwise's "balance simplification"), multi-payer per expense, percentage/shares splits, payment-app deep links (Venmo/PayPal links), activity-log UI, currency conversion, Android — all explicitly deferred per PRD. Don't implement them speculatively.
 - **No Double for money.** Decimal only. If you see a `Double` near money, fix it.
 - **No `XCTest` migrations.** Stay on Swift Testing.
 - **No mocking SwiftData or Supabase in unit tests.** TabCore is pure — it doesn't need mocks. Integration tests use real Supabase (separate test schema or branch).

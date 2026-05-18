@@ -27,16 +27,16 @@ Promote multi-payer to V1.
 - Drop `expenses.payer_id`.
 - Add table `expense_payments`:
   ```
-  expense_payments
+    expense_payments
     expense_id    uuid  fk -> expenses(id)
-    user_id       uuid  fk -> users(id)
+    trip_person_id uuid fk -> trip_people(id)
     amount_paid   numeric(20, 4)
     payment_mode  text     -- 'equal' | 'exact' (mirrors split_type values)
-    PRIMARY KEY (expense_id, user_id)
+    PRIMARY KEY (expense_id, trip_person_id)
   ```
 - DB trigger enforces `sum(amount_paid) on active expense = expenses.amount`, mirroring the existing trigger for `expense_splits`.
-- RLS: user can read/write payments iff they are a trip-member of `expenses.trip_id`. Mirrors the policy for splits.
-- Payer references are constrained to `trip_members(user_id, trip_id)` for the expense's trip — matches the existing constraint pattern for participants, payers, settlement parties, and category creators.
+- RLS: user can read/write payments iff they have a joined `trip_people` row for `expenses.trip_id`. Mirrors the policy for splits.
+- Payer references are constrained to `trip_people` rows for the expense's trip — matches the existing constraint pattern for participants, payers, and settlement parties.
 
 ### Domain shape
 - An [[Expense]] now carries **two independent ledgers**:
@@ -48,7 +48,7 @@ Promote multi-payer to V1.
 ### Pure-logic modules
 - `SplitCalculator` is unchanged. It computes splits, not payments.
 - A small helper (or extracted shared routine) computes the equal-mode distribution for either ledger — same deterministic 1-cent remainder algorithm (lex-lowest UUIDs first).
-- `BalanceEngine` refactors to consume both `expense_payments` and `expense_splits`. Per-user net per expense = `sum(payments by user) - sum(splits owed by user)`. Pair-balance aggregation across expenses + settlements is otherwise unchanged.
+- `BalanceEngine` refactors to consume both `expense_payments` and `expense_splits`. Per-person net per expense = `sum(payments by trip person) - sum(splits owed by trip person)`. Pair-balance aggregation across expenses + settlements is otherwise unchanged.
 
 ### UX (locked during the same design session — see also `design/expense_entry_flow_mockups.html`)
 - Main expense-entry form remains a single scroll.
