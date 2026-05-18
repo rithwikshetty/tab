@@ -15,7 +15,10 @@ A Splitwise replacement for tracking expenses on group trips. Private friend-gro
 ```
 tab/
 ├── PRD.md                      ← Source of truth for product scope, schema, decisions.
-├── design/mockups.html         ← Three theme directions (Sage chosen). Design-token source.
+├── design/
+│   ├── mockups/                ← Main app screen mockups (v1, v2, …). Sage palette source of truth.
+│   ├── expense-entry/          ← Expense entry flow mockups.
+│   └── logo/                   ← Logo and app icon assets.
 ├── Packages/TabCore/          ← Swift Package — pure-logic modules.
 │   ├── Sources/TabCore/       ← Money, SplitType, Models, SplitCalculator, BalanceEngine,
 │   │                              TripStateDeriver, ConflictResolver.
@@ -69,6 +72,24 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `TabCore` via 
 - Trip access derives from `trip_members` — direct member insert is forbidden; joins go through invite RPCs.
 - Expense + split writes must be transactional; the DB enforces split totals and trip-member references.
 
+## Design mockups
+
+Mockups live in `design/` organised by feature area, one subfolder per area:
+
+| Subfolder        | Contents                              |
+|------------------|---------------------------------------|
+| `mockups/`       | Main app screens and flows            |
+| `expense-entry/` | Expense entry UI and flow iterations  |
+| `logo/`          | Logo explorations, app icon assets    |
+
+**Naming:** each iteration is `v{N}.html` (`v1.html`, `v2.html`, …). Increment from the highest existing version in that subfolder. Never overwrite or rename a previous iteration — old versions are kept for reference.
+
+**New feature areas** get a new kebab-case subfolder under `design/` (e.g., `design/settings/`).
+
+**Non-HTML assets** (SVG, PNG) use descriptive kebab-case names in the relevant subfolder (e.g., `logo/app-icon.svg`).
+
+**Sage palette** in `design/mockups/v1.html` is the locked source of truth for design tokens.
+
 ## Don't do these
 
 - No V2 scope creep (itinerary, analytics, simplified debts, multi-payer, %/shares splits, payment-app links, currency conversion, Android).
@@ -82,7 +103,7 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `TabCore` via 
 
 ```bash
 cd Packages/TabCore && swift test     # Swift tests
-open design/mockups.html                # Mockups
+open design/mockups/v1.html              # Mockups (main app screens)
 # Supabase: destructive reset/recreate (default for this project)
 # Agents: prefer Supabase MCP when available. CLI fallback:
 ./supabase/scripts/recreate_db.sh
@@ -91,6 +112,6 @@ open design/mockups.html                # Mockups
 ## Pointers
 
 - **Product scope** → `PRD.md`
-- **Design tokens** → `design/mockups.html` (Sage palette is locked)
+- **Design tokens** → `design/mockups/v1.html` (Sage palette is locked)
 - **Supabase project ID** → `gaseuxsieddlksxtdliq` (EU-West-1)
 - **MCP config** → `.mcp.json`

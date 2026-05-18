@@ -14,7 +14,9 @@ Pain points being solved: Splitwise's paywall, ads, and aggressive upsells.
 tab/
 ├── PRD.md                      ← Source of truth for product scope, schema, decisions.
 ├── design/
-│   └── mockups.html            ← Three theme directions (Sage chosen). Source of truth for design tokens.
+│   ├── mockups/                ← Main app screen mockups (v1, v2, …). Sage palette source of truth.
+│   ├── expense-entry/          ← Expense entry flow mockups.
+│   └── logo/                   ← Logo and app icon assets.
 ├── Packages/
 │   └── TabCore/               ← Swift Package — pure-logic modules, fully unit-tested.
 │       ├── Package.swift
@@ -75,6 +77,24 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `T
 - Trip access derives from membership in `trip_members` — RLS policies all read from it.
 - Default remote apply path for agents is Supabase MCP. Use `./supabase/scripts/recreate_db.sh` when MCP is unavailable or when a human wants a terminal command.
 
+## Design mockups
+
+Mockups live in `design/` organised by feature area, one subfolder per area:
+
+| Subfolder        | Contents                              |
+|------------------|---------------------------------------|
+| `mockups/`       | Main app screens and flows            |
+| `expense-entry/` | Expense entry UI and flow iterations  |
+| `logo/`          | Logo explorations, app icon assets    |
+
+**Naming:** each iteration is `v{N}.html` (`v1.html`, `v2.html`, …). Increment from the highest existing version in that subfolder. Never overwrite or rename a previous iteration — old versions are kept for reference.
+
+**New feature areas** get a new kebab-case subfolder under `design/` (e.g., `design/settings/`).
+
+**Non-HTML assets** (SVG, PNG) use descriptive kebab-case names in the relevant subfolder (e.g., `logo/app-icon.svg`).
+
+**Sage palette** in `design/mockups/v1.html` is the locked source of truth for design tokens.
+
 ## What NOT to do
 
 - **No V2 scope creep.** Itinerary, analytics, simplified debts (Splitwise's "balance simplification"), multi-payer per expense, percentage/shares splits, placeholder members, payment-app deep links (Venmo/PayPal links), activity-log UI, currency conversion, Android — all explicitly deferred per PRD. Don't implement them speculatively.
@@ -82,7 +102,7 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `T
 - **No `XCTest` migrations.** Stay on Swift Testing.
 - **No mocking SwiftData or Supabase in unit tests.** TabCore is pure — it doesn't need mocks. Integration tests use real Supabase (separate test schema or branch).
 - **No backwards-compat shims, no feature flags for in-flight work, no deprecated/legacy aliases.** Change the code; we have no prod users yet.
-- **No emojis in code or commits** unless the user explicitly asked for them. (Emojis in `mockups.html` are intentional — categories.)
+- **No emojis in code or commits** unless the user explicitly asked for them. (Emojis in mockup HTMLs are intentional — categories.)
 
 ## Running things
 
@@ -90,8 +110,8 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `T
 # Swift tests
 cd Packages/TabCore && swift test
 
-# Open mockups
-open design/mockups.html
+# Open mockups (main app screens)
+open design/mockups/v1.html
 
 # Supabase — destructive reset/recreate (default for this project)
 # Agents: prefer Supabase MCP when available. CLI fallback:
@@ -101,6 +121,6 @@ open design/mockups.html
 ## Where to find things
 
 - **Product scope, schema, decisions, out-of-scope list** → `PRD.md` (49 user stories, all decisions recorded).
-- **Design tokens (Sage palette)** → `design/mockups.html` — Sage hex values are the locked source of truth; port them to the Asset Catalog when scaffolding the app.
+- **Design tokens (Sage palette)** → `design/mockups/v1.html` — Sage hex values are the locked source of truth; port them to the Asset Catalog when scaffolding the app.
 - **Supabase project ID** → `gaseuxsieddlksxtdliq` (EU-West-1, Postgres 17.6).
 - **MCP servers** → `.mcp.json` (Supabase MCP is HTTP-typed).
