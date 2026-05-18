@@ -15,6 +15,10 @@ struct ExpenseDetailView: View {
     @Query private var categories: [CategoryEntity]
 
     @State private var confirmDelete = false
+    @State private var receiptURL: URL?
+    @State private var loadedReceiptForPath: String?
+    @State private var receiptLoadFailed = false
+    @State private var receiptPreviewPresented = false
 
     init(expenseID: UUID) {
         self.expenseID = expenseID
@@ -116,12 +120,21 @@ struct ExpenseDetailView: View {
                     loggedByName: loggedByName
                 )
 
+                if expense.receiptStoragePath != nil {
+                    sectionLabel("Receipt")
+                    receiptCard(path: expense.receiptStoragePath!)
+                }
+
                 deleteButton
                     .padding(.top, 18)
                     .padding(.bottom, 28)
             }
         }
         .scrollIndicators(.hidden)
+        .task(id: expense.receiptStoragePath) { await refreshReceiptURL(for: expense.receiptStoragePath) }
+        .sheet(isPresented: $receiptPreviewPresented) {
+            receiptFullScreen
+        }
     }
 
     private func headerBlock(
@@ -313,6 +326,128 @@ struct ExpenseDetailView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private func receiptCard(path: String) -> some View {
+        Button {
+            guard receiptURL != nil else { return }
+            Haptics.light()
+            receiptPreviewPresented = true
+        } label: {
+            ZStack {
+                if let url = receiptURL {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .empty:
+                            receiptPlaceholder(isLoading: true)
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .failure:
+                            receiptPlaceholder(isLoading: false, failed: true)
+                        @unknown default:
+                            receiptPlaceholder(isLoading: true)
+                        }
+                    }
+                } else if receiptLoadFailed {
+                    receiptPlaceholder(isLoading: false, failed: true)
+                } else {
+                    receiptPlaceholder(isLoading: true)
+                }
+            }
+            .frame(height: 180)
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Sage.cardBorder, lineWidth: 1)
+            )
+            .padding(.horizontal, 18)
+        }
+        .buttonStyle(.plain)
+        .disabled(receiptURL == nil)
+    }
+
+    private func receiptPlaceholder(isLoading: Bool, failed: Bool = false) -> some View {
+        ZStack {
+            Sage.surface2
+            if isLoading {
+                ProgressView().tint(Sage.accent)
+            } else if failed {
+                VStack(spacing: 6) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Sage.textSecondary)
+                    Text("Couldn't load receipt")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Sage.textSecondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var receiptFullScreen: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if let url = receiptURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFit()
+                    case .failure:
+                        Text("Couldn't load receipt").foregroundStyle(.white)
+                    default:
+                        ProgressView().tint(.white)
+                    }
+                }
+                .padding()
+            }
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        receiptPreviewPresented = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Color.white.opacity(0.15), in: Circle())
+                    }
+                    .padding(.top, 12)
+                    .padding(.trailing, 16)
+                }
+                Spacer()
+            }
+        }
+    }
+
+    private func refreshReceiptURL(for path: String?) async {
+        guard let path else {
+            await MainActor.run {
+                receiptURL = nil
+                loadedReceiptForPath = nil
+                receiptLoadFailed = false
+            }
+            return
+        }
+        if loadedReceiptForPath == path, receiptURL != nil { return }
+        do {
+            let url = try await ReceiptStorage.signedURL(path: path)
+            await MainActor.run {
+                receiptURL = url
+                loadedReceiptForPath = path
+                receiptLoadFailed = false
+            }
+        } catch {
+            await MainActor.run {
+                receiptURL = nil
+                receiptLoadFailed = true
+            }
+        }
     }
 
     private var deleteButton: some View {

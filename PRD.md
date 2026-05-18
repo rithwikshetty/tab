@@ -77,7 +77,7 @@ V1 is intentionally minimal: trip + expenses + splits + settlement. Future versi
 ### Receipts
 45. As a user, I want to attach a receipt photo when entering an expense, so that I can review it later.
 46. As a user, I want to view a receipt photo full-screen, so that I can read the details.
-47. As a user, I want receipt images compressed client-side before upload, so that I don't burn through cellular data or fill storage quotas.
+47. As a user, I want receipt images prepared client-side and downscaled only when needed before upload, so that large phone photos fit the storage limit without unnecessary quality loss.
 
 ### Settings & utility
 48. As a user, I want to update my display name and avatar from settings, so that my identity stays current across trips.
@@ -102,7 +102,7 @@ V1 is intentionally minimal: trip + expenses + splits + settlement. Future versi
 **Service modules (I/O, deep, mockable interfaces)**
 - **SyncEngine** — orchestrates offline-first sync. Interface: `enqueue(change)`, `sync()`, `subscribe(tripId)`. Internals: pending-changes queue, push-then-pull, conflict resolution, Realtime subscription lifecycle.
 - **AuthService** — wraps Supabase Auth + Apple Sign-In + email magic link. Interface: `signIn()`, `signOut()`, `currentUser`.
-- **MediaStore** — receipt photo lifecycle. Client-side compression to ~200KB JPEG, upload to Supabase Storage, lazy download, local cache.
+- **MediaStore** — receipt photo lifecycle. Client-side JPEG preparation, downsize only when needed to stay under the 10 MiB Supabase Storage limit, lazy download, local cache.
 - **PushNotificationService** — APNs registration, device-token sync with Supabase, payload parsing, deep-link routing.
 - **InviteLinkService** — call invite RPCs, generate deep links with trip/invite/token values, parse incoming links, validate, perform idempotent join.
 - **ActivityLogger** — append-only event recording (actor, action, entity, timestamp, optional snapshot). Stored, not surfaced in UI for v1.
@@ -215,4 +215,4 @@ Explicitly NOT in v1 (deferred to v2 or later):
 - **Apple Developer account is a hard dependency** for TestFlight distribution and APNs ($99/yr).
 - **Auto-archive rule recap:** a trip is "Completed" when all pairwise balances across all currencies are zero AND no expense / settlement activity for 30 days. Any new expense or settlement reactivates it. State is derived, not stored.
 - **Conflict resolution recap:** last-write-wins by `updated_at`; non-null `deleted_at` always wins over edits.
-- **Receipts:** stored in Supabase Storage at `receipts/<trip_id>/<expense_id>.jpg`. Compressed client-side to roughly 200 KB before upload. Lazy-downloaded on view; cached locally.
+- **Receipts:** stored in the private Supabase Storage bucket `receipts` at `<trip_id>/<expense_id>.jpg`. Prepared as JPEG client-side and kept under the 10 MiB bucket limit. Lazy-downloaded on view; cached locally.

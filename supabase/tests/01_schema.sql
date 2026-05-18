@@ -4,7 +4,7 @@
 begin;
 set local search_path = extensions, public, pg_temp;
 
-select plan(53);
+select plan(54);
 
 create temp table _r (line text);
 
@@ -99,6 +99,12 @@ insert into _r select is(
 insert into _r select ok(
   exists (select 1 from storage.buckets where id = 'receipts' and public = false),
   'private receipts storage bucket exists'
+);
+
+insert into _r select is(
+  (select file_size_limit::bigint from storage.buckets where id = 'receipts'),
+  10485760::bigint,
+  'receipts bucket allows 10 MiB JPEGs'
 );
 
 insert into _r select * from finish();

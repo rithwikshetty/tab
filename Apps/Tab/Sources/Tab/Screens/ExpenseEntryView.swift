@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import PhotosUI
 import UIKit
 import TabCore
 
@@ -30,6 +31,13 @@ struct ExpenseEntryView: View {
     @State private var participantSet: Set<UUID> = []
     @State private var currency: String = "EUR"
     @State private var expenseDate: Date = .now
+
+    @State private var receiptPickerItem: PhotosPickerItem?
+    @State private var receiptThumbnail: UIImage?
+    @State private var receiptJPEG: Data?
+    @State private var receiptError: String?
+    @State private var isPreparingReceipt = false
+    @State private var receiptLoadID = UUID()
 
     @FocusState private var descriptionFocused: Bool
 
@@ -68,6 +76,7 @@ struct ExpenseEntryView: View {
             && !participantSet.isEmpty
             && auth.currentUser != nil
             && computedSplits != nil
+            && !isPreparingReceipt
     }
 
     private var computedSplits: [ExpenseSplit]? {
@@ -179,6 +188,10 @@ struct ExpenseEntryView: View {
                 seedMissingExactAmountsFromEqual()
             }
         }
+        .onChange(of: receiptPickerItem) { _, newItem in
+            guard let newItem else { return }
+            loadReceipt(from: newItem)
+        }
     }
 
     private var form: some View {
@@ -202,6 +215,8 @@ struct ExpenseEntryView: View {
 
                 sectionLabel("Split between")
                 participantsCard
+
+                receiptSection
 
                 Spacer(minLength: 24)
             }
@@ -406,6 +421,164 @@ struct ExpenseEntryView: View {
         .animation(.snappy(duration: 0.2), value: selectedSplitType)
     }
 
+    private var receiptSection: some View {
+        VStack(spacing: 6) {
+            if let thumb = receiptThumbnail {
+                receiptThumbnailCard(thumb)
+            } else {
+                receiptPlaceholder
+            }
+            if let receiptError {
+                Text(receiptError)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Sage.warning)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, Layout.cardHPad)
+        .padding(.top, 6)
+        .padding(.bottom, 18)
+        .animation(.snappy(duration: 0.2), value: receiptThumbnail != nil)
+    }
+
+    private var receiptPlaceholder: some View {
+        let preparing = isPreparingReceipt
+        return PhotosPicker(selection: $receiptPickerItem, matching: .images, photoLibrary: .shared()) {
+            HStack(spacing: 6) {
+                if preparing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Sage.accent)
+                } else {
+                    Image(systemName: "plus")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                Text(preparing ? "Preparing…" : "Add photo")
+                    .font(.system(size: 13, weight: .medium))
+                    .tracking(-0.07)
+            }
+            .foregroundStyle(Sage.accent)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Sage.accentSoft, style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(preparing)
+    }
+
+    private func receiptThumbnailCard(_ image: UIImage) -> some View {
+        HStack(spacing: 12) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Sage.cardBorder, lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Receipt attached")
+                    .font(.system(size: 14, weight: .medium))
+                    .tracking(-0.07)
+                    .foregroundStyle(Sage.text)
+                if let bytes = receiptJPEG?.count {
+                    Text(byteString(bytes))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Sage.textSecondary)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            PhotosPicker(selection: $receiptPickerItem, matching: .images, photoLibrary: .shared()) {
+                Text("Replace")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Sage.accent)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                Haptics.light()
+                clearReceipt()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Sage.textSecondary)
+                    .frame(width: 22, height: 22)
+                    .background(Sage.surface2, in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Sage.cardBorder, lineWidth: 1)
+        )
+    }
+
+    private func byteString(_ bytes: Int) -> String {
+        let kb = Double(bytes) / 1024
+        if kb < 1024 { return String(format: "%.0f KB", kb) }
+        return String(format: "%.1f MB", kb / 1024)
+    }
+
+    private func loadReceipt(from item: PhotosPickerItem) {
+        let loadID = UUID()
+        receiptLoadID = loadID
+        isPreparingReceipt = true
+        receiptError = nil
+        Task {
+            defer {
+                Task { @MainActor in
+                    guard receiptLoadID == loadID else { return }
+                    isPreparingReceipt = false
+                }
+            }
+            guard let raw = try? await item.loadTransferable(type: Data.self) else {
+                await MainActor.run {
+                    guard receiptLoadID == loadID else { return }
+                    receiptPickerItem = nil
+                    receiptError = "Couldn't read photo."
+                }
+                return
+            }
+            do {
+                let jpeg = try await Task.detached(priority: .userInitiated) {
+                    try ReceiptStorage.prepareJPEG(from: raw)
+                }.value
+                let preview = UIImage(data: jpeg)
+                await MainActor.run {
+                    guard receiptLoadID == loadID else { return }
+                    receiptJPEG = jpeg
+                    receiptThumbnail = preview
+                }
+            } catch {
+                await MainActor.run {
+                    guard receiptLoadID == loadID else { return }
+                    receiptPickerItem = nil
+                    receiptError = (error as? LocalizedError)?.errorDescription ?? "Couldn't process image."
+                    receiptJPEG = nil
+                    receiptThumbnail = nil
+                }
+            }
+        }
+    }
+
+    private func clearReceipt() {
+        receiptLoadID = UUID()
+        receiptPickerItem = nil
+        receiptThumbnail = nil
+        receiptJPEG = nil
+        receiptError = nil
+        isPreparingReceipt = false
+    }
+
     private func participantRow(_ row: ParticipantRow) -> some View {
         HStack(spacing: 12) {
             Button {
@@ -500,13 +673,33 @@ struct ExpenseEntryView: View {
         guard canSave, let trip, let user = auth.currentUser else { return }
         guard let splits = computedSplits else { return }
 
+        let expenseID = UUID()
+        let tripID = trip.id
+        let receiptPath: String?
+        if let receiptJPEG {
+            do {
+                receiptPath = try ReceiptStorage.persistPendingUpload(
+                    jpeg: receiptJPEG,
+                    tripID: tripID,
+                    expenseID: expenseID
+                )
+            } catch {
+                receiptError = (error as? LocalizedError)?.errorDescription ?? "Couldn't prepare receipt."
+                return
+            }
+        } else {
+            receiptPath = nil
+        }
+
         let expense = ExpenseEntity(
+            id: expenseID,
             payerID: user.id,
             amount: totalAmount,
             currency: currency,
             categoryID: selectedCategoryID,
             descriptionText: description.trimmingCharacters(in: .whitespaces),
             expenseDate: expenseDate,
+            receiptStoragePath: receiptPath,
             createdByID: user.id,
             trip: trip
         )
@@ -527,9 +720,15 @@ struct ExpenseEntryView: View {
 
         try? context.save()
         Haptics.success()
+
         dismiss()
 
-        Task { await sync.pushPending() }
+        Task {
+            if let receiptPath {
+                try? await ReceiptStorage.uploadPendingReceipt(path: receiptPath)
+            }
+            await sync.pushPending()
+        }
     }
 }
 

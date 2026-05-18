@@ -514,6 +514,7 @@ final class SyncService {
             try await pushProfiles()
             try await pushTrips()
             try await pushSettlements()
+            await pushPendingReceiptUploads()
             try await pushExpensesAndSplits()
             phase = .idle
         } catch {
@@ -616,6 +617,26 @@ final class SyncService {
             }
         }
         try ctx.save()
+    }
+
+    private func pushPendingReceiptUploads() async {
+        let ctx = container.mainContext
+        do {
+            let paths = try Set(
+                ctx.fetch(FetchDescriptor<ExpenseEntity>())
+                    .filter { $0.deletedAt == nil }
+                    .compactMap(\.receiptStoragePath)
+            )
+            for path in paths {
+                do {
+                    try await ReceiptStorage.uploadPendingReceipt(path: path)
+                } catch {
+                    syncLog.error("receipt upload failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        } catch {
+            syncLog.error("pending receipt scan failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Expenses + splits via the create_expense_with_splits RPC (transactional).

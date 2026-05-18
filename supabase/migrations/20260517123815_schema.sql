@@ -1068,7 +1068,7 @@ create policy trip_mute_prefs_delete_self on public.trip_mute_prefs
 -- ============================================================================
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('receipts', 'receipts', false, 1048576, array['image/jpeg'])
+values ('receipts', 'receipts', false, 10485760, array['image/jpeg'])
 on conflict (id) do update set
   public = excluded.public,
   file_size_limit = excluded.file_size_limit,
