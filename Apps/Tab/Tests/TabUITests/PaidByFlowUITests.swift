@@ -13,6 +13,7 @@ final class PaidByFlowUITests: XCTestCase {
     func testExactPaidByLedgerSurvivesReturningFromPaidByEditor() throws {
         let app = XCUIApplication()
         app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
+        app.launchEnvironment["TAB_UI_TEST_SEED_PEOPLE"] = "1"
         app.launchArguments.append("-ApplePersistenceIgnoreState")
         app.launchArguments.append("YES")
         app.launch()

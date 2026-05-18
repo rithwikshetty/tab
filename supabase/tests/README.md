@@ -1,20 +1,27 @@
 # tab — Database tests
 
-pgTAP-based assertions covering schema integrity, constraints, triggers, RLS,
-and edge cases. Each `.sql` file is self-contained:
+Tests cover both the split-SQL assembly contract and database behavior. The shell test verifies generated artifacts; pgTAP SQL files cover schema integrity, constraints, triggers, RLS, and edge cases. Each `.sql` file is self-contained:
 
 - Wraps everything in `BEGIN ... ROLLBACK` so the DB stays clean.
 - Declares a `plan(N)` of expected assertions.
-- Uses a `_results` temp table to collect every assertion's TAP line, so
-  `mcp__supabase__execute_sql` returns all rows (not just the last one).
+- Uses a temp results table to collect every assertion's TAP line, so MCP/CLI execution returns all rows (not just the last one).
 
 ## Running
 
-Via Supabase MCP — paste a test file's body into `execute_sql`. Read the
-returned rows; any line starting with `not ok` is a failure.
+First verify the local SQL source split:
+
+```bash
+bash supabase/tests/00_sql_assembly.sh
+```
+
+Then run pgTAP files via Supabase MCP or Supabase CLI against a disposable DB. Read the returned rows; any line starting with `not ok` is a failure.
+
+```bash
+npx --yes supabase db query --workdir "$PWD" -f supabase/tests/01_schema.sql --linked
+```
 
 ```sql
--- Returns one row per assertion plus a final "1..N" / "# Looks like ..." line.
+-- SQL tests return one row per assertion plus a final "1..N" / "# Looks like ..." line.
 ```
 
 ## Test fixture
@@ -33,9 +40,10 @@ trigger then auto-creates `public.profiles`). Fixture UUIDs:
 
 | File                      | Tests | Concern                                                |
 |---------------------------|-------|--------------------------------------------------------|
+| `00_sql_assembly.sh`      | 1     | Split SQL source generates the checked-in baseline; `schema.sql` stays small |
 | `01_schema.sql`           | 46    | Tables/PKs/FKs/RLS-enabled existence, realtime publication membership, and email-person RPCs |
 | `02_constraints.sql`      | 18    | CHECK / UNIQUE / FK constraints plus trip-person ledger invariants |
 | `03_triggers.sql`         | 9     | `handle_new_user`, sync/touch triggers, transactional trip creation |
 | `04_rls.sql`              | 16    | RLS allow + deny paths and email-claim joining          |
 | `05_edge_cases.sql`       | 10    | Soft-delete purge, cascade vs restrict, helper-fn behavior |
-| `06_expense_payments.sql` | 10    | Transactional expense RPC with trip-person payments/splits |
+| `06_expense_payments.sql` | 14    | Transactional expense create/edit RPC with trip-person payments/splits |

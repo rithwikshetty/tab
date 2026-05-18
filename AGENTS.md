@@ -60,8 +60,9 @@ iOS app target lives at the repo root (or `Apps/`) and depends on `TabCore` via 
 - Pre-launch default: there are no real users. Prefer destructive schema evolution and full DB recreation/reset over compatibility-preserving migration chains.
 - Unless the user explicitly says to preserve existing remote/local data, agents may drop and recreate tables, policies, functions, and related DB objects.
 - Dummy/seed data is disposable. Recreate and reseed freely to validate product behavior.
-- Canonical schema lives in `supabase/schema.sql`. Update it directly for schema changes.
-- Migration strategy is baseline-first: rewrite/squash baseline files aggressively; do not create incremental migration chains unless the user explicitly asks.
+- Editable database SQL lives in numbered files under `supabase/sql/`. `supabase/schema.sql` is only a small source map.
+- After editing `supabase/sql/*.sql`, run `./supabase/scripts/build_schema.sh --write` and `bash supabase/tests/00_sql_assembly.sh` so the generated baseline stays in sync.
+- Migration strategy is baseline-first: rewrite/squash `supabase/migrations/20260518000000_baseline.sql` via the build script; do not create incremental migration chains unless the user explicitly asks.
 - For agents with Supabase MCP access, use MCP for remote destructive DB work. Prefer `apply_migration` with the current baseline/destructive SQL; use `reset_branch` for disposable Supabase development branches.
 - CLI fallback/human reset command: `./supabase/scripts/recreate_db.sh` (uses `supabase db reset` non-interactively).
 - Receipt storage objects/buckets cannot be deleted with raw SQL. Use `./supabase/scripts/clear_receipts_storage.sh`; pass `SUPABASE_SERVICE_ROLE_KEY` and `--delete-bucket` to delete the bucket itself.
@@ -104,8 +105,8 @@ Mockups live in `design/` organised by feature area, one subfolder per area:
 ```bash
 cd Packages/TabCore && swift test     # Swift tests
 open design/mockups/v1.html              # Mockups (main app screens)
-# Supabase: destructive reset/recreate (default for this project)
-# Agents: prefer Supabase MCP when available. CLI fallback:
+# Supabase: verify split SQL, then destructive reset/recreate
+bash supabase/tests/00_sql_assembly.sh
 ./supabase/scripts/recreate_db.sh
 ```
 

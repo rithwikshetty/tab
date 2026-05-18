@@ -90,6 +90,7 @@ struct NewTripSheet: View {
         let trip = TripEntity(name: trimmed, createdByID: user.id)
         context.insert(trip)
         let person = TripPersonEntity(
+            id: creatorPersonID(for: user.id),
             userID: user.id,
             email: user.email.map(Self.normalizedEmail) ?? "\(user.id.uuidString.lowercased())@users.tab",
             displayName: user.displayName,
@@ -99,6 +100,10 @@ struct NewTripSheet: View {
         )
         context.insert(person)
 
+        #if DEBUG
+        insertUITestPeopleIfRequested(into: trip, invitedByID: user.id)
+        #endif
+
         try? context.save()
 
         Haptics.success()
@@ -106,6 +111,38 @@ struct NewTripSheet: View {
 
         Task { await sync.pushPending() }
     }
+
+    private func creatorPersonID(for userID: UUID) -> UUID {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["TAB_UI_TEST_SEED_PEOPLE"] == "1" {
+            return userID
+        }
+        #endif
+        return UUID()
+    }
+
+    #if DEBUG
+    private func insertUITestPeopleIfRequested(into trip: TripEntity, invitedByID: UUID) {
+        guard ProcessInfo.processInfo.environment["TAB_UI_TEST_SEED_PEOPLE"] == "1" else { return }
+
+        let fixtures: [(id: UUID, email: String, displayName: String)] = [
+            (UUID(uuidString: "22222222-2222-2222-2222-222222222222")!, "alex@test.tab", "Alex"),
+            (UUID(uuidString: "33333333-3333-3333-3333-333333333333")!, "sam@test.tab", "Sam"),
+        ]
+
+        let existingIDs = Set(trip.people.map(\.id))
+        for fixture in fixtures where !existingIDs.contains(fixture.id) {
+            context.insert(TripPersonEntity(
+                id: fixture.id,
+                email: fixture.email,
+                displayName: fixture.displayName,
+                invitedByID: invitedByID,
+                trip: trip,
+                joinedAt: nil
+            ))
+        }
+    }
+    #endif
 
     private static func normalizedEmail(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

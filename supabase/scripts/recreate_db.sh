@@ -12,10 +12,11 @@ Usage:
   ./supabase/scripts/recreate_db.sh
 
 Behavior:
-  1) If SUPABASE_DB_URL is set, applies destructive teardown + schema to that DB.
-  2) Else if SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD are set, links to
+  1) Builds the generated schema from supabase/sql/*.sql.
+  2) If SUPABASE_DB_URL is set, applies destructive teardown + schema to that DB.
+  3) Else if SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD are set, links to
      SUPABASE_PROJECT_REF (or default project ref) and applies destructive SQL.
-  3) Else applies destructive SQL to the currently linked database.
+  4) Else applies destructive SQL to the currently linked database.
 
 Environment variables:
   SUPABASE_DB_URL         Optional direct Postgres URL (percent-encoded).
@@ -42,13 +43,17 @@ fi
 SUPABASE_CMD=(npx --yes supabase)
 QUERY_ARGS=(db query --workdir "$ROOT_DIR")
 TEARDOWN_FILE="$ROOT_DIR/supabase/scripts/destructive_teardown.sql"
-SCHEMA_FILE="$ROOT_DIR/supabase/schema.sql"
+BUILD_SCHEMA_SCRIPT="$ROOT_DIR/supabase/scripts/build_schema.sh"
+GENERATED_SCHEMA_FILE="$ROOT_DIR/supabase/.temp/generated_schema.sql"
 
 apply_files() {
+  mkdir -p "$(dirname "$GENERATED_SCHEMA_FILE")"
+  echo "[recreate-db] Building schema from supabase/sql"
+  "$BUILD_SCHEMA_SCRIPT" --out "$GENERATED_SCHEMA_FILE"
   echo "[recreate-db] Applying destructive teardown"
   "${SUPABASE_CMD[@]}" "${QUERY_ARGS[@]}" -f "$TEARDOWN_FILE" "$@"
-  echo "[recreate-db] Applying canonical schema"
-  "${SUPABASE_CMD[@]}" "${QUERY_ARGS[@]}" -f "$SCHEMA_FILE" "$@"
+  echo "[recreate-db] Applying generated schema"
+  "${SUPABASE_CMD[@]}" "${QUERY_ARGS[@]}" -f "$GENERATED_SCHEMA_FILE" "$@"
 }
 
 if [[ -n "${SUPABASE_DB_URL:-}" ]]; then

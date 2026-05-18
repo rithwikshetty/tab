@@ -3,7 +3,7 @@
 begin;
 set search_path = extensions, public, pg_temp;
 
-select plan(10);
+select plan(14);
 create temp table _r (line text);
 grant insert, select on _r to authenticated;
 
@@ -65,6 +65,31 @@ insert into _r select lives_ok(
 
 insert into _r select is((select count(*)::int from public.expense_payments where expense_id = 'aaaaaaaa-0000-0000-0000-000000000001'), 1, 'payment rows replaced');
 insert into _r select is((select count(*)::int from public.expense_splits where expense_id = 'aaaaaaaa-0000-0000-0000-000000000001'), 1, 'split rows replaced');
+insert into _r select is((select description from public.expenses where id = 'aaaaaaaa-0000-0000-0000-000000000001'), 'Villa edited', 'expense header fields updated');
+
+update public.expenses
+set deleted_at = now()
+where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000003","role":"authenticated"}';
+insert into _r select throws_ok(
+  $$select public.create_expense_with_payments_and_splits(
+      jsonb_build_object('id', 'aaaaaaaa-0000-0000-0000-000000000001', 'trip_id', '11111111-1111-1111-1111-111111111111', 'amount', 100, 'currency', 'EUR', 'description', 'Unauthorized deleted edit', 'expense_date', '2026-05-03'),
+      jsonb_build_array(),
+      jsonb_build_array()
+    )$$,
+  '42501', null, 'expense RPC checks membership before deleted expense status');
+
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}';
+insert into _r select throws_ok(
+  $$select public.create_expense_with_payments_and_splits(
+      jsonb_build_object('id', 'aaaaaaaa-0000-0000-0000-000000000001', 'trip_id', '11111111-1111-1111-1111-111111111111', 'amount', 100, 'currency', 'EUR', 'description', 'Deleted edit should fail', 'expense_date', '2026-05-03'),
+      jsonb_build_array(),
+      jsonb_build_array()
+    )$$,
+  '23514', null, 'expense RPC rejects editing soft-deleted expenses');
+
+insert into _r select is((select description from public.expenses where id = 'aaaaaaaa-0000-0000-0000-000000000001'), 'Villa edited', 'rejected deleted edit leaves expense unchanged');
 
 insert into _r select * from finish();
 select line from _r;
