@@ -3,7 +3,7 @@
 begin;
 set local search_path = extensions, public, pg_temp;
 
-select plan(13);
+select plan(14);
 create temp table _r (line text);
 
 -- ===== Fixture =====
@@ -17,7 +17,10 @@ values
    '{}'::jsonb),
   ('00000000-0000-0000-0000-000000000003'::uuid, null,
    '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated',
-   '{}'::jsonb);
+   '{}'::jsonb),
+  ('00000000-0000-0000-0000-000000000004'::uuid, 'rithwik@test.tab',
+   '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated', 'authenticated',
+   '{"name":"Rithwik Shetty"}'::jsonb);
 
 -- handle_new_user: profile created with name from metadata
 insert into _r select is(
@@ -38,6 +41,12 @@ insert into _r select is(
   (select display_name from public.profiles where id = '00000000-0000-0000-0000-000000000003'::uuid),
   'user',
   'handle_new_user: final fallback to literal "user" when email and metadata absent'
+);
+
+insert into _r select is(
+  (select display_name from public.profiles where id = '00000000-0000-0000-0000-000000000004'::uuid),
+  'Rithwik Shetty',
+  'handle_new_user: display_name falls back to raw_user_meta_data.name'
 );
 
 -- auto_add_creator_as_member

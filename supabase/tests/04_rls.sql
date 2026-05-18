@@ -9,7 +9,7 @@
 begin;
 set local search_path = extensions, public, pg_temp;
 
-select plan(43);
+select plan(45);
 create temp table _r (line text);
 grant insert, select on _r to authenticated, anon;
 
@@ -271,6 +271,21 @@ insert into _r select is(
 insert into _r select ok(
   (select count(*)::int from public.profiles) >= 4,
   'Carol sees all profiles (open SELECT policy)');
+
+-- Can repair a missing self profile through the authenticated profile RPC.
+reset role;
+delete from public.profiles where id = '00000000-0000-0000-0000-000000000003'::uuid;
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000003","role":"authenticated"}';
+
+insert into _r select lives_ok(
+  $$select public.ensure_current_profile('Rithwik Shetty', null)$$,
+  'Carol recreates her own missing profile via ensure_current_profile');
+
+insert into _r select is(
+  (select display_name from public.profiles where id = '00000000-0000-0000-0000-000000000003'::uuid),
+  'Rithwik Shetty',
+  'ensure_current_profile writes only the authenticated user profile');
 
 -- Cannot SELF-INSERT trip_members directly. Invite-only joining is enforced by
 -- removing direct INSERT RLS and routing through join_trip_with_invite.

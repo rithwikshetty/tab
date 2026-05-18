@@ -32,6 +32,13 @@ fi
 
 cd "$ROOT_DIR"
 
+if [[ -f "$ROOT_DIR/.env.local" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.env.local"
+  set +a
+fi
+
 SUPABASE_CMD=(npx --yes supabase)
 QUERY_ARGS=(db query --workdir "$ROOT_DIR")
 TEARDOWN_FILE="$ROOT_DIR/supabase/scripts/destructive_teardown.sql"

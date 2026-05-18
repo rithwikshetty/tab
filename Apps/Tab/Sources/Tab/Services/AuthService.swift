@@ -45,10 +45,10 @@ final class AuthService {
 
     private static func useMockAuth() -> Bool {
         let environment = ProcessInfo.processInfo.environment
-        if environment["TAB_REAL_AUTH"] == "1" || environment["TAB_MOCK_AUTH"] == "0" {
+        if environment["TAB_REAL_AUTH"] == "1" {
             return false
         }
-        return true
+        return environment["TAB_MOCK_AUTH"] == "1"
     }
     #endif
 
@@ -87,8 +87,11 @@ final class AuthService {
                 ])
             )
             currentUser = CurrentUser(id: session.user.id, email: session.user.email, displayName: displayName)
-            phase = .signedIn(session.user.id)
+        } else {
+            let displayName = Self.displayName(from: session.user)
+            currentUser = CurrentUser(id: session.user.id, email: session.user.email, displayName: displayName)
         }
+        phase = .signedIn(session.user.id)
     }
 
     func signOut() async {
@@ -99,8 +102,14 @@ final class AuthService {
         if let displayName = normalizedDisplayName(user.userMetadata["display_name"]?.stringValue) {
             return displayName
         }
+        if let givenName = normalizedDisplayName(user.userMetadata["given_name"]?.stringValue) {
+            return givenName
+        }
         if let fullName = normalizedDisplayName(user.userMetadata["full_name"]?.stringValue) {
             return fullName
+        }
+        if let name = normalizedDisplayName(user.userMetadata["name"]?.stringValue) {
+            return name
         }
         return displayName(from: user.email)
     }

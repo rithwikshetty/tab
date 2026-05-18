@@ -14,11 +14,7 @@ struct PaidByView: View {
     @Query private var trips: [TripEntity]
     @Query private var profiles: [ProfileEntity]
 
-    @State private var mode: PaymentMode = .equal
-    @State private var selectedPayerIDs: Set<UUID> = []
-    @State private var exactAmountTextByUserID: [UUID: String] = [:]
-    @State private var exactAmountsManuallyEdited = false
-
+    @State private var draft = PaidByDraft()
     @FocusState private var focusedPayerID: UUID?
 
     private enum Layout {
@@ -44,45 +40,13 @@ struct PaidByView: View {
         trip?.members.map(\.userID) ?? []
     }
 
-    private var enteredExactTotal: Decimal {
-        selectedPayerIDs.reduce(Decimal(0)) { total, userID in
-            total + (decimal(from: exactAmountTextByUserID[userID, default: ""]) ?? 0)
-        }
-    }
-
     private var computedPayments: [Payment]? {
-        guard !selectedPayerIDs.isEmpty, totalAmount > 0 else { return nil }
-        let payerList = Array(selectedPayerIDs)
-        switch mode {
-        case .equal:
-            return try? PaymentCalculator.calculate(
-                totalAmount: totalAmount,
-                currency: currency,
-                payers: payerList,
-                paymentMode: .equal
-            )
-        case .exact:
-            var amounts: [UUID: Decimal] = [:]
-            for id in selectedPayerIDs {
-                let raw = exactAmountTextByUserID[id, default: ""].trimmingCharacters(in: .whitespaces)
-                guard !raw.isEmpty, let amount = decimal(from: raw) else { return nil }
-                amounts[id] = amount
-            }
-            return try? PaymentCalculator.calculate(
-                totalAmount: totalAmount,
-                currency: currency,
-                payers: payerList,
-                paymentMode: .exact,
-                exactAmounts: amounts
-            )
-        case .percentage, .shares, .adjustment:
-            return nil
-        }
+        draft.computedPayments(totalAmount: totalAmount, currency: currency)
     }
 
     private var reconcileFooter: (text: String, isValid: Bool)? {
-        guard !selectedPayerIDs.isEmpty, totalAmount > 0 else { return nil }
-        switch mode {
+        guard !draft.selectedPayerIDs.isEmpty, totalAmount > 0 else { return nil }
+        switch draft.mode {
         case .equal:
             guard let payments = computedPayments else { return nil }
             let amounts = Set(payments.map(\.amountPaid))
@@ -91,9 +55,9 @@ struct PaidByView: View {
             }
             return ("Equal total \(MoneyFormatter.format(totalAmount, currency: currency))", true)
         case .exact:
-            let remaining = totalAmount - enteredExactTotal
+            let remaining = totalAmount - draft.enteredExactTotal
             if computedPayments != nil {
-                return ("Exact total \(MoneyFormatter.format(enteredExactTotal, currency: currency))", true)
+                return ("Exact total \(MoneyFormatter.format(draft.enteredExactTotal, currency: currency))", true)
             }
             if remaining >= 0 {
                 return ("Remaining \(MoneyFormatter.format(remaining, currency: currency))", false)
@@ -132,7 +96,7 @@ struct PaidByView: View {
         }
         .toolbarBackground(Sage.bg, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
-        .onAppear { seed() }
+        .onAppear { draft.seed(payments: payments, currentUserID: auth.currentUser?.id, members: members) }
     }
 
     private var form: some View {
@@ -185,8 +149,14 @@ struct PaidByView: View {
             Segmented(
                 options: ["Equal", "Exact"],
                 selection: Binding(
-                    get: { mode == .equal ? 0 : 1 },
-                    set: { mode = $0 == 0 ? .equal : .exact }
+                    get: { draft.mode == .equal ? 0 : 1 },
+                    set: { newValue in
+                        let newMode: PaymentMode = newValue == 0 ? .equal : .exact
+                        draft.setMode(newMode, totalAmount: totalAmount, currency: currency)
+                        if newMode != .exact {
+                            focusedPayerID = nil
+                        }
+                    }
                 ),
                 mini: true,
                 horizontalPadding: 0
@@ -195,14 +165,6 @@ struct PaidByView: View {
         }
         .padding(.horizontal, Layout.hPad)
         .padding(.vertical, 12)
-        .onChange(of: mode) { _, newMode in
-            if newMode == .exact {
-                exactAmountsManuallyEdited = false
-                seedExactFromEqual(overwriteExisting: true)
-            } else {
-                focusedPayerID = nil
-            }
-        }
     }
 
     private var payerCard: some View {
@@ -230,11 +192,11 @@ struct PaidByView: View {
         )
         .padding(.horizontal, Layout.cardHPad)
         .padding(.top, 8)
-        .animation(.snappy(duration: 0.2), value: mode)
+        .animation(.snappy(duration: 0.2), value: draft.mode)
     }
 
     private func payerRow(userID: UUID) -> some View {
-        let isOn = selectedPayerIDs.contains(userID)
+        let isOn = draft.selectedPayerIDs.contains(userID)
         let isYou = userID == auth.currentUser?.id
         let name = isYou ? "You" : (profilesByID[userID]?.displayName ?? "Member")
         let payment = computedPayments?.first(where: { $0.payerID == userID })
@@ -259,6 +221,8 @@ struct PaidByView: View {
                     .animation(.snappy(duration: 0.18), value: isOn)
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("paidBy.toggle.\(userID.uuidString)")
+            .accessibilityLabel("Toggle payer \(name)")
 
             Text(name)
                 .font(.formRow.weight(.medium))
@@ -267,21 +231,13 @@ struct PaidByView: View {
 
             Spacer()
 
-            if mode == .exact, isOn {
-                DecimalTextField(
+            if draft.mode == .exact, isOn {
+                InlineDecimalTextField(
                     text: Binding(
-                        get: { exactAmountTextByUserID[userID, default: ""] },
-                        set: {
-                            exactAmountsManuallyEdited = true
-                            exactAmountTextByUserID[userID] = sanitize($0)
-                        }
+                        get: { draft.exactAmountTextByUserID[userID, default: ""] },
+                        set: { draft.setExactAmount($0, for: userID) }
                     ),
-                    placeholder: "0.00",
-                    font: .systemFont(ofSize: 13),
-                    textColor: UIColor(Sage.text),
-                    placeholderColor: UIColor(Sage.textSecondary.opacity(0.5)),
-                    alignment: .right,
-                    tintColor: UIColor(Sage.accent)
+                    accessibilityIdentifier: "paidBy.exactAmount.\(userID.uuidString)"
                 )
                 .frame(width: 88, height: 28)
                 .padding(.horizontal, 8)
@@ -307,26 +263,39 @@ struct PaidByView: View {
     }
 
     private func togglePayer(_ userID: UUID) {
-        if selectedPayerIDs.contains(userID) {
-            if selectedPayerIDs.count > 1 {
-                selectedPayerIDs.remove(userID)
-                exactAmountTextByUserID.removeValue(forKey: userID)
-                if mode == .exact && !exactAmountsManuallyEdited {
-                    seedExactFromEqual(overwriteExisting: true)
-                }
-            }
-        } else {
-            selectedPayerIDs.insert(userID)
-            if mode == .exact {
-                seedExactFromEqual(overwriteExisting: !exactAmountsManuallyEdited)
-            }
+        draft.togglePayer(userID, totalAmount: totalAmount, currency: currency)
+    }
+
+    private func commit() {
+        guard let computed = computedPayments else { return }
+        payments = computed
+        Haptics.light()
+        dismiss()
+    }
+}
+
+@Observable
+private final class PaidByDraft {
+    var mode: PaymentMode = .equal
+    var selectedPayerIDs: Set<UUID> = []
+    var exactAmountTextByUserID: [UUID: String] = [:]
+
+    private var exactAmountsManuallyEdited = false
+    private var hasSeeded = false
+
+    var enteredExactTotal: Decimal {
+        selectedPayerIDs.reduce(Decimal(0)) { total, userID in
+            total + (Self.decimal(from: exactAmountTextByUserID[userID, default: ""]) ?? 0)
         }
     }
 
-    private func seed() {
+    func seed(payments: [Payment], currentUserID: UUID?, members: [UUID]) {
+        guard !hasSeeded else { return }
+        hasSeeded = true
+
         if payments.isEmpty {
-            if let me = auth.currentUser?.id {
-                selectedPayerIDs = [me]
+            if let currentUserID {
+                selectedPayerIDs = [currentUserID]
             } else if let first = members.first {
                 selectedPayerIDs = [first]
             }
@@ -336,14 +305,79 @@ struct PaidByView: View {
             mode = payments.first?.paymentMode ?? .equal
             if mode == .exact {
                 exactAmountsManuallyEdited = true
-                for p in payments {
-                    exactAmountTextByUserID[p.payerID] = plainAmountString(p.amountPaid)
+                for payment in payments {
+                    exactAmountTextByUserID[payment.payerID] = Self.plainAmountString(payment.amountPaid)
                 }
             }
         }
     }
 
-    private func seedExactFromEqual(overwriteExisting: Bool) {
+    func setMode(_ newMode: PaymentMode, totalAmount: Decimal, currency: String) {
+        mode = newMode
+        if newMode == .exact {
+            exactAmountsManuallyEdited = false
+            seedExactFromEqual(totalAmount: totalAmount, currency: currency, overwriteExisting: true)
+        }
+    }
+
+    func togglePayer(_ userID: UUID, totalAmount: Decimal, currency: String) {
+        if selectedPayerIDs.contains(userID) {
+            if selectedPayerIDs.count > 1 {
+                selectedPayerIDs.remove(userID)
+                exactAmountTextByUserID.removeValue(forKey: userID)
+                if mode == .exact && !exactAmountsManuallyEdited {
+                    seedExactFromEqual(totalAmount: totalAmount, currency: currency, overwriteExisting: true)
+                }
+            }
+        } else {
+            selectedPayerIDs.insert(userID)
+            if mode == .exact {
+                seedExactFromEqual(
+                    totalAmount: totalAmount,
+                    currency: currency,
+                    overwriteExisting: !exactAmountsManuallyEdited
+                )
+            }
+        }
+    }
+
+    func setExactAmount(_ input: String, for userID: UUID) {
+        exactAmountsManuallyEdited = true
+        exactAmountTextByUserID[userID] = Self.sanitize(input)
+    }
+
+    func computedPayments(totalAmount: Decimal, currency: String) -> [Payment]? {
+        guard !selectedPayerIDs.isEmpty, totalAmount > 0 else { return nil }
+        let payerList = Array(selectedPayerIDs)
+
+        switch mode {
+        case .equal:
+            return try? PaymentCalculator.calculate(
+                totalAmount: totalAmount,
+                currency: currency,
+                payers: payerList,
+                paymentMode: .equal
+            )
+        case .exact:
+            var amounts: [UUID: Decimal] = [:]
+            for id in selectedPayerIDs {
+                let raw = exactAmountTextByUserID[id, default: ""].trimmingCharacters(in: .whitespaces)
+                guard !raw.isEmpty, let amount = Self.decimal(from: raw) else { return nil }
+                amounts[id] = amount
+            }
+            return try? PaymentCalculator.calculate(
+                totalAmount: totalAmount,
+                currency: currency,
+                payers: payerList,
+                paymentMode: .exact,
+                exactAmounts: amounts
+            )
+        case .percentage, .shares, .adjustment:
+            return nil
+        }
+    }
+
+    private func seedExactFromEqual(totalAmount: Decimal, currency: String, overwriteExisting: Bool) {
         guard !selectedPayerIDs.isEmpty, totalAmount > 0 else { return }
         guard let computed = try? PaymentCalculator.calculate(
             totalAmount: totalAmount,
@@ -353,22 +387,16 @@ struct PaidByView: View {
         ) else { return }
 
         exactAmountTextByUserID = exactAmountTextByUserID.filter { selectedPayerIDs.contains($0.key) }
-        for p in computed {
-            let existing = exactAmountTextByUserID[p.payerID, default: ""].trimmingCharacters(in: .whitespaces)
+        for payment in computed {
+            let existing = exactAmountTextByUserID[payment.payerID, default: ""]
+                .trimmingCharacters(in: .whitespaces)
             if overwriteExisting || existing.isEmpty {
-                exactAmountTextByUserID[p.payerID] = plainAmountString(p.amountPaid)
+                exactAmountTextByUserID[payment.payerID] = Self.plainAmountString(payment.amountPaid)
             }
         }
     }
 
-    private func commit() {
-        guard let computed = computedPayments else { return }
-        payments = computed
-        Haptics.light()
-        dismiss()
-    }
-
-    private func sanitize(_ input: String) -> String {
+    private static func sanitize(_ input: String) -> String {
         var cleaned = input.replacingOccurrences(of: ",", with: ".")
         cleaned = cleaned.filter { $0.isNumber || $0 == "." }
         let parts = cleaned.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
@@ -378,17 +406,17 @@ struct PaidByView: View {
         return cleaned
     }
 
-    private func decimal(from input: String) -> Decimal? {
+    private static func decimal(from input: String) -> Decimal? {
         Decimal(string: input.replacingOccurrences(of: ",", with: "."))
     }
 
-    private func plainAmountString(_ amount: Decimal) -> String {
-        let f = NumberFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.numberStyle = .decimal
-        f.minimumFractionDigits = 2
-        f.maximumFractionDigits = 2
-        f.usesGroupingSeparator = false
-        return f.string(from: amount as NSDecimalNumber) ?? NSDecimalNumber(decimal: amount).stringValue
+    private static func plainAmountString(_ amount: Decimal) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        formatter.usesGroupingSeparator = false
+        return formatter.string(from: amount as NSDecimalNumber) ?? NSDecimalNumber(decimal: amount).stringValue
     }
 }

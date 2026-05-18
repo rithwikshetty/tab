@@ -66,7 +66,7 @@ struct TripListView: View {
             .scrollIndicators(.hidden)
             .refreshable { await sync.pullAll() }
 
-            Fab(systemImage: "plus") { showingNewTrip = true }
+            Fab(systemImage: "plus", accessibilityIdentifier: "trips.addButton") { showingNewTrip = true }
                 .padding(.trailing, 18)
                 .padding(.bottom, 100)
         }

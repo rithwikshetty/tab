@@ -24,6 +24,7 @@ struct NewTripSheet: View {
                         .textInputAutocapitalization(.words)
                         .submitLabel(.done)
                         .focused($nameFocused)
+                        .accessibilityIdentifier("newTrip.nameField")
                         .onSubmit { save() }
                         .font(.formRow)
                         .tracking(-0.07)
@@ -62,6 +63,7 @@ struct NewTripSheet: View {
                         .font(.navLinkBold)
                         .foregroundStyle(canCreate ? Sage.accent : Sage.accent.opacity(0.4))
                         .disabled(!canCreate)
+                        .accessibilityIdentifier("newTrip.createButton")
                 }
             }
             .toolbarBackground(Sage.bg, for: .navigationBar)
@@ -91,9 +93,7 @@ struct NewTripSheet: View {
         context.insert(member)
 
         #if DEBUG
-        if auth.isUsingMockAuth {
-            insertDemoMembers(into: trip, currentUserID: user.id)
-        }
+        insertDemoMembers(into: trip, currentUserID: user.id)
         #endif
 
         try? context.save()

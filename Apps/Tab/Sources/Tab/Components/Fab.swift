@@ -3,6 +3,7 @@ import SwiftUI
 struct Fab: View {
     var label: String? = nil
     var systemImage: String = "plus"
+    var accessibilityIdentifier: String? = nil
     var action: () -> Void = {}
 
     private var isCircle: Bool { label == nil }
@@ -29,6 +30,7 @@ struct Fab: View {
             .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier(accessibilityIdentifier ?? "")
     }
 }
 

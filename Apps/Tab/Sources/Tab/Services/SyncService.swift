@@ -58,7 +58,14 @@ final class SyncService {
 
     /// Returns true when a real Supabase session exists (i.e. not mock auth).
     private var hasRealSession: Bool {
-        client.auth.currentSession != nil
+        #if DEBUG
+        if auth?.isUsingMockAuth == true { return false }
+        #endif
+        guard let session = client.auth.currentSession,
+              let currentUserID = auth?.currentUser?.id else {
+            return false
+        }
+        return session.user.id == currentUserID
     }
 
     func ensureTripUploaded(tripID: UUID) async throws {
@@ -582,13 +589,14 @@ final class SyncService {
 
     private func pushProfiles() async throws {
         let ctx = container.mainContext
+        guard let currentUserID = auth?.currentUser?.id else { return }
         let dirty = try ctx.fetch(FetchDescriptor<ProfileEntity>())
-            .filter { $0.pushedWriteID != $0.writeID }
+            .filter { $0.id == currentUserID && $0.pushedWriteID != $0.writeID }
         guard !dirty.isEmpty else { return }
 
         for profile in dirty {
             do {
-                try await pushProfile(profile)
+                try await ensureCurrentProfile(profile)
             } catch {
                 syncLog.error("profile push failed: \(error.localizedDescription, privacy: .public)")
             }
@@ -602,18 +610,15 @@ final class SyncService {
             predicate: #Predicate { $0.id == userID }
         )).first
         guard let profile, profile.pushedWriteID != profile.writeID else { return }
-        try await pushProfile(profile)
+        try await ensureCurrentProfile(profile)
     }
 
-    private func pushProfile(_ profile: ProfileEntity) async throws {
-        let insert = ProfileInsertDTO(
-            id: profile.id,
-            displayName: profile.displayName,
-            avatarURL: profile.avatarURL
-        )
+    private func ensureCurrentProfile(_ profile: ProfileEntity) async throws {
         try await client
-            .from("profiles")
-            .upsert(insert, onConflict: "id")
+            .rpc("ensure_current_profile", params: [
+                "p_display_name": AnyJSON.string(profile.displayName),
+                "p_avatar_url": profile.avatarURL.map { AnyJSON.string($0) } ?? .null,
+            ])
             .execute()
         profile.pushedWriteID = profile.writeID
     }

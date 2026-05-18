@@ -31,6 +31,7 @@ struct ExpenseEntryView: View {
     @State private var participantSet: Set<UUID> = []
     @State private var currency: String = "EUR"
     @State private var expenseDate: Date = .now
+    @State private var isDatePickerPresented = false
 
     /// Empty = single-payer with the recorder paying the full amount (default).
     /// Non-empty = explicit ledger from PaidByView. Sum must equal totalAmount.
@@ -256,7 +257,8 @@ struct ExpenseEntryView: View {
                 placeholderColor: UIColor(Sage.textSecondary.opacity(0.55)),
                 alignment: .left,
                 tintColor: UIColor(Sage.accent),
-                becomeFirstResponderOnAppear: true
+                becomeFirstResponderOnAppear: true,
+                accessibilityIdentifier: "expense.amountField"
             )
             .frame(height: 62)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -326,6 +328,7 @@ struct ExpenseEntryView: View {
     private var descriptionRow: some View {
         TextField("Description", text: $description)
             .focused($descriptionFocused)
+            .accessibilityIdentifier("expense.descriptionField")
             .textInputAutocapitalization(.sentences)
             .submitLabel(.done)
             .onSubmit { descriptionFocused = false }
@@ -378,6 +381,7 @@ struct ExpenseEntryView: View {
                         .font(.formRowValue.weight(.medium))
                         .tracking(-0.07)
                         .foregroundStyle(paidByLedgerReconciles ? Sage.text : Sage.warning)
+                        .accessibilityIdentifier("expense.paidBySummary")
                     Chevron(size: 9)
                 }
             }
@@ -386,6 +390,7 @@ struct ExpenseEntryView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("expense.paidByRow")
         .disabled(totalAmount <= 0)
         .opacity(totalAmount > 0 ? 1 : 0.5)
     }
@@ -435,17 +440,37 @@ struct ExpenseEntryView: View {
     }
 
     private var dateRow: some View {
-        HStack(spacing: 12) {
-            Text("Date")
-                .font(.formRowLabel)
-                .tracking(-0.07)
-                .foregroundStyle(Sage.text)
-            Spacer()
-            DatePicker("", selection: $expenseDate, displayedComponents: .date)
-                .labelsHidden()
+        Button {
+            descriptionFocused = false
+            isDatePickerPresented = true
+        } label: {
+            HStack(spacing: 12) {
+                Text("Date")
+                    .font(.formRowLabel)
+                    .tracking(-0.07)
+                    .foregroundStyle(Sage.text)
+                Spacer()
+                Text(Self.expenseDateFormatter.string(from: expenseDate))
+                    .font(.system(size: 15, weight: .semibold))
+                    .tracking(-0.07)
+                    .foregroundStyle(Sage.text)
+                Image(systemName: "calendar")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Sage.accent)
+            }
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.vertical, Layout.rowVPad)
+        .contentShape(Rectangle())
+        .popover(isPresented: $isDatePickerPresented) {
+            InlineDatePicker(selection: $expenseDate, tintColor: UIColor(Sage.accent)) {
+                isDatePickerPresented = false
+            }
+            .frame(width: 320, height: 324)
+            .padding(12)
+            .presentationCompactAdaptation(.popover)
+        }
     }
 
     private var participantsCard: some View {
@@ -664,17 +689,12 @@ struct ExpenseEntryView: View {
             Spacer()
 
             if selectedSplitType == .exact, row.isOn {
-                DecimalTextField(
+                InlineDecimalTextField(
                     text: Binding(
                         get: { exactAmountTextByUserID[row.userID, default: ""] },
                         set: { exactAmountTextByUserID[row.userID] = sanitizeAmount($0) }
                     ),
-                    placeholder: "0.00",
-                    font: .systemFont(ofSize: 13),
-                    textColor: UIColor(Sage.text),
-                    placeholderColor: UIColor(Sage.textSecondary.opacity(0.5)),
-                    alignment: .right,
-                    tintColor: UIColor(Sage.accent)
+                    accessibilityIdentifier: "expense.splitAmount.\(row.userID.uuidString)"
                 )
                 .frame(width: 88, height: 28)
                 .padding(.horizontal, 8)
@@ -812,6 +832,61 @@ struct ExpenseEntryView: View {
             await sync.pushPending()
         }
     }
+
+    private static let expenseDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
+}
+
+private struct InlineDatePicker: UIViewRepresentable {
+    @Binding var selection: Date
+    let tintColor: UIColor
+    let onSelection: () -> Void
+
+    func makeUIView(context: Context) -> UIDatePicker {
+        let picker = UIDatePicker()
+        picker.datePickerMode = .date
+        picker.preferredDatePickerStyle = .inline
+        picker.tintColor = tintColor
+        picker.setDate(selection, animated: false)
+        picker.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.valueChanged(_:)),
+            for: .valueChanged
+        )
+        return picker
+    }
+
+    func updateUIView(_ uiView: UIDatePicker, context: Context) {
+        context.coordinator.parent = self
+        uiView.tintColor = tintColor
+        if !Calendar.current.isDate(uiView.date, inSameDayAs: selection) {
+            uiView.setDate(selection, animated: false)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject {
+        var parent: InlineDatePicker
+
+        init(parent: InlineDatePicker) {
+            self.parent = parent
+        }
+
+        @MainActor
+        @objc func valueChanged(_ picker: UIDatePicker) {
+            let previousDate = parent.selection
+            parent.selection = picker.date
+            guard !Calendar.current.isDate(picker.date, inSameDayAs: previousDate) else { return }
+            parent.onSelection()
+        }
+    }
 }
 
 private struct ParticipantRow: Hashable {
@@ -819,6 +894,22 @@ private struct ParticipantRow: Hashable {
     let name: String
     let share: String
     let isOn: Bool
+}
+
+struct InlineDecimalTextField: View {
+    @Binding var text: String
+    let accessibilityIdentifier: String
+
+    var body: some View {
+        TextField("0.00", text: $text)
+            .keyboardType(.decimalPad)
+            .textFieldStyle(.plain)
+            .font(.system(size: 13))
+            .foregroundStyle(Sage.text)
+            .multilineTextAlignment(.trailing)
+            .monospacedDigit()
+            .accessibilityIdentifier(accessibilityIdentifier)
+    }
 }
 
 struct DecimalTextField: UIViewRepresentable {
@@ -830,9 +921,11 @@ struct DecimalTextField: UIViewRepresentable {
     var alignment: NSTextAlignment = .left
     var tintColor: UIColor
     var becomeFirstResponderOnAppear: Bool = false
+    var accessibilityIdentifier: String? = nil
 
     func makeUIView(context: Context) -> UITextField {
         let tf = UITextField()
+        tf.accessibilityIdentifier = accessibilityIdentifier
         tf.keyboardType = .decimalPad
         tf.font = font
         tf.textColor = textColor
@@ -858,6 +951,8 @@ struct DecimalTextField: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UITextField, context: Context) {
+        context.coordinator.parent = self
+        uiView.accessibilityIdentifier = accessibilityIdentifier
         if uiView.text != text {
             uiView.text = text
         }
@@ -876,6 +971,10 @@ struct DecimalTextField: UIViewRepresentable {
 
         @objc func editingChanged(_ tf: UITextField) {
             parent.text = tf.text ?? ""
+        }
+
+        func textFieldDidChangeSelection(_ textField: UITextField) {
+            parent.text = textField.text ?? ""
         }
     }
 }

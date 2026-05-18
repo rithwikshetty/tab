@@ -27,6 +27,7 @@ drop schema if exists private cascade;
 
 drop function if exists public.set_sync_fields() cascade;
 drop function if exists public.handle_new_user() cascade;
+drop function if exists public.ensure_current_profile(text, text) cascade;
 drop function if exists public.auto_add_creator_as_member() cascade;
 drop function if exists public.create_trip_invite(uuid, timestamptz) cascade;
 drop function if exists public.join_trip_with_invite(uuid, uuid, text) cascade;

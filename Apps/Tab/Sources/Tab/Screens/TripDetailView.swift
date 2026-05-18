@@ -147,7 +147,12 @@ struct TripDetailView: View {
             .scrollIndicators(.hidden)
             .refreshable { await sync.pullAll() }
 
-            Fab(label: "Add expense", systemImage: "plus", action: onAddExpense)
+            Fab(
+                label: "Add expense",
+                systemImage: "plus",
+                accessibilityIdentifier: "trip.addExpenseButton",
+                action: onAddExpense
+            )
                 .padding(.trailing, 18)
                 .padding(.bottom, 24)
         }
