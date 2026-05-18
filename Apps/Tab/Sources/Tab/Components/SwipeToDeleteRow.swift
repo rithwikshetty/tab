@@ -23,6 +23,7 @@ struct SwipeToDeleteRow<Content: View>: View {
 
     private let actionWidth: CGFloat = 88
     private let fullSwipeThreshold: CGFloat = 140
+    private let maxPullWidth: CGFloat = 220
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -136,7 +137,7 @@ struct SwipeToDeleteRow<Content: View>: View {
     }
 
     private func clampedOffset(_ value: CGFloat) -> CGFloat {
-        min(0, max(-actionWidth, value))
+        min(0, max(-maxPullWidth, value))
     }
 
     private func open() {
