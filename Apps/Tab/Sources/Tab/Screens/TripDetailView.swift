@@ -7,6 +7,7 @@ struct TripDetailView: View {
     var onOpenExpense: (UUID) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @Environment(AuthService.self) private var auth
     @Environment(RealtimeService.self) private var realtime
     @Environment(SyncService.self) private var sync
@@ -17,6 +18,7 @@ struct TripDetailView: View {
 
     @State private var segment: Int = 0
     @State private var showingInvite: Bool = false
+    @State private var pendingDeletion: ExpenseEntity?
 
     init(
         tripID: UUID,
@@ -41,7 +43,7 @@ struct TripDetailView: View {
 
     var body: some View {
         Group {
-            if let trip {
+            if let trip, trip.deletedAt == nil {
                 content(for: trip)
             } else {
                 MissingTripView { dismiss() }
@@ -55,6 +57,19 @@ struct TripDetailView: View {
         }
         .onDisappear {
             Task { await realtime.unsubscribe() }
+        }
+        .alert(
+            "Delete this expense?",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            presenting: pendingDeletion
+        ) { expense in
+            Button("Delete", role: .destructive) { confirmDelete(expense) }
+            Button("Cancel", role: .cancel) { pendingDeletion = nil }
+        } message: { _ in
+            Text("It will be removed from balances. You can recover it for 30 days.")
         }
     }
 
@@ -166,13 +181,15 @@ struct TripDetailView: View {
 
                     VStack(spacing: 0) {
                         ForEach(Array(day.expenses.enumerated()), id: \.element.id) { index, item in
-                            Button {
-                                Haptics.light()
-                                onOpenExpense(item.id)
-                            } label: {
+                            SwipeToDeleteRow(
+                                onTap: {
+                                    Haptics.light()
+                                    onOpenExpense(item.id)
+                                },
+                                onTrigger: { requestDelete(for: item.id) }
+                            ) {
                                 ExpenseRow(item: item)
                             }
-                            .buttonStyle(.plain)
                             if index < day.expenses.count - 1 { RowDivider() }
                         }
                     }
@@ -181,6 +198,7 @@ struct TripDetailView: View {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .stroke(Sage.cardBorder, lineWidth: 1)
                     )
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .padding(.horizontal, 18)
                     .padding(.bottom, 6)
                 }
@@ -230,6 +248,23 @@ struct TripDetailView: View {
                 }
             }
         }
+    }
+}
+
+extension TripDetailView {
+    fileprivate func requestDelete(for expenseID: UUID) {
+        guard
+            let trip,
+            let expense = trip.expenses.first(where: { $0.id == expenseID && $0.deletedAt == nil })
+        else { return }
+        pendingDeletion = expense
+    }
+
+    fileprivate func confirmDelete(_ expense: ExpenseEntity) {
+        pendingDeletion = nil
+        Deletion.softDelete(expense: expense, in: context)
+        Haptics.success()
+        Task { await sync.pushPending() }
     }
 }
 

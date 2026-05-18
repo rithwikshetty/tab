@@ -519,14 +519,7 @@ struct ExpenseDetailView: View {
 
     private func performDelete() {
         guard let expense else { return }
-        expense.deletedAt = .now
-        expense.updatedAt = .now
-        expense.writeID = UUID()
-        if let trip = expense.trip {
-            trip.lastActivityAt = .now
-            trip.updatedAt = .now
-        }
-        try? context.save()
+        Deletion.softDelete(expense: expense, in: context)
         Haptics.success()
         dismiss()
         Task { await sync.pushPending() }

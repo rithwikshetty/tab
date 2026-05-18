@@ -4,6 +4,7 @@ import SwiftData
 struct TripListView: View {
     var onSelect: (UUID) -> Void = { _ in }
 
+    @Environment(\.modelContext) private var context
     @Environment(AuthService.self) private var auth
     @Environment(SyncService.self) private var sync
 
@@ -17,6 +18,7 @@ struct TripListView: View {
     @Query private var profiles: [ProfileEntity]
 
     @State private var showingNewTrip = false
+    @State private var pendingDeletion: TripEntity?
 
     private var profilesByID: [UUID: ProfileEntity] {
         Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
@@ -33,6 +35,10 @@ struct TripListView: View {
         }
     }
 
+    private var tripsByID: [UUID: TripEntity] {
+        Dictionary(uniqueKeysWithValues: trips.map { ($0.id, $0) })
+    }
+
     private var activeCards: [TripCard]    { cards.filter { !$0.isCompleted } }
     private var completedCards: [TripCard] { cards.filter {  $0.isCompleted } }
 
@@ -46,27 +52,11 @@ struct TripListView: View {
                 } else {
                     if !activeCards.isEmpty {
                         SectionHeaderText(title: "Active")
-                        Card {
-                            ForEach(Array(activeCards.enumerated()), id: \.element.id) { index, card in
-                                Button { onSelect(card.id) } label: {
-                                    TripCardRow(trip: card)
-                                }
-                                .buttonStyle(.plain)
-                                if index < activeCards.count - 1 { RowDivider() }
-                            }
-                        }
+                        Card { tripRows(activeCards) }
                     }
                     if !completedCards.isEmpty {
                         SectionHeaderText(title: "Completed")
-                        Card {
-                            ForEach(Array(completedCards.enumerated()), id: \.element.id) { index, card in
-                                Button { onSelect(card.id) } label: {
-                                    TripCardRow(trip: card)
-                                }
-                                .buttonStyle(.plain)
-                                if index < completedCards.count - 1 { RowDivider() }
-                            }
-                        }
+                        Card { tripRows(completedCards) }
                     }
                 }
 
@@ -82,6 +72,44 @@ struct TripListView: View {
         .sheet(isPresented: $showingNewTrip) {
             NewTripSheet()
         }
+        .alert(
+            "Delete trip?",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            presenting: pendingDeletion
+        ) { trip in
+            Button("Delete", role: .destructive) { confirmDelete(trip) }
+            Button("Cancel", role: .cancel) { pendingDeletion = nil }
+        } message: { trip in
+            Text("\"\(trip.name)\" will be removed for everyone. You can recover it for 30 days.")
+        }
+    }
+
+    @ViewBuilder
+    private func tripRows(_ cards: [TripCard]) -> some View {
+        ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
+            SwipeToDeleteRow(
+                onTap: { onSelect(card.id) },
+                onTrigger: { requestDelete(for: card.id) }
+            ) {
+                TripCardRow(trip: card)
+            }
+            if index < cards.count - 1 { RowDivider() }
+        }
+    }
+
+    private func requestDelete(for tripID: UUID) {
+        guard let trip = tripsByID[tripID] else { return }
+        pendingDeletion = trip
+    }
+
+    private func confirmDelete(_ trip: TripEntity) {
+        pendingDeletion = nil
+        Deletion.softDelete(trip: trip, in: context)
+        Haptics.success()
+        Task { await sync.pushPending() }
     }
 }
 

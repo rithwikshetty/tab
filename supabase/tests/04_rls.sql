@@ -9,7 +9,7 @@
 begin;
 set local search_path = extensions, public, pg_temp;
 
-select plan(37);
+select plan(43);
 create temp table _r (line text);
 grant insert, select on _r to authenticated, anon;
 
@@ -191,6 +191,35 @@ insert into _r select throws_ok(
   $$insert into public.push_devices (user_id, apns_token) values ('00000000-0000-0000-0000-000000000002', 'spoof-token')$$,
   '42501', null, 'Alice cannot INSERT push_devices with user_id=Bob');
 
+-- ---- Trip soft-delete ------------------------------------------------------
+-- Any member can soft-delete a trip via UPDATE deleted_at; trips_update_member
+-- policy gates on is_trip_member only. SELECT does not filter by deleted_at
+-- (UI handles hiding), so a soft-deleted trip remains visible to its members.
+
+insert into _r select lives_ok(
+  $$update public.trips set deleted_at = now() where id = '11111111-1111-1111-1111-111111111111'$$,
+  'Alice (member) can soft-delete the Lisbon trip via UPDATE deleted_at');
+
+insert into _r select isnt(
+  (select deleted_at from public.trips where id = '11111111-1111-1111-1111-111111111111'::uuid),
+  null,
+  'Lisbon.deleted_at is set after Alice soft-deletes it');
+
+insert into _r select is(
+  (select count(*)::int from public.trips where id = '11111111-1111-1111-1111-111111111111'::uuid),
+  1,
+  'Soft-deleted Lisbon is still SELECT-visible to its members (UI filters, not RLS)');
+
+-- Restore so later Carol tests (invite join requires active trip) keep working.
+insert into _r select lives_ok(
+  $$update public.trips set deleted_at = null where id = '11111111-1111-1111-1111-111111111111'$$,
+  'Alice (member) can recover a soft-deleted trip by clearing deleted_at');
+
+insert into _r select is(
+  (select deleted_at from public.trips where id = '11111111-1111-1111-1111-111111111111'::uuid),
+  null,
+  'Lisbon.deleted_at is null after recovery');
+
 -- ============================================================================
 -- AS CAROL (NOT a member of any trip)
 -- ============================================================================
@@ -221,6 +250,19 @@ insert into _r select is(
 insert into _r select is(
   (select count(*)::int from public.categories where trip_id = '11111111-1111-1111-1111-111111111111'::uuid),
   0, 'Carol cannot SELECT Lisbon custom categories');
+
+-- Cannot soft-delete Lisbon: trips_update_member silently filters non-members
+-- on UPDATE (USING clause), so the update affects 0 rows and the trip stays
+-- non-deleted. No error is raised; verify state by bypassing RLS.
+update public.trips set deleted_at = now() where id = '11111111-1111-1111-1111-111111111111'::uuid;
+
+reset role;
+insert into _r select is(
+  (select deleted_at from public.trips where id = '11111111-1111-1111-1111-111111111111'::uuid),
+  null,
+  'Carol UPDATE deleted_at filtered by RLS (Lisbon not soft-deleted)');
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000003","role":"authenticated"}';
 
 -- Can SELECT default categories (open to all authenticated)
 insert into _r select is(

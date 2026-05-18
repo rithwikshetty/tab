@@ -650,11 +650,18 @@ final class SyncService {
         guard !dirtyExpenses.isEmpty else { return }
 
         for expense in dirtyExpenses {
-            guard let tripID = expense.trip?.id else { continue }
+            guard let trip = expense.trip else { continue }
+            let tripID = trip.id
 
             if expense.deletedAt != nil {
                 if expense.pushedWriteID == nil {
                     ctx.delete(expense)
+                } else if trip.deletedAt != nil {
+                    // Parent trip is also (locally) soft-deleted. The DB trigger
+                    // `validate_expense_row` rejects updates to `deleted_at` on
+                    // expenses under deleted trips, so don't even try — mark
+                    // this expense write resolved and let the trip delete carry.
+                    expense.pushedWriteID = expense.writeID
                 } else {
                     do {
                         try await client
@@ -669,6 +676,10 @@ final class SyncService {
                 }
                 continue
             }
+
+            // Don't push new/edited expenses under a soft-deleted trip — the
+            // server's RPC validates the parent trip is active and would reject.
+            if trip.deletedAt != nil { continue }
 
             let expensePayload: [String: AnyJSON] = [
                 "id": .string(expense.id.uuidString),

@@ -7,6 +7,7 @@ struct Card<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) { content }
             .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(Sage.cardBorder, lineWidth: 1)
