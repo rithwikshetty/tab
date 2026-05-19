@@ -178,6 +178,7 @@ final class ExpenseEntity {
     var expenseDate: Date
     var receiptStoragePath: String?
     var createdByID: UUID
+    var lastEditedByID: UUID?
     var createdAt: Date
     var updatedAt: Date
     var deletedAt: Date?
@@ -201,6 +202,7 @@ final class ExpenseEntity {
         expenseDate: Date,
         receiptStoragePath: String? = nil,
         createdByID: UUID,
+        lastEditedByID: UUID? = nil,
         trip: TripEntity? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now,
@@ -216,6 +218,7 @@ final class ExpenseEntity {
         self.expenseDate = expenseDate
         self.receiptStoragePath = receiptStoragePath
         self.createdByID = createdByID
+        self.lastEditedByID = lastEditedByID
         self.trip = trip
         self.createdAt = createdAt
         self.updatedAt = updatedAt

@@ -157,6 +157,7 @@ struct ExpenseDTO: Codable, Sendable {
     let expenseDate: Date
     let receiptStoragePath: String?
     let createdBy: UUID
+    let lastEditedBy: UUID?
     let createdAt: Date
     let updatedAt: Date
     let deletedAt: Date?
@@ -171,6 +172,7 @@ struct ExpenseDTO: Codable, Sendable {
         case expenseDate = "expense_date"
         case receiptStoragePath = "receipt_storage_path"
         case createdBy = "created_by"
+        case lastEditedBy = "last_edited_by"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case deletedAt = "deleted_at"

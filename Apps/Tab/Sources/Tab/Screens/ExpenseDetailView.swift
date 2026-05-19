@@ -4,6 +4,7 @@ import TabCore
 
 struct ExpenseDetailView: View {
     let expenseID: UUID
+    let onEditExpense: (UUID, UUID) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -19,8 +20,9 @@ struct ExpenseDetailView: View {
     @State private var receiptLoadFailed = false
     @State private var receiptPreviewPresented = false
 
-    init(expenseID: UUID) {
+    init(expenseID: UUID, onEditExpense: @escaping (UUID, UUID) -> Void = { _, _ in }) {
         self.expenseID = expenseID
+        self.onEditExpense = onEditExpense
         _expenses = Query(filter: #Predicate<ExpenseEntity> { $0.id == expenseID })
     }
 
@@ -43,6 +45,14 @@ struct ExpenseDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button {
+                        if let expense, let tripID = expense.trip?.id {
+                            onEditExpense(tripID, expense.id)
+                        }
+                    } label: {
+                        Label("Edit expense", systemImage: "pencil")
+                    }
+                    .accessibilityIdentifier("expenseDetail.editButton")
                     Button(role: .destructive) {
                         confirmDelete = true
                     } label: {
@@ -54,6 +64,7 @@ struct ExpenseDetailView: View {
                         .foregroundStyle(Sage.accent)
                         .frame(width: 32, height: 32)
                 }
+                .accessibilityIdentifier("expenseDetail.actionsButton")
             }
         }
         .toolbarBackground(Sage.bg, for: .navigationBar)
@@ -129,7 +140,8 @@ struct ExpenseDetailView: View {
                 sectionLabel("Details")
                 detailsCard(
                     expense: expense,
-                    loggedByName: loggedByName
+                    loggedByName: loggedByName,
+                    editedByName: editedByName(for: expense, userID: userID)
                 )
 
                 if expense.receiptStoragePath != nil {
@@ -305,13 +317,25 @@ struct ExpenseDetailView: View {
         .padding(.vertical, 11)
     }
 
-    private func detailsCard(expense: ExpenseEntity, loggedByName: String) -> some View {
+    private func editedByName(for expense: ExpenseEntity, userID: UUID?) -> String? {
+        guard let editorID = expense.lastEditedByID else { return nil }
+        if userID == editorID { return "You" }
+        return expense.trip?.people.first(where: { $0.userID == editorID })?.displayName ?? "Member"
+    }
+
+    private func detailsCard(expense: ExpenseEntity, loggedByName: String, editedByName: String?) -> some View {
         VStack(spacing: 0) {
             detailRow(label: "Date", value: Self.fullDateFormatter.string(from: expense.expenseDate))
             RowDivider()
             detailRow(label: "Logged by", value: loggedByName)
             RowDivider()
             detailRow(label: "Logged at", value: Self.timestampFormatter.string(from: expense.createdAt))
+            if let editedByName {
+                RowDivider()
+                detailRow(label: "Edited by", value: editedByName)
+                RowDivider()
+                detailRow(label: "Edited at", value: Self.timestampFormatter.string(from: expense.updatedAt))
+            }
         }
         .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(

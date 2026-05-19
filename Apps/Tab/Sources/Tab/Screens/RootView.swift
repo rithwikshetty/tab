@@ -40,8 +40,15 @@ struct RootView: View {
                     )
                 case .newExpense(let tripID):
                     ExpenseEntryView(tripID: tripID)
+                case .editExpense(let tripID, let expenseID):
+                    ExpenseEntryView(tripID: tripID, editingExpenseID: expenseID)
                 case .expense(let expenseID):
-                    ExpenseDetailView(expenseID: expenseID)
+                    ExpenseDetailView(
+                        expenseID: expenseID,
+                        onEditExpense: { tripID, expenseID in
+                            path.append(Route.editExpense(tripID: tripID, expenseID: expenseID))
+                        }
+                    )
                 }
             }
         }
@@ -110,6 +117,7 @@ struct RootView: View {
 enum Route: Hashable {
     case trip(UUID)
     case newExpense(UUID)
+    case editExpense(tripID: UUID, expenseID: UUID)
     case expense(UUID)
 }
 

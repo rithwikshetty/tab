@@ -11,6 +11,7 @@ create table public.expenses (
   expense_date         date not null,
   receipt_storage_path text check (receipt_storage_path is null or char_length(receipt_storage_path) <= 512),
   created_by           uuid not null references public.profiles(id) on delete restrict,
+  last_edited_by       uuid references public.profiles(id) on delete restrict,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now(),
   deleted_at           timestamptz,
@@ -44,6 +45,11 @@ begin
     raise exception 'Expense creator must be a trip member' using errcode = '23514';
   end if;
 
+  if new.last_edited_by is not null
+     and not private.is_profile_trip_member(new.trip_id, new.last_edited_by) then
+    raise exception 'Expense editor must be a trip member' using errcode = '23514';
+  end if;
+
   if new.category_id is not null and not exists (
     select 1 from public.categories c
     where c.id = new.category_id
@@ -58,7 +64,7 @@ end;
 $$;
 
 create trigger trg_expenses_validate
-  before insert or update of trip_id, category_id, created_by, deleted_at on public.expenses
+  before insert or update of trip_id, category_id, created_by, last_edited_by, deleted_at on public.expenses
   for each row execute function public.validate_expense_row();
 
 create or replace function public.touch_trip_last_activity()

@@ -491,6 +491,7 @@ final class SyncService {
             entity.expenseDate = dto.expenseDate
             entity.receiptStoragePath = dto.receiptStoragePath
             entity.createdByID = dto.createdBy
+            entity.lastEditedByID = dto.lastEditedBy
             entity.updatedAt = dto.updatedAt
             entity.deletedAt = dto.deletedAt
             entity.writeID = dto.writeID
@@ -505,6 +506,7 @@ final class SyncService {
                 expenseDate: dto.expenseDate,
                 receiptStoragePath: dto.receiptStoragePath,
                 createdByID: dto.createdBy,
+                lastEditedByID: dto.lastEditedBy,
                 trip: trip,
                 createdAt: dto.createdAt,
                 updatedAt: dto.updatedAt,
@@ -817,6 +819,7 @@ final class SyncService {
                 "expense_date": .string(Self.dateOnlyFormatter.string(from: expense.expenseDate)),
                 "receipt_storage_path": expense.receiptStoragePath.map { .string($0) } ?? .null,
                 "created_by": .string(expense.createdByID.uuidString),
+                "last_edited_by": expense.lastEditedByID.map { .string($0.uuidString) } ?? .null,
             ]
 
             let paymentsPayload: [AnyJSON] = expense.payments.map { payment in

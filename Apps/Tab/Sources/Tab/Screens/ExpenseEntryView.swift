@@ -6,6 +6,7 @@ import TabCore
 
 struct ExpenseEntryView: View {
     let tripID: UUID
+    let editingExpenseID: UUID?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -13,6 +14,7 @@ struct ExpenseEntryView: View {
     @Environment(SyncService.self) private var sync
 
     @Query private var trips: [TripEntity]
+    @Query private var editingExpenses: [ExpenseEntity]
 
     @Query(filter: #Predicate<CategoryEntity> { $0.isDefault && $0.deletedAt == nil })
     private var categories: [CategoryEntity]
@@ -43,7 +45,14 @@ struct ExpenseEntryView: View {
     @State private var isPreparingReceipt = false
     @State private var receiptLoadID = UUID()
 
+    @State private var hasPrePopulated = false
+    @State private var existingReceiptPath: String?
+    @State private var existingReceiptURL: URL?
+
     @FocusState private var descriptionFocused: Bool
+
+    private var isEditing: Bool { editingExpenseID != nil }
+    private var editingExpense: ExpenseEntity? { editingExpenses.first }
 
     private enum Layout {
         static let hPad: CGFloat = 18
@@ -55,9 +64,12 @@ struct ExpenseEntryView: View {
         static let sectionLabelBottom: CGFloat = 10
     }
 
-    init(tripID: UUID) {
+    init(tripID: UUID, editingExpenseID: UUID? = nil) {
         self.tripID = tripID
+        self.editingExpenseID = editingExpenseID
         _trips = Query(filter: #Predicate<TripEntity> { $0.id == tripID })
+        let eid = editingExpenseID ?? UUID()
+        _editingExpenses = Query(filter: #Predicate<ExpenseEntity> { $0.id == eid })
     }
 
     private var trip: TripEntity? { trips.first }
@@ -159,14 +171,16 @@ struct ExpenseEntryView: View {
 
     var body: some View {
         Group {
-            if trip != nil {
-                form
-            } else {
+            if trip == nil {
                 Color.clear.onAppear { dismiss() }
+            } else if isEditing, editingExpense == nil || editingExpense?.deletedAt != nil {
+                Color.clear.onAppear { dismiss() }
+            } else {
+                form
             }
         }
         .background(Sage.bg.ignoresSafeArea())
-        .navigationTitle("New expense")
+        .navigationTitle(isEditing ? "Edit expense" : "New expense")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
@@ -181,6 +195,30 @@ struct ExpenseEntryView: View {
         .toolbarBackground(Sage.bg, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .onAppear {
+            if !hasPrePopulated, let expense = editingExpense {
+                hasPrePopulated = true
+                amountText = plainAmountString(expense.amount)
+                description = expense.descriptionText
+                selectedCategoryID = expense.categoryID ?? DefaultCategories.food.id
+                currency = expense.currency
+                expenseDate = expense.expenseDate
+
+                let splitType = expense.splits.first?.splitType ?? .equal
+                splitMode = splitType == .equal ? 0 : 1
+                participantSet = Set(expense.splits.map(\.tripPersonID))
+
+                if splitType == .exact {
+                    for split in expense.splits {
+                        exactAmountTextByPersonID[split.tripPersonID] = plainAmountString(split.amountOwed)
+                    }
+                }
+
+                paymentEntries = expense.payments.map { $0.toCorePayment() }
+
+                if let path = expense.receiptStoragePath {
+                    existingReceiptPath = path
+                }
+            }
             if participantSet.isEmpty, let trip {
                 participantSet = Set(trip.people.map(\.id))
             }
@@ -251,7 +289,7 @@ struct ExpenseEntryView: View {
                 placeholderColor: UIColor(Sage.textSecondary.opacity(0.55)),
                 alignment: .left,
                 tintColor: UIColor(Sage.accent),
-                becomeFirstResponderOnAppear: true,
+                becomeFirstResponderOnAppear: !isEditing,
                 accessibilityIdentifier: "expense.amountField"
             )
             .frame(height: 62)
@@ -494,6 +532,8 @@ struct ExpenseEntryView: View {
         VStack(spacing: 6) {
             if let thumb = receiptThumbnail {
                 receiptThumbnailCard(thumb)
+            } else if let existingPath = existingReceiptPath {
+                existingReceiptCard(path: existingPath)
             } else {
                 receiptPlaceholder
             }
@@ -508,6 +548,75 @@ struct ExpenseEntryView: View {
         .padding(.top, 6)
         .padding(.bottom, 18)
         .animation(.snappy(duration: 0.2), value: receiptThumbnail != nil)
+        .animation(.snappy(duration: 0.2), value: existingReceiptPath)
+    }
+
+    private func existingReceiptCard(path: String) -> some View {
+        HStack(spacing: 12) {
+            if let url = existingReceiptURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        ProgressView().controlSize(.small).tint(Sage.accent)
+                    }
+                }
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Sage.cardBorder, lineWidth: 1)
+                )
+            } else {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Sage.surface2)
+                    .frame(width: 56, height: 56)
+                    .overlay(ProgressView().controlSize(.small).tint(Sage.accent))
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Receipt attached")
+                    .font(.system(size: 14, weight: .medium))
+                    .tracking(-0.07)
+                    .foregroundStyle(Sage.text)
+            }
+
+            Spacer(minLength: 8)
+
+            PhotosPicker(selection: $receiptPickerItem, matching: .images, photoLibrary: .shared()) {
+                Text("Replace")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Sage.accent)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                Haptics.light()
+                existingReceiptPath = nil
+                existingReceiptURL = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Sage.textSecondary)
+                    .frame(width: 22, height: 22)
+                    .background(Sage.surface2, in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Sage.cardBorder, lineWidth: 1)
+        )
+        .task(id: path) {
+            do {
+                existingReceiptURL = try await ReceiptStorage.signedURL(path: path)
+            } catch {
+                existingReceiptURL = nil
+            }
+        }
     }
 
     private var receiptPlaceholder: some View {
@@ -626,6 +735,8 @@ struct ExpenseEntryView: View {
                     guard receiptLoadID == loadID else { return }
                     receiptJPEG = jpeg
                     receiptThumbnail = preview
+                    existingReceiptPath = nil
+                    existingReceiptURL = nil
                 }
             } catch {
                 await MainActor.run {
@@ -646,6 +757,8 @@ struct ExpenseEntryView: View {
         receiptJPEG = nil
         receiptError = nil
         isPreparingReceipt = false
+        existingReceiptPath = nil
+        existingReceiptURL = nil
     }
 
     private func participantRow(_ row: ParticipantRow) -> some View {
@@ -748,6 +861,15 @@ struct ExpenseEntryView: View {
     }
 
     private func save() {
+        if isEditing {
+            guard let expense = editingExpense, expense.deletedAt == nil else { return }
+            saveEdit(expense)
+        } else {
+            saveNew()
+        }
+    }
+
+    private func saveNew() {
         guard canSave, let trip, let user = auth.currentUser else { return }
         guard let currentPersonID = trip.people.first(where: { $0.userID == user.id })?.id else { return }
         guard let splits = computedSplits else { return }
@@ -817,6 +939,77 @@ struct ExpenseEntryView: View {
         Task {
             if let receiptPath {
                 try? await ReceiptStorage.uploadPendingReceipt(path: receiptPath)
+            }
+            await sync.pushPending()
+        }
+    }
+
+    private func saveEdit(_ expense: ExpenseEntity) {
+        guard canSave, let trip, let user = auth.currentUser else { return }
+        guard let currentPersonID = trip.people.first(where: { $0.userID == user.id })?.id else { return }
+        guard let splits = computedSplits else { return }
+
+        let receiptPath: String?
+        if let receiptJPEG {
+            do {
+                receiptPath = try ReceiptStorage.persistPendingUpload(
+                    jpeg: receiptJPEG,
+                    tripID: trip.id,
+                    expenseID: expense.id
+                )
+            } catch {
+                receiptError = (error as? LocalizedError)?.errorDescription ?? "Couldn't prepare receipt."
+                return
+            }
+        } else {
+            receiptPath = existingReceiptPath
+        }
+
+        expense.amount = totalAmount
+        expense.currency = currency
+        expense.categoryID = selectedCategoryID
+        expense.descriptionText = description.trimmingCharacters(in: .whitespaces)
+        expense.expenseDate = expenseDate
+        expense.receiptStoragePath = receiptPath
+        expense.lastEditedByID = user.id
+        expense.updatedAt = .now
+        expense.writeID = UUID()
+
+        for payment in expense.payments { context.delete(payment) }
+        let payments = paymentEntries.isEmpty
+            ? [Payment(payerID: currentPersonID, amountPaid: totalAmount, paymentMode: .equal)]
+            : paymentEntries
+        for payment in payments {
+            context.insert(PaymentEntity(
+                tripPersonID: payment.payerID,
+                amountPaid: payment.amountPaid,
+                paymentModeRaw: payment.paymentMode.rawValue,
+                expense: expense
+            ))
+        }
+
+        for split in expense.splits { context.delete(split) }
+        for split in splits {
+            context.insert(ExpenseSplitEntity(
+                tripPersonID: split.participantID,
+                amountOwed: split.amountOwed,
+                splitTypeRaw: split.splitType.rawValue,
+                expense: expense
+            ))
+        }
+
+        trip.lastActivityAt = .now
+        trip.updatedAt = .now
+        trip.writeID = UUID()
+
+        try? context.save()
+        Haptics.success()
+
+        dismiss()
+
+        Task {
+            if let path = expense.receiptStoragePath, receiptJPEG != nil {
+                try? await ReceiptStorage.uploadPendingReceipt(path: path)
             }
             await sync.pushPending()
         }

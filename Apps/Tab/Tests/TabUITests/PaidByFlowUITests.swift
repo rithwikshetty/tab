@@ -76,6 +76,53 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertEqual(fieldValue(app.textFields["paidBy.exactAmount.\(samID)"]), "10.00")
     }
 
+    func testEditExpenseFromDetailOpensEditForm() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
+        app.launchEnvironment["TAB_UI_TEST_SEED_PEOPLE"] = "1"
+        app.launchArguments.append("-ApplePersistenceIgnoreState")
+        app.launchArguments.append("YES")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Trips"].waitForExistence(timeout: 8))
+
+        let tripName = "Edit Flow \(UUID().uuidString.prefix(8))"
+        let addTripButton = app.buttons["trips.addButton"]
+        XCTAssertTrue(addTripButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntilHittable(addTripButton))
+        addTripButton.tap()
+
+        replaceText(in: app.textFields["newTrip.nameField"], with: tripName, app: app)
+        app.buttons["newTrip.createButton"].tap()
+
+        let tripRow = app.staticTexts[tripName].firstMatch
+        XCTAssertTrue(tripRow.waitForExistence(timeout: 5))
+        tripRow.tap()
+
+        let addExpenseButton = app.buttons["trip.addExpenseButton"]
+        XCTAssertTrue(addExpenseButton.waitForExistence(timeout: 5))
+        addExpenseButton.tap()
+
+        replaceText(in: app.textFields["expense.amountField"], with: "24.50", app: app)
+        replaceText(in: app.textFields["expense.descriptionField"], with: "Lunch", app: app)
+        app.navigationBars["New expense"].buttons["Save"].tap()
+
+        let expenseRow = app.staticTexts["Lunch"].firstMatch
+        XCTAssertTrue(expenseRow.waitForExistence(timeout: 5))
+        expenseRow.tap()
+
+        let actionsButton = app.buttons["expenseDetail.actionsButton"]
+        XCTAssertTrue(actionsButton.waitForExistence(timeout: 5))
+        actionsButton.tap()
+
+        let editButton = app.buttons["expenseDetail.editButton"]
+        XCTAssertTrue(editButton.waitForExistence(timeout: 5))
+        editButton.tap()
+
+        XCTAssertTrue(app.navigationBars["Edit expense"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["expense.descriptionField"].waitForExistence(timeout: 5))
+    }
+
     private func replaceText(in element: XCUIElement, with text: String, app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 5))
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()

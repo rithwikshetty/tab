@@ -59,7 +59,8 @@ begin
 
     insert into public.expenses (
         id, trip_id, amount, currency, category_id,
-        description, expense_date, receipt_storage_path, created_by
+        description, expense_date, receipt_storage_path, created_by,
+        last_edited_by
     )
     values (
         v_expense_id,
@@ -70,7 +71,8 @@ begin
         p_expense->>'description',
         (p_expense->>'expense_date')::date,
         nullif(p_expense->>'receipt_storage_path', ''),
-        v_actor
+        v_actor,
+        case when nullif(p_expense->>'last_edited_by', '') is null then null else v_actor end
     )
     on conflict (id) do update set
         amount               = excluded.amount,
@@ -78,7 +80,8 @@ begin
         category_id          = excluded.category_id,
         description          = excluded.description,
         expense_date         = excluded.expense_date,
-        receipt_storage_path = excluded.receipt_storage_path;
+        receipt_storage_path = excluded.receipt_storage_path,
+        last_edited_by       = v_actor;
 
     delete from public.expense_payments where expense_id = v_expense_id;
     delete from public.expense_splits   where expense_id = v_expense_id;

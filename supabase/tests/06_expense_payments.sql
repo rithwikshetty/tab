@@ -3,7 +3,7 @@
 begin;
 set search_path = extensions, public, pg_temp;
 
-select plan(14);
+select plan(18);
 create temp table _r (line text);
 grant insert, select on _r to authenticated;
 
@@ -46,6 +46,17 @@ insert into _r select is((select count(*)::int from public.expense_payments wher
 insert into _r select is((select count(*)::int from public.expense_splits where expense_id = 'aaaaaaaa-0000-0000-0000-000000000001'), 2, 'two split rows written');
 insert into _r select is((select sum(amount_paid)::numeric(14,2) from public.expense_payments where expense_id = 'aaaaaaaa-0000-0000-0000-000000000001'), 100.00::numeric(14,2), 'payment total matches expense');
 insert into _r select is((select sum(amount_owed)::numeric(14,2) from public.expense_splits where expense_id = 'aaaaaaaa-0000-0000-0000-000000000001'), 100.00::numeric(14,2), 'split total matches expense');
+insert into _r select is((select last_edited_by from public.expenses where id = 'aaaaaaaa-0000-0000-0000-000000000001'), null::uuid, 'new expense without edit marker has no last editor');
+
+insert into _r select lives_ok(
+  $$select public.create_expense_with_payments_and_splits(
+      jsonb_build_object('id', 'aaaaaaaa-0000-0000-0000-000000000003', 'trip_id', '11111111-1111-1111-1111-111111111111', 'amount', 10, 'currency', 'EUR', 'description', 'Offline edited', 'expense_date', '2026-05-01', 'last_edited_by', '00000000-0000-0000-0000-000000000002'),
+      jsonb_build_array(jsonb_build_object('trip_person_id', '10000000-0000-0000-0000-000000000001', 'amount_paid', 10, 'payment_mode', 'equal')),
+      jsonb_build_array(jsonb_build_object('trip_person_id', '10000000-0000-0000-0000-000000000001', 'amount_owed', 10, 'split_type', 'equal'))
+    )$$,
+  'expense RPC stamps actor for provided edit marker on insert');
+
+insert into _r select is((select last_edited_by from public.expenses where id = 'aaaaaaaa-0000-0000-0000-000000000003'), '00000000-0000-0000-0000-000000000001'::uuid, 'provided insert editor is recorded as current user');
 
 insert into _r select throws_ok(
   $$select public.create_expense_with_payments_and_splits(
@@ -66,6 +77,7 @@ insert into _r select lives_ok(
 insert into _r select is((select count(*)::int from public.expense_payments where expense_id = 'aaaaaaaa-0000-0000-0000-000000000001'), 1, 'payment rows replaced');
 insert into _r select is((select count(*)::int from public.expense_splits where expense_id = 'aaaaaaaa-0000-0000-0000-000000000001'), 1, 'split rows replaced');
 insert into _r select is((select description from public.expenses where id = 'aaaaaaaa-0000-0000-0000-000000000001'), 'Villa edited', 'expense header fields updated');
+insert into _r select is((select last_edited_by from public.expenses where id = 'aaaaaaaa-0000-0000-0000-000000000001'), '00000000-0000-0000-0000-000000000001'::uuid, 'expense edit stamps current user as last editor');
 
 update public.expenses
 set deleted_at = now()
