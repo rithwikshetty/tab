@@ -18,6 +18,8 @@ struct TripDetailView: View {
     @State private var segment: Int = 0
     @State private var showingPeople: Bool = false
     @State private var pendingDeletion: ExpenseEntity?
+    @State private var isExporting: Bool = false
+    @State private var exportedFileURL: URL?
 
     init(
         tripID: UUID,
@@ -153,6 +155,29 @@ struct TripDetailView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        exportTrip(trip)
+                    } label: {
+                        Label("Export to Excel", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(isExporting)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(Sage.text)
+                }
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { exportedFileURL != nil },
+            set: { if !$0 { exportedFileURL = nil } }
+        )) {
+            if let url = exportedFileURL {
+                ShareSheet(items: [url])
+            }
+        }
     }
 
     @ViewBuilder
@@ -267,6 +292,33 @@ extension TripDetailView {
         Haptics.success()
         Task { await sync.pushPending() }
     }
+
+    fileprivate func exportTrip(_ trip: TripEntity) {
+        isExporting = true
+        let peopleByID = Dictionary(uniqueKeysWithValues: trip.people.map { ($0.id, $0) })
+        let categoriesByID = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+        let data = TripExporter.extractData(
+            trip: trip,
+            categories: categoriesByID,
+            peopleByID: peopleByID
+        )
+
+        Task.detached {
+            do {
+                let url = try TripExporter.generateXLSX(from: data)
+                await MainActor.run {
+                    exportedFileURL = url
+                    isExporting = false
+                    Haptics.success()
+                }
+            } catch {
+                await MainActor.run {
+                    isExporting = false
+                    Haptics.error()
+                }
+            }
+        }
+    }
 }
 
 private struct MissingTripView: View {
@@ -288,4 +340,14 @@ private struct MissingTripView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
+
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
