@@ -490,6 +490,7 @@ final class SyncService {
             entity.descriptionText = dto.description
             entity.expenseDate = dto.expenseDate
             entity.receiptStoragePath = dto.receiptStoragePath
+            entity.paymentMethodRaw = dto.paymentMethod
             entity.createdByID = dto.createdBy
             entity.lastEditedByID = dto.lastEditedBy
             entity.updatedAt = dto.updatedAt
@@ -505,6 +506,7 @@ final class SyncService {
                 descriptionText: dto.description,
                 expenseDate: dto.expenseDate,
                 receiptStoragePath: dto.receiptStoragePath,
+                paymentMethodRaw: dto.paymentMethod,
                 createdByID: dto.createdBy,
                 lastEditedByID: dto.lastEditedBy,
                 trip: trip,
@@ -818,6 +820,7 @@ final class SyncService {
                 "description": .string(expense.descriptionText),
                 "expense_date": .string(Self.dateOnlyFormatter.string(from: expense.expenseDate)),
                 "receipt_storage_path": expense.receiptStoragePath.map { .string($0) } ?? .null,
+                "payment_method": .string(expense.paymentMethodRaw),
                 "created_by": .string(expense.createdByID.uuidString),
                 "last_edited_by": expense.lastEditedByID.map { .string($0.uuidString) } ?? .null,
             ]

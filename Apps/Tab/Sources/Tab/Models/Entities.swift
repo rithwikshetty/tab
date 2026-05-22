@@ -177,6 +177,7 @@ final class ExpenseEntity {
     var descriptionText: String
     var expenseDate: Date
     var receiptStoragePath: String?
+    var paymentMethodRaw: String
     var createdByID: UUID
     var lastEditedByID: UUID?
     var createdAt: Date
@@ -201,6 +202,7 @@ final class ExpenseEntity {
         descriptionText: String,
         expenseDate: Date,
         receiptStoragePath: String? = nil,
+        paymentMethodRaw: String = "card",
         createdByID: UUID,
         lastEditedByID: UUID? = nil,
         trip: TripEntity? = nil,
@@ -217,6 +219,7 @@ final class ExpenseEntity {
         self.descriptionText = descriptionText
         self.expenseDate = expenseDate
         self.receiptStoragePath = receiptStoragePath
+        self.paymentMethodRaw = paymentMethodRaw
         self.createdByID = createdByID
         self.lastEditedByID = lastEditedByID
         self.trip = trip

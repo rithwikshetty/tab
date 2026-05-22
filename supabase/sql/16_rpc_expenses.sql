@@ -59,8 +59,8 @@ begin
 
     insert into public.expenses (
         id, trip_id, amount, currency, category_id,
-        description, expense_date, receipt_storage_path, created_by,
-        last_edited_by
+        description, expense_date, receipt_storage_path, payment_method,
+        created_by, last_edited_by
     )
     values (
         v_expense_id,
@@ -71,6 +71,7 @@ begin
         p_expense->>'description',
         (p_expense->>'expense_date')::date,
         nullif(p_expense->>'receipt_storage_path', ''),
+        coalesce(nullif(p_expense->>'payment_method', ''), 'card'),
         v_actor,
         case when nullif(p_expense->>'last_edited_by', '') is null then null else v_actor end
     )
@@ -81,6 +82,7 @@ begin
         description          = excluded.description,
         expense_date         = excluded.expense_date,
         receipt_storage_path = excluded.receipt_storage_path,
+        payment_method       = excluded.payment_method,
         last_edited_by       = v_actor;
 
     delete from public.expense_payments where expense_id = v_expense_id;
