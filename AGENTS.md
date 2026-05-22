@@ -14,7 +14,6 @@ A Splitwise replacement for tracking expenses on group trips. Private friend-gro
 
 ```
 tab/
-├── PRD.md                      ← Source of truth for product scope, schema, decisions.
 ├── design/
 │   ├── mockups/                ← Main app screen mockups (v1, v2, …). Sage palette source of truth.
 │   ├── expense-entry/          ← Expense entry flow mockups.
@@ -112,7 +111,6 @@ bash supabase/tests/00_sql_assembly.sh
 
 ## Pointers
 
-- **Product scope** → `PRD.md`
 - **Design tokens** → `design/mockups/v1.html` (Sage palette is locked)
 - **Supabase project ID** → `gaseuxsieddlksxtdliq` (EU-West-1)
 - **MCP config** → `.mcp.json`

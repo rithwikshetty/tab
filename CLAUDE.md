@@ -4,7 +4,7 @@ Project guidance for Claude Code. Read this before changing anything.
 
 ## What tab is
 
-A Splitwise replacement for tracking expenses on group trips. Private friend-group use, no monetisation, no ads. iOS-first (iOS 18+). Future direction: itinerary, analytics — explicitly out of scope for V1.
+A Splitwise replacement for tracking expenses on group trips. Private friend-group use, no monetisation, no ads. iOS-first (iOS 18+).
 
 Pain points being solved: Splitwise's paywall, ads, and aggressive upsells.
 
@@ -12,7 +12,6 @@ Pain points being solved: Splitwise's paywall, ads, and aggressive upsells.
 
 ```
 tab/
-├── PRD.md                      ← Source of truth for product scope, schema, decisions.
 ├── design/
 │   ├── mockups/                ← Main app screen mockups (v1, v2, …). Sage palette source of truth.
 │   ├── expense-entry/          ← Expense entry flow mockups.
@@ -98,7 +97,7 @@ Mockups live in `design/` organised by feature area, one subfolder per area:
 
 ## What NOT to do
 
-- **No V2 scope creep.** Itinerary, analytics, simplified debts (Splitwise's "balance simplification"), multi-payer per expense, percentage/shares splits, payment-app deep links (Venmo/PayPal links), activity-log UI, currency conversion, Android — all explicitly deferred per PRD. Don't implement them speculatively.
+- **No Android.** iOS-only.
 - **No Double for money.** Decimal only. If you see a `Double` near money, fix it.
 - **No `XCTest` migrations.** Stay on Swift Testing.
 - **No mocking SwiftData or Supabase in unit tests.** TabCore is pure — it doesn't need mocks. Integration tests use real Supabase (separate test schema or branch).
@@ -121,7 +120,6 @@ bash supabase/tests/00_sql_assembly.sh
 
 ## Where to find things
 
-- **Product scope, schema, decisions, out-of-scope list** → `PRD.md` (49 user stories, all decisions recorded).
 - **Design tokens (Sage palette)** → `design/mockups/v1.html` — Sage hex values are the locked source of truth; port them to the Asset Catalog when scaffolding the app.
 - **Supabase project ID** → `gaseuxsieddlksxtdliq` (EU-West-1, Postgres 17.6).
 - **MCP servers** → `.mcp.json` (Supabase MCP is HTTP-typed).
