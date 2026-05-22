@@ -517,13 +517,18 @@ struct ExpenseEntryView: View {
                 .tracking(-0.07)
                 .foregroundStyle(Sage.text)
             Spacer()
-            Segmented(
-                options: Self.paymentMethodOrder.map(\.displayName),
-                selection: $paymentMethodIndex,
-                mini: true,
-                horizontalPadding: 0
-            )
-            .frame(maxWidth: 240)
+            Menu {
+                ForEach(Array(Self.paymentMethodOrder.enumerated()), id: \.element) { index, method in
+                    Button(method.displayName) {
+                        paymentMethodIndex = index
+                    }
+                }
+            } label: {
+                DropdownPill(title: selectedPaymentMethod.displayName)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("expense.paymentMethodMenu")
+            .accessibilityLabel(selectedPaymentMethod.displayName)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, Layout.rowVPad)

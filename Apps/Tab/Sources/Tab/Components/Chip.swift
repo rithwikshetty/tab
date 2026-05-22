@@ -63,6 +63,28 @@ struct CurrencyPill: View {
     }
 }
 
+struct DropdownPill: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(title)
+                .font(.pill)
+                .tracking(-0.07)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .semibold))
+                .opacity(0.55)
+                .padding(.leading, 2)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .foregroundStyle(Sage.text)
+        .background(Sage.surface2, in: Capsule())
+        .overlay(Capsule().stroke(Sage.cardBorder, lineWidth: 1))
+    }
+}
+
 #Preview("Chips") {
     VStack(spacing: 20) {
         HStack(spacing: 8) {
@@ -115,6 +137,7 @@ struct CurrencyPill: View {
             CurrencyPill(code: "EUR", symbol: "€")
             CurrencyPill(code: "USD", symbol: "$")
             CurrencyPill(code: "GBP", symbol: "£")
+            DropdownPill(title: "Card")
         }
     }
     .padding()
