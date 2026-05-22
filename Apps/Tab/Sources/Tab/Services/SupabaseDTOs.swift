@@ -156,6 +156,7 @@ struct ExpenseDTO: Codable, Sendable {
     let description: String
     let expenseDate: Date
     let receiptStoragePath: String?
+    let paymentMethod: String
     let createdBy: UUID
     let lastEditedBy: UUID?
     let createdAt: Date
@@ -171,6 +172,7 @@ struct ExpenseDTO: Codable, Sendable {
         case description
         case expenseDate = "expense_date"
         case receiptStoragePath = "receipt_storage_path"
+        case paymentMethod = "payment_method"
         case createdBy = "created_by"
         case lastEditedBy = "last_edited_by"
         case createdAt = "created_at"
@@ -189,6 +191,7 @@ struct ExpenseInsertDTO: Codable, Sendable {
     let description: String
     let expenseDate: Date
     let receiptStoragePath: String?
+    let paymentMethod: String
     let createdBy: UUID
 
     enum CodingKeys: String, CodingKey {
@@ -199,6 +202,7 @@ struct ExpenseInsertDTO: Codable, Sendable {
         case description
         case expenseDate = "expense_date"
         case receiptStoragePath = "receipt_storage_path"
+        case paymentMethod = "payment_method"
         case createdBy = "created_by"
     }
 }

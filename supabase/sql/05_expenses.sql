@@ -10,6 +10,7 @@ create table public.expenses (
   description          text not null check (char_length(trim(description)) > 0 and char_length(description) <= 200),
   expense_date         date not null,
   receipt_storage_path text check (receipt_storage_path is null or char_length(receipt_storage_path) <= 512),
+  payment_method       text not null default 'card' check (payment_method in ('cash', 'card', 'bank_transfer')),
   created_by           uuid not null references public.profiles(id) on delete restrict,
   last_edited_by       uuid references public.profiles(id) on delete restrict,
   created_at           timestamptz not null default now(),

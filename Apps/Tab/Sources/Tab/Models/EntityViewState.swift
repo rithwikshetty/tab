@@ -25,6 +25,10 @@ extension ExpenseEntity {
         payments.sorted { $0.tripPersonID.uuidString < $1.tripPersonID.uuidString }.first?.tripPersonID
     }
 
+    var paymentMethod: PaymentMethod {
+        PaymentMethod(rawValue: paymentMethodRaw) ?? .card
+    }
+
     func toCoreExpense() -> Expense {
         Expense(
             id: id,
@@ -33,6 +37,7 @@ extension ExpenseEntity {
             categoryID: categoryID,
             descriptionText: descriptionText,
             receiptStoragePath: receiptStoragePath,
+            paymentMethod: paymentMethod,
             expenseDate: expenseDate,
             payments: payments.map { $0.toCorePayment() },
             splits: splits.map { $0.toCoreSplit() },

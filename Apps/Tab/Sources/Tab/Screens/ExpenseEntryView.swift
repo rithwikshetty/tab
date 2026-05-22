@@ -33,6 +33,7 @@ struct ExpenseEntryView: View {
     @State private var currency: String = "EUR"
     @State private var expenseDate: Date = .now
     @State private var isDatePickerPresented = false
+    @State private var paymentMethodIndex: Int = 1 // 0=cash, 1=card, 2=bank_transfer
 
     /// Empty = single-payer with the recorder paying the full amount (default).
     /// Non-empty = explicit ledger from PaymentSplitView. Sum must equal totalAmount.
@@ -80,6 +81,12 @@ struct ExpenseEntryView: View {
 
     private var selectedSplitType: SplitType {
         splitMode == 0 ? .equal : .exact
+    }
+
+    private static let paymentMethodOrder: [PaymentMethod] = [.cash, .card, .bankTransfer]
+
+    private var selectedPaymentMethod: PaymentMethod {
+        Self.paymentMethodOrder[paymentMethodIndex]
     }
 
     private var canSave: Bool {
@@ -213,6 +220,8 @@ struct ExpenseEntryView: View {
                     }
                 }
 
+                paymentMethodIndex = Self.paymentMethodOrder.firstIndex(of: expense.paymentMethod) ?? 1
+
                 paymentEntries = expense.payments.map { $0.toCorePayment() }
 
                 if let path = expense.receiptStoragePath {
@@ -256,6 +265,8 @@ struct ExpenseEntryView: View {
                     paymentSplitRow
                     RowDivider()
                     dateRow
+                    RowDivider()
+                    paymentMethodRow
                 }
                 .padding(.top, Layout.sectionGap)
 
@@ -497,6 +508,30 @@ struct ExpenseEntryView: View {
             .padding(12)
             .presentationCompactAdaptation(.popover)
         }
+    }
+
+    private var paymentMethodRow: some View {
+        HStack(spacing: 12) {
+            Text("Paid via")
+                .font(.formRowLabel)
+                .tracking(-0.07)
+                .foregroundStyle(Sage.text)
+            Spacer()
+            Menu {
+                ForEach(Array(Self.paymentMethodOrder.enumerated()), id: \.element) { index, method in
+                    Button(method.displayName) {
+                        paymentMethodIndex = index
+                    }
+                }
+            } label: {
+                DropdownPill(title: selectedPaymentMethod.displayName)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("expense.paymentMethodMenu")
+            .accessibilityLabel(selectedPaymentMethod.displayName)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, Layout.rowVPad)
     }
 
     private var participantsCard: some View {
@@ -900,6 +935,7 @@ struct ExpenseEntryView: View {
             descriptionText: description.trimmingCharacters(in: .whitespaces),
             expenseDate: expenseDate,
             receiptStoragePath: receiptPath,
+            paymentMethodRaw: selectedPaymentMethod.rawValue,
             createdByID: user.id,
             trip: trip
         )
@@ -971,6 +1007,7 @@ struct ExpenseEntryView: View {
         expense.descriptionText = description.trimmingCharacters(in: .whitespaces)
         expense.expenseDate = expenseDate
         expense.receiptStoragePath = receiptPath
+        expense.paymentMethodRaw = selectedPaymentMethod.rawValue
         expense.lastEditedByID = user.id
         expense.updatedAt = .now
         expense.writeID = UUID()

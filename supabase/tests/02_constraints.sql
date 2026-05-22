@@ -3,7 +3,7 @@
 begin;
 set search_path = extensions, public, pg_temp;
 
-select plan(18);
+select plan(19);
 create temp table _r (line text);
 
 insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
@@ -54,6 +54,10 @@ insert into _r select throws_ok(
 insert into _r select throws_ok(
   $$insert into public.expenses (trip_id, amount, currency, description, expense_date, created_by) values ('11111111-1111-1111-1111-111111111111', 10, 'EUR', '', '2026-05-01', '00000000-0000-0000-0000-000000000001')$$,
   '23514', null, 'empty expense description rejected');
+
+insert into _r select throws_ok(
+  $$insert into public.expenses (trip_id, amount, currency, description, expense_date, payment_method, created_by) values ('11111111-1111-1111-1111-111111111111', 10, 'EUR', 'Bad payment method', '2026-05-01', 'cheque', '00000000-0000-0000-0000-000000000001')$$,
+  '23514', null, 'invalid expense payment method rejected');
 
 insert into _r select lives_ok(
   $$insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)

@@ -12,6 +12,21 @@ public struct ExpenseSplit: Hashable, Codable, Sendable {
     }
 }
 
+/// How an expense was paid.
+public enum PaymentMethod: String, Codable, Sendable, CaseIterable {
+    case cash
+    case card
+    case bankTransfer = "bank_transfer"
+
+    public var displayName: String {
+        switch self {
+        case .cash: "Cash"
+        case .card: "Card"
+        case .bankTransfer: "Bank transfer"
+        }
+    }
+}
+
 public struct Expense: Identifiable, Hashable, Codable, Sendable {
     public let id: UUID
     public let tripID: UUID
@@ -19,6 +34,7 @@ public struct Expense: Identifiable, Hashable, Codable, Sendable {
     public let categoryID: UUID?
     public let descriptionText: String?
     public let receiptStoragePath: String?
+    public let paymentMethod: PaymentMethod
     public let expenseDate: Date
     public let payments: [Payment]
     public let splits: [ExpenseSplit]
@@ -34,6 +50,7 @@ public struct Expense: Identifiable, Hashable, Codable, Sendable {
         categoryID: UUID? = nil,
         descriptionText: String? = nil,
         receiptStoragePath: String? = nil,
+        paymentMethod: PaymentMethod = .card,
         expenseDate: Date,
         payments: [Payment],
         splits: [ExpenseSplit],
@@ -48,6 +65,7 @@ public struct Expense: Identifiable, Hashable, Codable, Sendable {
         self.categoryID = categoryID
         self.descriptionText = descriptionText
         self.receiptStoragePath = receiptStoragePath
+        self.paymentMethod = paymentMethod
         self.expenseDate = expenseDate
         self.payments = payments
         self.splits = splits

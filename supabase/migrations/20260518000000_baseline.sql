@@ -408,6 +408,7 @@ create table public.expenses (
   description          text not null check (char_length(trim(description)) > 0 and char_length(description) <= 200),
   expense_date         date not null,
   receipt_storage_path text check (receipt_storage_path is null or char_length(receipt_storage_path) <= 512),
+  payment_method       text not null default 'card' check (payment_method in ('cash', 'card', 'bank_transfer')),
   created_by           uuid not null references public.profiles(id) on delete restrict,
   last_edited_by       uuid references public.profiles(id) on delete restrict,
   created_at           timestamptz not null default now(),
@@ -1663,8 +1664,8 @@ begin
 
     insert into public.expenses (
         id, trip_id, amount, currency, category_id,
-        description, expense_date, receipt_storage_path, created_by,
-        last_edited_by
+        description, expense_date, receipt_storage_path, payment_method,
+        created_by, last_edited_by
     )
     values (
         v_expense_id,
@@ -1675,6 +1676,7 @@ begin
         p_expense->>'description',
         (p_expense->>'expense_date')::date,
         nullif(p_expense->>'receipt_storage_path', ''),
+        coalesce(nullif(p_expense->>'payment_method', ''), 'card'),
         v_actor,
         case when nullif(p_expense->>'last_edited_by', '') is null then null else v_actor end
     )
@@ -1685,6 +1687,7 @@ begin
         description          = excluded.description,
         expense_date         = excluded.expense_date,
         receipt_storage_path = excluded.receipt_storage_path,
+        payment_method       = excluded.payment_method,
         last_edited_by       = v_actor;
 
     delete from public.expense_payments where expense_id = v_expense_id;

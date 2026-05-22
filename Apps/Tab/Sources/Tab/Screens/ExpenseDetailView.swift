@@ -327,6 +327,8 @@ struct ExpenseDetailView: View {
         VStack(spacing: 0) {
             detailRow(label: "Date", value: Self.fullDateFormatter.string(from: expense.expenseDate))
             RowDivider()
+            detailRow(label: "Paid via", value: expense.paymentMethod.displayName)
+            RowDivider()
             detailRow(label: "Logged by", value: loggedByName)
             RowDivider()
             detailRow(label: "Logged at", value: Self.timestampFormatter.string(from: expense.createdAt))
