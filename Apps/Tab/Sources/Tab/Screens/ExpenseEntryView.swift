@@ -50,6 +50,7 @@ struct ExpenseEntryView: View {
     @State private var existingReceiptURL: URL?
 
     @FocusState private var descriptionFocused: Bool
+    @FocusState private var splitFieldFocused: UUID?
 
     private var isEditing: Bool { editingExpenseID != nil }
     private var editingExpense: ExpenseEntity? { editingExpenses.first }
@@ -762,7 +763,9 @@ struct ExpenseEntryView: View {
     }
 
     private func participantRow(_ row: ParticipantRow) -> some View {
-        HStack(spacing: 12) {
+        let canTapToEdit = row.isOn && selectedSplitType == .equal
+
+        return HStack(spacing: 12) {
             Button {
                 Haptics.light()
                 withAnimation(.snappy(duration: 0.18)) {
@@ -805,6 +808,7 @@ struct ExpenseEntryView: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(Sage.cardBorder, lineWidth: 1)
                 )
+                .focused($splitFieldFocused, equals: row.personID)
             } else {
                 Text(row.share)
                     .font(.system(size: 13))
@@ -812,6 +816,15 @@ struct ExpenseEntryView: View {
                     .foregroundStyle(Sage.textSecondary)
                     .monospacedDigit()
                     .contentTransition(.numericText())
+                    .onTapGesture {
+                        guard canTapToEdit else { return }
+                        Haptics.light()
+                        descriptionFocused = false
+                        splitMode = 1
+                        seedMissingExactAmountsFromEqual()
+                        exactAmountTextByPersonID[row.personID] = ""
+                        splitFieldFocused = row.personID
+                    }
             }
         }
         .padding(.horizontal, 14)

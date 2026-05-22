@@ -219,6 +219,7 @@ struct PaymentSplitView: View {
         let displayShare = isOn
             ? MoneyFormatter.format(payment?.amountPaid ?? 0, currency: currency)
             : "—"
+        let canTapToEdit = isOn && draft.payerMode == .equal && draft.selectedPayerIDs.count > 1
 
         return HStack(spacing: 12) {
             Button {
@@ -270,6 +271,13 @@ struct PaymentSplitView: View {
                     .foregroundStyle(isOn ? Sage.textSecondary : Sage.textSecondary.opacity(0.5))
                     .monospacedDigit()
                     .contentTransition(.numericText())
+                    .onTapGesture {
+                        guard canTapToEdit else { return }
+                        Haptics.light()
+                        draft.setPayerMode(.exact, totalAmount: totalAmount, currency: currency)
+                        draft.clearExactPayerAmount(for: personID)
+                        focused = .payer(personID)
+                    }
             }
         }
         .padding(.horizontal, 14)
@@ -383,6 +391,7 @@ struct PaymentSplitView: View {
         let displayShare = isOn
             ? MoneyFormatter.format(split?.amountOwed ?? 0, currency: currency)
             : "—"
+        let canTapToEdit = isOn && draft.selectedSplitType == .equal
 
         return HStack(spacing: 12) {
             Button {
@@ -433,6 +442,13 @@ struct PaymentSplitView: View {
                     .foregroundStyle(isOn ? Sage.textSecondary : Sage.textSecondary.opacity(0.5))
                     .monospacedDigit()
                     .contentTransition(.numericText())
+                    .onTapGesture {
+                        guard canTapToEdit else { return }
+                        Haptics.light()
+                        draft.setSplitMode(1, totalAmount: totalAmount, currency: currency)
+                        draft.clearExactSplitAmount(for: personID)
+                        focused = .split(personID)
+                    }
             }
         }
         .padding(.horizontal, 14)
@@ -573,6 +589,10 @@ final class PaymentSplitDraft: @unchecked Sendable {
         exactPayerAmountText[uid] = Self.sanitize(input)
     }
 
+    func clearExactPayerAmount(for uid: UUID) {
+        exactPayerAmountText[uid] = ""
+    }
+
     func computedPayments(totalAmount: Decimal, currency: String) -> [Payment]? {
         guard !selectedPayerIDs.isEmpty, totalAmount > 0 else { return nil }
         let payers = Array(selectedPayerIDs)
@@ -615,6 +635,10 @@ final class PaymentSplitDraft: @unchecked Sendable {
 
     func setExactSplitAmount(_ input: String, for uid: UUID) {
         exactSplitAmountText[uid] = Self.sanitize(input)
+    }
+
+    func clearExactSplitAmount(for uid: UUID) {
+        exactSplitAmountText[uid] = ""
     }
 
     func computedSplits(totalAmount: Decimal, currency: String) -> [ExpenseSplit]? {
