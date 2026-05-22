@@ -56,6 +56,7 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `T
 - **No `XCTest`.** All tests are Swift Testing (`import Testing`).
 - **Tests live in `Tests/<TargetName>Tests/`** — canonical SPM layout.
 - **`.build/` and `.swiftpm/` are gitignored** — never commit them.
+- **Keep a live working log in `docs/working_log/`** while executing actual repo work. Name files `YYYY-MM-DD-descriptive-slug.md`. The log is **chronological and append-only**: start with the goal, then append each meaningful update (findings, direction changes, blockers, pivots, decisions, validations) as a new timestamped entry. Never rewrite or remove earlier entries — the point is a full narrative of how the work unfolded, including dead ends and changes in direction.
 
 ## Database
 
