@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 import TabCore
 
 enum TripExporter {
@@ -7,23 +6,50 @@ enum TripExporter {
     struct ExportData: Sendable {
         let tripName: String
         let expenses: [ExpenseRow]
+        let expensePayments: [ExpensePaymentRow]
+        let expenseSplits: [ExpenseSplitRow]
         let settlements: [SettlementRow]
         let summary: Summary
     }
 
     struct ExpenseRow: Sendable {
+        let id: String
         let date: String
         let description: String
         let amount: Decimal
         let currency: String
         let category: String
         let paidBy: String
+        let paidByDetail: String
         let splitBetween: String
+        let splitDetail: String
         let paymentMethod: String
         let createdBy: String
         let createdAt: String
         let lastEditedBy: String
         let lastEditedAt: String
+    }
+
+    struct ExpensePaymentRow: Sendable {
+        let expenseID: String
+        let date: String
+        let description: String
+        let payerID: String
+        let payerName: String
+        let currency: String
+        let amountPaid: Decimal
+        let paymentMethod: String
+    }
+
+    struct ExpenseSplitRow: Sendable {
+        let expenseID: String
+        let date: String
+        let description: String
+        let participantID: String
+        let participantName: String
+        let currency: String
+        let amountOwed: Decimal
+        let splitType: String
     }
 
     struct SettlementRow: Sendable {
@@ -60,6 +86,20 @@ enum TripExporter {
         let amount: Decimal
     }
 
+    struct Workbook: Sendable {
+        let sheets: [WorkbookSheet]
+    }
+
+    struct WorkbookSheet: Sendable {
+        let name: String
+        let rows: [[WorkbookCell]]
+    }
+
+    enum WorkbookCell: Sendable, Equatable {
+        case string(String)
+        case number(Decimal)
+    }
+
     // MARK: - Data extraction
 
     @MainActor
@@ -77,20 +117,53 @@ enum TripExporter {
             .filter { $0.deletedAt == nil }
             .sorted { $0.expenseDate < $1.expenseDate }
 
-        let expenseRows: [ExpenseRow] = activeExpenses.map { expense in
-            let paidByParts = expense.payments
-                .sorted { $0.tripPersonID.uuidString < $1.tripPersonID.uuidString }
-                .map { payment in
-                    let name = peopleByID[payment.tripPersonID]?.displayName ?? "Unknown"
-                    return "\(name) (\(formatDecimal(payment.amountPaid)))"
-                }
+        var expensePaymentRows: [ExpensePaymentRow] = []
+        var expenseSplitRows: [ExpenseSplitRow] = []
 
-            let splitParts = expense.splits
-                .sorted { $0.tripPersonID.uuidString < $1.tripPersonID.uuidString }
-                .map { split in
-                    let name = peopleByID[split.tripPersonID]?.displayName ?? "Unknown"
-                    return "\(name) (\(formatDecimal(split.amountOwed)))"
-                }
+        let expenseRows: [ExpenseRow] = activeExpenses.map { expense in
+            let sortedPayments = expense.payments.sorted {
+                personSortKey($0.tripPersonID, peopleByID: peopleByID)
+                    < personSortKey($1.tripPersonID, peopleByID: peopleByID)
+            }
+            let sortedSplits = expense.splits.sorted {
+                personSortKey($0.tripPersonID, peopleByID: peopleByID)
+                    < personSortKey($1.tripPersonID, peopleByID: peopleByID)
+            }
+
+            let paidByNames = sortedPayments.map { personName($0.tripPersonID, peopleByID: peopleByID) }
+            let paidByDetails = sortedPayments.map { payment in
+                "\(personName(payment.tripPersonID, peopleByID: peopleByID)): \(formatMoney(payment.amountPaid, currency: expense.currency))"
+            }
+            let splitNames = sortedSplits.map { personName($0.tripPersonID, peopleByID: peopleByID) }
+            let splitDetails = sortedSplits.map { split in
+                "\(personName(split.tripPersonID, peopleByID: peopleByID)): \(formatMoney(split.amountOwed, currency: expense.currency))"
+            }
+
+            for payment in sortedPayments {
+                expensePaymentRows.append(ExpensePaymentRow(
+                    expenseID: expense.id.uuidString,
+                    date: dateFormatter.string(from: expense.expenseDate),
+                    description: expense.descriptionText,
+                    payerID: payment.tripPersonID.uuidString,
+                    payerName: personName(payment.tripPersonID, peopleByID: peopleByID),
+                    currency: expense.currency,
+                    amountPaid: payment.amountPaid,
+                    paymentMethod: payment.paymentModeRaw
+                ))
+            }
+
+            for split in sortedSplits {
+                expenseSplitRows.append(ExpenseSplitRow(
+                    expenseID: expense.id.uuidString,
+                    date: dateFormatter.string(from: expense.expenseDate),
+                    description: expense.descriptionText,
+                    participantID: split.tripPersonID.uuidString,
+                    participantName: personName(split.tripPersonID, peopleByID: peopleByID),
+                    currency: expense.currency,
+                    amountOwed: split.amountOwed,
+                    splitType: split.splitTypeRaw
+                ))
+            }
 
             let categoryName = expense.categoryID
                 .flatMap { categories[$0]?.name } ?? ""
@@ -109,14 +182,17 @@ enum TripExporter {
             }
 
             return ExpenseRow(
+                id: expense.id.uuidString,
                 date: dateFormatter.string(from: expense.expenseDate),
                 description: expense.descriptionText,
                 amount: expense.amount,
                 currency: expense.currency,
                 category: categoryName,
-                paidBy: paidByParts.joined(separator: "; "),
-                splitBetween: splitParts.joined(separator: "; "),
-                paymentMethod: expense.payments.first?.paymentModeRaw ?? "",
+                paidBy: paidByNames.joined(separator: ", "),
+                paidByDetail: paidByDetails.joined(separator: "; "),
+                splitBetween: splitNames.joined(separator: ", "),
+                splitDetail: splitDetails.joined(separator: "; "),
+                paymentMethod: sortedPayments.map(\.paymentModeRaw).uniqueSorted().joined(separator: ", "),
                 createdBy: createdByName,
                 createdAt: timestampFormatter.string(from: expense.createdAt),
                 lastEditedBy: lastEditedByName,
@@ -192,7 +268,8 @@ enum TripExporter {
         var seenPairs: Set<String> = []
         var pairBalances: [PairBalance] = []
         for balance in balances where balance.amount > 0 {
-            let pairKey = [balance.forUser.uuidString, balance.withUser.uuidString].sorted().joined(separator: "-")
+            let pairKey = ([balance.forUser.uuidString, balance.withUser.uuidString].sorted() + [balance.currency])
+                .joined(separator: "-")
             guard !seenPairs.contains(pairKey) else { continue }
             seenPairs.insert(pairKey)
             let fromName = peopleByID[balance.withUser]?.displayName ?? "Unknown"
@@ -204,6 +281,10 @@ enum TripExporter {
                 amount: balance.amount
             ))
         }
+        pairBalances.sort {
+            ($0.currency, $0.from, $0.to, $0.amount.description)
+                < ($1.currency, $1.from, $1.to, $1.amount.description)
+        }
 
         let summary = Summary(
             totalsByCurrency: totalsByCurrency,
@@ -214,6 +295,8 @@ enum TripExporter {
         return ExportData(
             tripName: trip.name,
             expenses: expenseRows,
+            expensePayments: expensePaymentRows,
+            expenseSplits: expenseSplitRows,
             settlements: settlementRows,
             summary: summary
         )
@@ -235,26 +318,27 @@ enum TripExporter {
         try FileManager.default.createDirectory(
             at: xlsxDir.appendingPathComponent("xl/worksheets"), withIntermediateDirectories: true)
 
+        let workbook = buildWorkbook(from: data)
         let sharedStrings = SharedStringTable()
-        let sheet1 = buildExpensesSheet(data.expenses, strings: sharedStrings)
-        let sheet2 = buildSettlementsSheet(data.settlements, strings: sharedStrings)
-        let sheet3 = buildSummarySheet(data.summary, strings: sharedStrings)
+        let sheets = workbook.sheets.map { sheet in
+            SheetBuilder(rows: sheet.rows, strings: sharedStrings)
+        }
 
-        try writeContentTypes(to: xlsxDir)
+        try writeContentTypes(sheetCount: sheets.count, to: xlsxDir)
         try writeRels(to: xlsxDir)
-        try writeWorkbook(to: xlsxDir)
-        try writeWorkbookRels(to: xlsxDir)
+        try writeWorkbook(sheets: workbook.sheets, to: xlsxDir)
+        try writeWorkbookRels(sheetCount: sheets.count, to: xlsxDir)
         try writeStyles(to: xlsxDir)
         try sharedStrings.write(to: xlsxDir)
-        try sheet1.write(to: xlsxDir.appendingPathComponent("xl/worksheets/sheet1.xml"))
-        try sheet2.write(to: xlsxDir.appendingPathComponent("xl/worksheets/sheet2.xml"))
-        try sheet3.write(to: xlsxDir.appendingPathComponent("xl/worksheets/sheet3.xml"))
+        for (index, sheet) in sheets.enumerated() {
+            try sheet.write(to: xlsxDir.appendingPathComponent("xl/worksheets/sheet\(index + 1).xml"))
+        }
 
         let sanitizedName = data.tripName
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
         let outputURL = tempDir.appendingPathComponent("\(sanitizedName) Expenses.xlsx")
-        try zipDirectory(xlsxDir, to: outputURL)
+        try XLSXArchiveWriter.writeDirectoryContents(from: xlsxDir, to: outputURL)
 
         let documentsDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let finalURL = documentsDir.appendingPathComponent("\(sanitizedName) Expenses.xlsx")
@@ -264,135 +348,113 @@ enum TripExporter {
         return finalURL
     }
 
-    // MARK: - Sheet builders
+    // MARK: - Workbook builders
 
-    private static func buildExpensesSheet(
-        _ rows: [ExpenseRow],
-        strings: SharedStringTable
-    ) -> SheetBuilder {
-        let builder = SheetBuilder()
-        builder.addRow([
-            "Date", "Description", "Amount", "Currency", "Category",
-            "Paid By", "Split Between", "Payment Method",
-            "Created By", "Created At", "Last Edited By", "Last Edited At"
-        ].map { .string(strings.index(for: $0)) })
-
-        for row in rows {
-            builder.addRow([
-                .string(strings.index(for: row.date)),
-                .string(strings.index(for: row.description)),
-                .number(row.amount),
-                .string(strings.index(for: row.currency)),
-                .string(strings.index(for: row.category)),
-                .string(strings.index(for: row.paidBy)),
-                .string(strings.index(for: row.splitBetween)),
-                .string(strings.index(for: row.paymentMethod)),
-                .string(strings.index(for: row.createdBy)),
-                .string(strings.index(for: row.createdAt)),
-                .string(strings.index(for: row.lastEditedBy)),
-                .string(strings.index(for: row.lastEditedAt)),
-            ])
-        }
-        return builder
+    static func buildWorkbook(from data: ExportData) -> Workbook {
+        Workbook(sheets: [
+            WorkbookSheet(name: "Expenses", rows: buildExpensesRows(data.expenses)),
+            WorkbookSheet(name: "Expense Payments", rows: buildExpensePaymentRows(data.expensePayments)),
+            WorkbookSheet(name: "Expense Splits", rows: buildExpenseSplitRows(data.expenseSplits)),
+            WorkbookSheet(name: "Settlements", rows: buildSettlementRows(data.settlements)),
+            WorkbookSheet(name: "Summary", rows: buildSummaryRows(data.summary)),
+        ])
     }
 
-    private static func buildSettlementsSheet(
-        _ rows: [SettlementRow],
-        strings: SharedStringTable
-    ) -> SheetBuilder {
-        let builder = SheetBuilder()
-        builder.addRow([
-            "Date", "From", "To", "Amount", "Currency", "Note"
-        ].map { .string(strings.index(for: $0)) })
-
-        for row in rows {
-            builder.addRow([
-                .string(strings.index(for: row.date)),
-                .string(strings.index(for: row.from)),
-                .string(strings.index(for: row.to)),
-                .number(row.amount),
-                .string(strings.index(for: row.currency)),
-                .string(strings.index(for: row.note)),
-            ])
+    private static func buildExpensesRows(_ rows: [ExpenseRow]) -> [[WorkbookCell]] {
+        var sheetRows: [[WorkbookCell]] = [[
+            .string("Expense ID"), .string("Date"), .string("Description"), .string("Amount"),
+            .string("Currency"), .string("Category"), .string("Paid By"), .string("Paid By Detail"),
+            .string("Split Between"), .string("Split Detail"), .string("Payment Method"),
+            .string("Created By"), .string("Created At"), .string("Last Edited By"), .string("Last Edited At"),
+        ]]
+        sheetRows += rows.map { row in
+            [
+                .string(row.id), .string(row.date), .string(row.description), .number(row.amount),
+                .string(row.currency), .string(row.category), .string(row.paidBy), .string(row.paidByDetail),
+                .string(row.splitBetween), .string(row.splitDetail), .string(row.paymentMethod),
+                .string(row.createdBy), .string(row.createdAt), .string(row.lastEditedBy), .string(row.lastEditedAt),
+            ]
         }
-        return builder
+        return sheetRows
     }
 
-    private static func buildSummarySheet(
-        _ summary: Summary,
-        strings: SharedStringTable
-    ) -> SheetBuilder {
-        let builder = SheetBuilder()
+    private static func buildExpensePaymentRows(_ rows: [ExpensePaymentRow]) -> [[WorkbookCell]] {
+        var sheetRows: [[WorkbookCell]] = [[
+            .string("Expense ID"), .string("Date"), .string("Description"), .string("Payer ID"),
+            .string("Payer Name"), .string("Currency"), .string("Amount Paid"), .string("Payment Method"),
+        ]]
+        sheetRows += rows.map { row in
+            [
+                .string(row.expenseID), .string(row.date), .string(row.description), .string(row.payerID),
+                .string(row.payerName), .string(row.currency), .number(row.amountPaid), .string(row.paymentMethod),
+            ]
+        }
+        return sheetRows
+    }
 
-        // Section: Total Spent
-        builder.addRow([.string(strings.index(for: "Total Spent per Currency"))])
-        builder.addRow([
-            .string(strings.index(for: "Currency")),
-            .string(strings.index(for: "Total")),
-        ])
-        for entry in summary.totalsByCurrency {
-            builder.addRow([
-                .string(strings.index(for: entry.currency)),
-                .number(entry.total),
-            ])
+    private static func buildExpenseSplitRows(_ rows: [ExpenseSplitRow]) -> [[WorkbookCell]] {
+        var sheetRows: [[WorkbookCell]] = [[
+            .string("Expense ID"), .string("Date"), .string("Description"), .string("Participant ID"),
+            .string("Participant Name"), .string("Currency"), .string("Amount Owed"), .string("Split Type"),
+        ]]
+        sheetRows += rows.map { row in
+            [
+                .string(row.expenseID), .string(row.date), .string(row.description), .string(row.participantID),
+                .string(row.participantName), .string(row.currency), .number(row.amountOwed), .string(row.splitType),
+            ]
+        }
+        return sheetRows
+    }
+
+    private static func buildSettlementRows(_ rows: [SettlementRow]) -> [[WorkbookCell]] {
+        var sheetRows: [[WorkbookCell]] = [[
+            .string("Date"), .string("From"), .string("To"), .string("Amount"), .string("Currency"), .string("Note"),
+        ]]
+        sheetRows += rows.map { row in
+            [.string(row.date), .string(row.from), .string(row.to), .number(row.amount), .string(row.currency), .string(row.note)]
+        }
+        return sheetRows
+    }
+
+    private static func buildSummaryRows(_ summary: Summary) -> [[WorkbookCell]] {
+        var rows: [[WorkbookCell]] = []
+        rows.append([.string("Total Spent per Currency")])
+        rows.append([.string("Currency"), .string("Total")])
+        rows += summary.totalsByCurrency.map { [.string($0.currency), .number($0.total)] }
+
+        rows.append([])
+        rows.append([.string("Per-Person Breakdown")])
+        rows.append([.string("Person"), .string("Currency"), .string("Total Paid"), .string("Total Owed"), .string("Net")])
+        rows += summary.personSummaries.map { person in
+            [
+                .string(person.name),
+                .string(person.currency),
+                .number(person.totalPaid),
+                .number(person.totalOwed),
+                .number(person.totalPaid - person.totalOwed),
+            ]
         }
 
-        builder.addRow([])
-
-        // Section: Per-person breakdown
-        builder.addRow([.string(strings.index(for: "Per-Person Breakdown"))])
-        builder.addRow([
-            .string(strings.index(for: "Person")),
-            .string(strings.index(for: "Currency")),
-            .string(strings.index(for: "Total Paid")),
-            .string(strings.index(for: "Total Owed")),
-            .string(strings.index(for: "Net")),
-        ])
-        for ps in summary.personSummaries {
-            let net = ps.totalPaid - ps.totalOwed
-            builder.addRow([
-                .string(strings.index(for: ps.name)),
-                .string(strings.index(for: ps.currency)),
-                .number(ps.totalPaid),
-                .number(ps.totalOwed),
-                .number(net),
-            ])
-        }
-
-        builder.addRow([])
-
-        // Section: Net Balances
-        builder.addRow([.string(strings.index(for: "Net Balances Between Pairs"))])
-        builder.addRow([
-            .string(strings.index(for: "Owes (From)")),
-            .string(strings.index(for: "Owed To")),
-            .string(strings.index(for: "Currency")),
-            .string(strings.index(for: "Amount")),
-        ])
-        for pb in summary.pairBalances {
-            builder.addRow([
-                .string(strings.index(for: pb.from)),
-                .string(strings.index(for: pb.to)),
-                .string(strings.index(for: pb.currency)),
-                .number(pb.amount),
-            ])
-        }
-
-        return builder
+        rows.append([])
+        rows.append([.string("Net Balances Between Pairs")])
+        rows.append([.string("Owes (From)"), .string("Owed To"), .string("Currency"), .string("Amount")])
+        rows += summary.pairBalances.map { [.string($0.from), .string($0.to), .string($0.currency), .number($0.amount)] }
+        return rows
     }
 
     // MARK: - XLSX XML files
 
-    private static func writeContentTypes(to dir: URL) throws {
+    private static func writeContentTypes(sheetCount: Int, to dir: URL) throws {
+        let sheetOverrides = (1...sheetCount)
+            .map { "  <Override PartName=\"/xl/worksheets/sheet\($0).xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" }
+            .joined(separator: "\n")
         let xml = """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
           <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
           <Default Extension="xml" ContentType="application/xml"/>
           <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-          <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-          <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-          <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+        \(sheetOverrides)
           <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
           <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
         </Types>
@@ -410,29 +472,35 @@ enum TripExporter {
         try xml.write(to: dir.appendingPathComponent("_rels/.rels"), atomically: true, encoding: .utf8)
     }
 
-    private static func writeWorkbook(to dir: URL) throws {
+    private static func writeWorkbook(sheets: [WorkbookSheet], to dir: URL) throws {
+        let sheetXML = sheets.enumerated()
+            .map { index, sheet in
+                "    <sheet name=\"\(xmlEscape(sheet.name))\" sheetId=\"\(index + 1)\" r:id=\"rId\(index + 1)\"/>"
+            }
+            .joined(separator: "\n")
         let xml = """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
           <sheets>
-            <sheet name="Expenses" sheetId="1" r:id="rId1"/>
-            <sheet name="Settlements" sheetId="2" r:id="rId2"/>
-            <sheet name="Summary" sheetId="3" r:id="rId3"/>
+        \(sheetXML)
           </sheets>
         </workbook>
         """
         try xml.write(to: dir.appendingPathComponent("xl/workbook.xml"), atomically: true, encoding: .utf8)
     }
 
-    private static func writeWorkbookRels(to dir: URL) throws {
+    private static func writeWorkbookRels(sheetCount: Int, to dir: URL) throws {
+        let worksheetRels = (1...sheetCount)
+            .map { "  <Relationship Id=\"rId\($0)\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet\($0).xml\"/>" }
+            .joined(separator: "\n")
+        let styleID = sheetCount + 1
+        let sharedStringsID = sheetCount + 2
         let xml = """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-          <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
-          <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
-          <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-          <Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+        \(worksheetRels)
+          <Relationship Id="rId\(styleID)" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+          <Relationship Id="rId\(sharedStringsID)" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
         </Relationships>
         """
         try xml.write(to: dir.appendingPathComponent("xl/_rels/workbook.xml.rels"), atomically: true, encoding: .utf8)
@@ -465,29 +533,6 @@ enum TripExporter {
         try xml.write(to: dir.appendingPathComponent("xl/styles.xml"), atomically: true, encoding: .utf8)
     }
 
-    // MARK: - ZIP
-
-    private static func zipDirectory(_ sourceDir: URL, to outputURL: URL) throws {
-        let coordinator = NSFileCoordinator()
-        var coordinatorError: NSError?
-        var zipError: (any Error)?
-
-        coordinator.coordinate(
-            readingItemAt: sourceDir,
-            options: .forUploading,
-            error: &coordinatorError
-        ) { zipURL in
-            do {
-                try FileManager.default.copyItem(at: zipURL, to: outputURL)
-            } catch {
-                zipError = error
-            }
-        }
-
-        if let error = coordinatorError { throw error }
-        if let error = zipError { throw error }
-    }
-
     // MARK: - Helpers
 
     private static func formatDecimal(_ value: Decimal) -> String {
@@ -496,6 +541,242 @@ enum TripExporter {
         formatter.minimumFractionDigits = 2
         formatter.maximumFractionDigits = 2
         return formatter.string(from: value as NSDecimalNumber) ?? "0.00"
+    }
+
+    private static func formatMoney(_ value: Decimal, currency: String) -> String {
+        "\(currency) \(formatDecimal(value))"
+    }
+
+    private static func personName(_ id: UUID, peopleByID: [UUID: TripPersonEntity]) -> String {
+        peopleByID[id]?.displayName ?? "Unknown"
+    }
+
+    private static func personSortKey(_ id: UUID, peopleByID: [UUID: TripPersonEntity]) -> String {
+        "\(personName(id, peopleByID: peopleByID).localizedLowercase)|\(id.uuidString)"
+    }
+
+    private static func xmlEscape(_ str: String) -> String {
+        str.replacingOccurrences(of: "&", with: "&amp;")
+           .replacingOccurrences(of: "<", with: "&lt;")
+           .replacingOccurrences(of: ">", with: "&gt;")
+           .replacingOccurrences(of: "\"", with: "&quot;")
+           .replacingOccurrences(of: "'", with: "&apos;")
+    }
+}
+
+// MARK: - XLSX Archive Writer
+
+private enum XLSXArchiveWriter {
+    private static let minimumDOSDate = UInt16(33)
+
+    static func writeDirectoryContents(from sourceDir: URL, to outputURL: URL) throws {
+        let fileManager = FileManager.default
+        guard let enumerator = fileManager.enumerator(
+            at: sourceDir,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: []
+        ) else {
+            throw CocoaError(.fileReadUnknown)
+        }
+
+        let basePath = sourceDir.standardizedFileURL.path
+        let files = try enumerator.compactMap { item -> ArchiveEntry? in
+            guard let url = item as? URL else { return nil }
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey])
+            guard values.isRegularFile == true else { return nil }
+
+            let path = url.standardizedFileURL.path
+            let relativeStart = path.index(path.startIndex, offsetBy: basePath.count)
+            var relativePath = String(path[relativeStart...])
+            if relativePath.hasPrefix("/") {
+                relativePath.removeFirst()
+            }
+            return ArchiveEntry(path: relativePath, url: url)
+        }
+        .sorted { $0.path < $1.path }
+
+        var archive = Data()
+        var centralDirectory = Data()
+
+        for file in files {
+            let localHeaderOffset = archive.count
+            let fileData = try Data(contentsOf: file.url)
+            let pathData = Data(file.path.utf8)
+            let crc = CRC32.checksum(fileData)
+            try validateZIPLimits(
+                pathDataCount: pathData.count,
+                fileDataCount: fileData.count,
+                localHeaderOffset: localHeaderOffset
+            )
+
+            appendLocalFileHeader(
+                to: &archive,
+                pathData: pathData,
+                crc: crc,
+                fileSize: UInt32(fileData.count)
+            )
+            archive.append(fileData)
+
+            appendCentralDirectoryHeader(
+                to: &centralDirectory,
+                pathData: pathData,
+                crc: crc,
+                fileSize: UInt32(fileData.count),
+                localHeaderOffset: UInt32(localHeaderOffset)
+            )
+        }
+
+        let centralDirectoryOffset = archive.count
+        try validateZIPLimits(
+            entryCount: files.count,
+            centralDirectorySize: centralDirectory.count,
+            centralDirectoryOffset: centralDirectoryOffset
+        )
+
+        archive.append(centralDirectory)
+        appendEndOfCentralDirectory(
+            to: &archive,
+            entryCount: UInt16(files.count),
+            centralDirectorySize: UInt32(centralDirectory.count),
+            centralDirectoryOffset: UInt32(centralDirectoryOffset)
+        )
+
+        try archive.write(to: outputURL, options: .atomic)
+    }
+
+    private static func appendLocalFileHeader(
+        to data: inout Data,
+        pathData: Data,
+        crc: UInt32,
+        fileSize: UInt32
+    ) {
+        data.appendLittleEndian(UInt32(0x0403_4B50))
+        data.appendLittleEndian(UInt16(20))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(minimumDOSDate)
+        data.appendLittleEndian(crc)
+        data.appendLittleEndian(fileSize)
+        data.appendLittleEndian(fileSize)
+        data.appendLittleEndian(UInt16(pathData.count))
+        data.appendLittleEndian(UInt16(0))
+        data.append(pathData)
+    }
+
+    private static func appendCentralDirectoryHeader(
+        to data: inout Data,
+        pathData: Data,
+        crc: UInt32,
+        fileSize: UInt32,
+        localHeaderOffset: UInt32
+    ) {
+        data.appendLittleEndian(UInt32(0x0201_4B50))
+        data.appendLittleEndian(UInt16(20))
+        data.appendLittleEndian(UInt16(20))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(minimumDOSDate)
+        data.appendLittleEndian(crc)
+        data.appendLittleEndian(fileSize)
+        data.appendLittleEndian(fileSize)
+        data.appendLittleEndian(UInt16(pathData.count))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(UInt32(0))
+        data.appendLittleEndian(localHeaderOffset)
+        data.append(pathData)
+    }
+
+    private static func appendEndOfCentralDirectory(
+        to data: inout Data,
+        entryCount: UInt16,
+        centralDirectorySize: UInt32,
+        centralDirectoryOffset: UInt32
+    ) {
+        data.appendLittleEndian(UInt32(0x0605_4B50))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(UInt16(0))
+        data.appendLittleEndian(entryCount)
+        data.appendLittleEndian(entryCount)
+        data.appendLittleEndian(centralDirectorySize)
+        data.appendLittleEndian(centralDirectoryOffset)
+        data.appendLittleEndian(UInt16(0))
+    }
+
+    private static func validateZIPLimits(
+        pathDataCount: Int,
+        fileDataCount: Int,
+        localHeaderOffset: Int
+    ) throws {
+        guard pathDataCount <= Int(UInt16.max),
+              fileDataCount <= Int(UInt32.max),
+              localHeaderOffset <= Int(UInt32.max)
+        else {
+            throw XLSXArchiveError.archiveTooLarge
+        }
+    }
+
+    private static func validateZIPLimits(
+        entryCount: Int,
+        centralDirectorySize: Int,
+        centralDirectoryOffset: Int
+    ) throws {
+        guard entryCount <= Int(UInt16.max),
+              centralDirectorySize <= Int(UInt32.max),
+              centralDirectoryOffset <= Int(UInt32.max)
+        else {
+            throw XLSXArchiveError.archiveTooLarge
+        }
+    }
+
+    private struct ArchiveEntry {
+        let path: String
+        let url: URL
+    }
+
+    private enum XLSXArchiveError: Error {
+        case archiveTooLarge
+    }
+}
+
+private enum CRC32 {
+    private static let table: [UInt32] = (0..<256).map { byte in
+        var crc = UInt32(byte)
+        for _ in 0..<8 {
+            if crc & 1 == 1 {
+                crc = 0xEDB8_8320 ^ (crc >> 1)
+            } else {
+                crc >>= 1
+            }
+        }
+        return crc
+    }
+
+    static func checksum(_ data: Data) -> UInt32 {
+        var crc = UInt32.max
+        for byte in data {
+            crc = table[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
+        }
+        return crc ^ UInt32.max
+    }
+}
+
+private extension Data {
+    mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
+        var littleEndian = value.littleEndian
+        Swift.withUnsafeBytes(of: &littleEndian) { buffer in
+            append(contentsOf: buffer)
+        }
+    }
+}
+
+private extension Sequence where Element == String {
+    func uniqueSorted() -> [String] {
+        Array(Set(self)).sorted()
     }
 }
 
@@ -537,15 +818,24 @@ private final class SharedStringTable: @unchecked Sendable {
 // MARK: - Sheet Builder
 
 private final class SheetBuilder: @unchecked Sendable {
-    enum CellValue {
-        case string(Int)
+    private enum XLSXCell {
+        case sharedString(Int)
         case number(Decimal)
     }
 
-    private var rows: [[CellValue]] = []
+    private var rows: [[XLSXCell]] = []
 
-    func addRow(_ cells: [CellValue]) {
-        rows.append(cells)
+    init(rows: [[TripExporter.WorkbookCell]], strings: SharedStringTable) {
+        self.rows = rows.map { row in
+            row.map { cell in
+                switch cell {
+                case .string(let value):
+                    .sharedString(strings.index(for: value))
+                case .number(let value):
+                    .number(value)
+                }
+            }
+        }
     }
 
     func write(to url: URL) throws {
@@ -562,7 +852,7 @@ private final class SheetBuilder: @unchecked Sendable {
                 let colRef = columnLetter(colIdx)
                 let cellRef = "\(colRef)\(rowNum)"
                 switch cell {
-                case .string(let idx):
+                case .sharedString(let idx):
                     xml += "<c r=\"\(cellRef)\" t=\"s\"><v>\(idx)</v></c>"
                 case .number(let value):
                     let formatted = formatDecimalForXML(value)
