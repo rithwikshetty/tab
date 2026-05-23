@@ -71,6 +71,20 @@ targets:
     dependencies:
       - target: Tab
 
+  TabTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: Tests/TabTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.rithwikshetty.tab.tests
+        IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    dependencies:
+      - target: Tab
+
 schemes:
   Tab:
     build:
@@ -81,6 +95,7 @@ schemes:
     test:
       config: Debug
       targets:
+        - TabTests
         - TabUITests
     profile:
       config: Release

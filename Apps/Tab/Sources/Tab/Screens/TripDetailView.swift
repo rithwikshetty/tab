@@ -1,5 +1,7 @@
 import SwiftUI
 import SwiftData
+import CoreTransferable
+import UniformTypeIdentifiers
 
 struct TripDetailView: View {
     let tripID: UUID
@@ -153,6 +155,24 @@ struct TripDetailView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ShareLink(
+                        item: exportItem(for: trip),
+                        preview: SharePreview("\(trip.name) Expenses")
+                    ) {
+                        Label("Export to Excel", systemImage: "square.and.arrow.up")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Sage.accent)
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityIdentifier("tripDetail.actionsButton")
+            }
+        }
     }
 
     @ViewBuilder
@@ -266,6 +286,35 @@ extension TripDetailView {
         Deletion.softDelete(expense: expense, in: context)
         Haptics.success()
         Task { await sync.pushPending() }
+    }
+
+    fileprivate func exportItem(for trip: TripEntity) -> TripExportTransferable {
+        let peopleByID = Dictionary(uniqueKeysWithValues: trip.people.map { ($0.id, $0) })
+        let categoriesByID = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+        let data = TripExporter.extractData(
+            trip: trip,
+            categories: categoriesByID,
+            peopleByID: peopleByID
+        )
+        return TripExportTransferable(data: data)
+    }
+}
+
+private struct TripExportTransferable: Transferable {
+    let data: TripExporter.ExportData
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .xlsx) { item in
+            SentTransferredFile(try TripExporter.generateXLSX(from: item.data))
+        }
+    }
+}
+
+private extension UTType {
+    static var xlsx: UTType {
+        UTType(filenameExtension: "xlsx")
+            ?? UTType("org.openxmlformats.spreadsheetml.sheet")
+            ?? .spreadsheet
     }
 }
 
