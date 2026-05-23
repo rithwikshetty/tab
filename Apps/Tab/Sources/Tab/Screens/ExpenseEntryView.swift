@@ -1073,7 +1073,7 @@ struct ExpenseEntryView: View {
     }()
 }
 
-private struct InlineDatePicker: UIViewRepresentable {
+struct InlineDatePicker: UIViewRepresentable {
     @Binding var selection: Date
     let tintColor: UIColor
     let onSelection: () -> Void

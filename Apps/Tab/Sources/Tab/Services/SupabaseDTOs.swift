@@ -340,3 +340,15 @@ struct SettlementInsertDTO: Codable, Sendable {
         case createdBy = "created_by"
     }
 }
+
+struct SettlementDeleteUpdateDTO: Codable, Sendable {
+    let deletedAt: Date?
+    let updatedAt: Date
+    let writeID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case deletedAt = "deleted_at"
+        case updatedAt = "updated_at"
+        case writeID = "write_id"
+    }
+}

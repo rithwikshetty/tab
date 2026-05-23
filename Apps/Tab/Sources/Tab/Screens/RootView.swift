@@ -36,7 +36,9 @@ struct RootView: View {
                     TripDetailView(
                         tripID: tripID,
                         onAddExpense: { path.append(Route.newExpense(tripID)) },
-                        onOpenExpense: { expenseID in path.append(Route.expense(expenseID)) }
+                        onOpenExpense: { expenseID in path.append(Route.expense(expenseID)) },
+                        onSettleUp: { path.append(Route.settleUp(tripID: tripID)) },
+                        onOpenSettlement: { settlementID in path.append(Route.settlement(settlementID)) }
                     )
                 case .newExpense(let tripID):
                     ExpenseEntryView(tripID: tripID)
@@ -47,6 +49,17 @@ struct RootView: View {
                         expenseID: expenseID,
                         onEditExpense: { tripID, expenseID in
                             path.append(Route.editExpense(tripID: tripID, expenseID: expenseID))
+                        }
+                    )
+                case .settleUp(let tripID):
+                    SettleUpFormView(tripID: tripID)
+                case .editSettlement(let tripID, let settlementID):
+                    SettleUpFormView(tripID: tripID, editingSettlementID: settlementID)
+                case .settlement(let settlementID):
+                    SettlementDetailView(
+                        settlementID: settlementID,
+                        onEditSettlement: { tripID, settlementID in
+                            path.append(Route.editSettlement(tripID: tripID, settlementID: settlementID))
                         }
                     )
                 }
@@ -119,6 +132,9 @@ enum Route: Hashable {
     case newExpense(UUID)
     case editExpense(tripID: UUID, expenseID: UUID)
     case expense(UUID)
+    case settleUp(tripID: UUID)
+    case editSettlement(tripID: UUID, settlementID: UUID)
+    case settlement(UUID)
 }
 
 struct SettingsPlaceholderView: View {

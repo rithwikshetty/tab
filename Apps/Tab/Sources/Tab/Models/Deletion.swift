@@ -18,6 +18,18 @@ enum Deletion {
         try? context.save()
     }
 
+    static func softDelete(settlement: SettlementEntity, in context: ModelContext) {
+        let now = Date.now
+        settlement.deletedAt = now
+        settlement.updatedAt = now
+        settlement.writeID = UUID()
+        if let trip = settlement.trip {
+            trip.lastActivityAt = now
+            trip.updatedAt = now
+        }
+        try? context.save()
+    }
+
     /// Soft-deletes a trip. RLS allows any member to update `deleted_at`; the
     /// 30-day purge window then handles eventual hard delete server-side.
     static func softDelete(trip: TripEntity, in context: ModelContext) {

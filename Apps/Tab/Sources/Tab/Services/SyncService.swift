@@ -728,6 +728,27 @@ final class SyncService {
         let dirty = try ctx.fetch(FetchDescriptor<SettlementEntity>()).filter { $0.pushedWriteID != $0.writeID }
         guard !dirty.isEmpty else { return }
         for settlement in dirty {
+            if settlement.deletedAt != nil {
+                if settlement.pushedWriteID == nil {
+                    ctx.delete(settlement)
+                } else {
+                    do {
+                        try await client
+                            .from("settlements")
+                            .update(SettlementDeleteUpdateDTO(
+                                deletedAt: settlement.deletedAt,
+                                updatedAt: settlement.updatedAt,
+                                writeID: settlement.writeID
+                            ))
+                            .eq("id", value: settlement.id.uuidString)
+                            .execute()
+                        settlement.pushedWriteID = settlement.writeID
+                    } catch {
+                        syncLog.error("settlement delete push failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+                continue
+            }
             let insert = SettlementInsertDTO(
                 id: settlement.id,
                 tripID: settlement.trip?.id ?? UUID(),

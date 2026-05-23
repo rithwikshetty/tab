@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TabCore
 @testable import Tab
 
 @Suite("Trip export")
@@ -142,5 +143,117 @@ private extension Array where Element == TripExporter.WorkbookCell {
             case .number(let value): value.description
             }
         }
+    }
+}
+
+@Suite("Settle up prefill")
+struct SettleUpPrefillTests {
+    private let trip = UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000001")!
+    private let alice = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
+    private let bob = UUID(uuidString: "10000000-0000-0000-0000-000000000002")!
+    private let cara = UUID(uuidString: "10000000-0000-0000-0000-000000000003")!
+
+    @Test("prefill suggests the largest debtor to the current user after many expenses and partial settlements")
+    func suggestsLargestDebtorToCurrentUser() throws {
+        let expenses = (0..<6).map { index in
+            makeExpense(
+                id: UUID(uuidString: "aaaaaaaa-0000-0000-0000-00000000010\(index)")!,
+                payer: alice,
+                amount: 120,
+                currency: "EUR",
+                participants: [alice, bob, cara]
+            )
+        }
+        let settlements = [
+            makeSettlement(from: bob, to: alice, amount: 210, currency: "EUR"),
+            makeSettlement(from: cara, to: alice, amount: 70, currency: "EUR"),
+        ]
+        // Bob has almost cleared his debt; Cara is now the largest remaining debtor.
+        let balances = BalanceEngine.compute(expenses: expenses, settlements: settlements)
+
+        let suggestion = try #require(SettleUpPresenter.suggestedPayment(
+            balances: balances,
+            currentPersonID: alice
+        ))
+
+        #expect(suggestion.fromPersonID == cara)
+        #expect(suggestion.toPersonID == alice)
+        #expect(suggestion.amount == 170)
+        #expect(suggestion.currency == "EUR")
+    }
+
+    @Test("prefill pays what the current user owes before collecting from someone else")
+    func suggestsCurrentUsersDebtFirst() throws {
+        let expenses = [
+            makeExpense(
+                id: UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000201")!,
+                payer: alice,
+                amount: 300,
+                currency: "EUR",
+                participants: [alice, cara]
+            ),
+            makeExpense(
+                id: UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000202")!,
+                payer: bob,
+                amount: 30,
+                currency: "EUR",
+                participants: [alice, bob]
+            ),
+        ]
+        let balances = BalanceEngine.compute(expenses: expenses, settlements: [])
+
+        let suggestion = try #require(SettleUpPresenter.suggestedPayment(
+            balances: balances,
+            currentPersonID: alice
+        ))
+
+        #expect(suggestion.fromPersonID == alice)
+        #expect(suggestion.toPersonID == bob)
+        #expect(suggestion.amount == 15)
+        #expect(suggestion.currency == "EUR")
+    }
+
+    private func makeExpense(
+        id: UUID,
+        payer: UUID,
+        amount: Decimal,
+        currency: String,
+        participants: [UUID]
+    ) -> Expense {
+        let share = amount / Decimal(participants.count)
+        return Expense(
+            id: id,
+            tripID: trip,
+            amount: Money(amount: amount, currency: currency),
+            descriptionText: "Shared cost",
+            expenseDate: Date(timeIntervalSince1970: 1_780_000_000),
+            payments: [
+                Payment(payerID: payer, amountPaid: amount, paymentMode: .equal),
+            ],
+            splits: participants.map {
+                ExpenseSplit(participantID: $0, amountOwed: share, splitType: .equal)
+            },
+            createdBy: payer,
+            createdAt: Date(timeIntervalSince1970: 1_780_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_780_000_000)
+        )
+    }
+
+    private func makeSettlement(
+        from: UUID,
+        to: UUID,
+        amount: Decimal,
+        currency: String
+    ) -> Settlement {
+        Settlement(
+            tripID: trip,
+            fromUserID: from,
+            toUserID: to,
+            amount: Money(amount: amount, currency: currency),
+            settledAt: Date(timeIntervalSince1970: 1_780_000_000),
+            createdBy: alice,
+            createdAt: Date(timeIntervalSince1970: 1_780_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_780_000_000)
+        )
     }
 }

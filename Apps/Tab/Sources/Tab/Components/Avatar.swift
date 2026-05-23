@@ -41,16 +41,45 @@ struct AvatarAdd: View {
     }
 }
 
+struct AvatarOverflow: View {
+    let count: Int
+    var size: CGFloat = 28
+    var borderWidth: CGFloat = 2
+
+    var body: some View {
+        Text("+\(count)")
+            .font(size >= 34 ? .avatarLarge : .avatarSmall)
+            .foregroundStyle(Sage.textSecondary)
+            .frame(width: size, height: size)
+            .background(Sage.surface2, in: Circle())
+            .overlay(Circle().stroke(Sage.surface, lineWidth: borderWidth))
+    }
+}
+
 struct AvatarGroup: View {
     let members: [MemberCard]
     var size: CGFloat = 28
     var borderWidth: CGFloat = 2
+    var maxVisible: Int? = nil
     var onAddTap: (() -> Void)?
+
+    private var visibleMembers: [MemberCard] {
+        guard let max = maxVisible, members.count > max else { return members }
+        return Array(members.prefix(max - 1))
+    }
+
+    private var overflowCount: Int {
+        guard let max = maxVisible, members.count > max else { return 0 }
+        return members.count - (max - 1)
+    }
 
     var body: some View {
         HStack(spacing: -8) {
-            ForEach(members) { member in
+            ForEach(visibleMembers) { member in
                 Avatar(initial: member.initial, tone: member.tone, size: size, borderWidth: borderWidth)
+            }
+            if overflowCount > 0 {
+                AvatarOverflow(count: overflowCount, size: size, borderWidth: borderWidth)
             }
             if let onAddTap {
                 Button {

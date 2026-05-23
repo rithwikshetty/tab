@@ -63,3 +63,36 @@ struct CategoryOption: Identifiable, Hashable, Sendable {
     let icon: String
     let name: String
 }
+
+struct SettlementRowItem: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let fromName: String
+    let toName: String
+    let formattedAmount: String
+    let text: String
+}
+
+struct SettleUpSuggestion: Hashable, Sendable {
+    let fromPersonID: UUID
+    let toPersonID: UUID
+    let amount: Decimal
+    let currency: String
+}
+
+enum TimelineItem: Identifiable, Hashable, Sendable {
+    case expense(ExpenseRowItem)
+    case settlement(SettlementRowItem)
+
+    var id: UUID {
+        switch self {
+        case .expense(let e): e.id
+        case .settlement(let s): s.id
+        }
+    }
+}
+
+struct TimelineDay: Identifiable, Hashable, Sendable {
+    let id: String
+    let dateLabel: String
+    let items: [TimelineItem]
+}

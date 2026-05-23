@@ -243,6 +243,128 @@ enum BalancePresenter {
     }
 }
 
+enum SettleUpPresenter {
+    /// Prefer debts the current person can pay off before suggesting that
+    /// someone else reimburse them. This matches the form's "From pays To"
+    /// direction and avoids defaulting to a payment that increases a debt.
+    static func suggestedPayment(
+        balances: [UserBalance],
+        currentPersonID: UUID
+    ) -> SettleUpSuggestion? {
+        if let balance = balances
+            .filter({ $0.forUser == currentPersonID && $0.amount < 0 })
+            .max(by: { abs($0.amount) < abs($1.amount) }) {
+            return SettleUpSuggestion(
+                fromPersonID: currentPersonID,
+                toPersonID: balance.withUser,
+                amount: -balance.amount,
+                currency: balance.currency
+            )
+        }
+
+        guard let balance = balances
+            .filter({ $0.forUser == currentPersonID && $0.amount > 0 })
+            .max(by: { $0.amount < $1.amount })
+        else { return nil }
+
+        return SettleUpSuggestion(
+            fromPersonID: balance.withUser,
+            toPersonID: currentPersonID,
+            amount: balance.amount,
+            currency: balance.currency
+        )
+    }
+}
+
+@MainActor
+enum TimelinePresenter {
+    static func days(
+        expenses: [ExpenseEntity],
+        settlements: [SettlementEntity],
+        currentPersonID: UUID,
+        personFor: (UUID) -> TripPersonEntity?,
+        categoryFor: (UUID?) -> CategoryEntity?
+    ) -> [TimelineDay] {
+        let calendar = Calendar.current
+        let labelFormatter = DateFormatter()
+        labelFormatter.dateFormat = "MMM d"
+
+        let activeExpenses = expenses.filter { $0.deletedAt == nil }
+        let activeSettlements = settlements.filter { $0.deletedAt == nil }
+
+        struct Dated: Identifiable {
+            let id: UUID
+            let date: Date
+            let created: Date
+            let item: TimelineItem
+        }
+
+        var all: [Dated] = []
+
+        for e in activeExpenses {
+            let category = categoryFor(e.categoryID)
+            let payerName: String
+            let payerIsYou: Bool
+            if e.payments.count > 1 {
+                payerName = "\(e.payments.count) people"
+                payerIsYou = false
+            } else if let firstPayer = e.primaryPayerID {
+                payerIsYou = firstPayer == currentPersonID
+                payerName = payerIsYou
+                    ? "you"
+                    : (personFor(firstPayer)?.displayName ?? "Member")
+            } else {
+                payerName = "\u{2014}"
+                payerIsYou = false
+            }
+            let yourShare = e.splits
+                .first(where: { $0.tripPersonID == currentPersonID })?.amountOwed ?? 0
+            let rowItem = ExpenseRowItem(
+                id: e.id,
+                categoryID: category?.id ?? e.categoryID,
+                icon: category?.icon ?? "tag",
+                name: e.descriptionText,
+                payerName: payerName,
+                payerIsYou: payerIsYou,
+                yourShare: MoneyFormatter.format(yourShare, currency: e.currency),
+                totalAmount: MoneyFormatter.format(e.amount, currency: e.currency)
+            )
+            all.append(Dated(id: e.id, date: e.expenseDate, created: e.createdAt, item: .expense(rowItem)))
+        }
+
+        for s in activeSettlements {
+            let fromName = s.fromPersonID == currentPersonID
+                ? "You"
+                : (personFor(s.fromPersonID)?.displayName ?? "Member")
+            let toName = s.toPersonID == currentPersonID
+                ? "you"
+                : (personFor(s.toPersonID)?.displayName ?? "Member")
+            let text = "\(fromName) settled with \(toName)"
+            let rowItem = SettlementRowItem(
+                id: s.id,
+                fromName: fromName,
+                toName: toName,
+                formattedAmount: MoneyFormatter.format(s.amount, currency: s.currency),
+                text: text
+            )
+            all.append(Dated(id: s.id, date: s.settledAt, created: s.createdAt, item: .settlement(rowItem)))
+        }
+
+        let grouped = Dictionary(grouping: all) { calendar.startOfDay(for: $0.date) }
+
+        return grouped.keys.sorted(by: >).map { day -> TimelineDay in
+            let dayItems = (grouped[day] ?? [])
+                .sorted { $0.created > $1.created }
+                .map(\.item)
+            return TimelineDay(
+                id: ISO8601DateFormatter().string(from: day),
+                dateLabel: labelFormatter.string(from: day),
+                items: dayItems
+            )
+        }
+    }
+}
+
 extension CategoryEntity {
     var asOption: CategoryOption {
         CategoryOption(id: id, icon: icon, name: name)

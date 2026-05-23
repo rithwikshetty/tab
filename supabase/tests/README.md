@@ -47,3 +47,4 @@ trigger then auto-creates `public.profiles`). Fixture UUIDs:
 | `04_rls.sql`              | 16    | RLS allow + deny paths and email-claim joining          |
 | `05_edge_cases.sql`       | 10    | Soft-delete purge, cascade vs restrict, helper-fn behavior |
 | `06_expense_payments.sql` | 18    | Transactional expense create/edit RPC with trip-person payments/splits |
+| `07_settlements.sql`      | 9     | Settlement writes under many dummy expenses, including pending trip people |

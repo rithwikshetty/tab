@@ -1,0 +1,1384 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tab — Settle Up: mid-trip settlement flow</title>
+  <style>
+    :root {
+      --sage-accent: #6F9866;
+      --sage-accent-strong: #4F7549;
+      --sage-accent-soft: #C6D6BA;
+      --sage-bg: #FAF7F0;
+      --sage-surface: #FFFFFF;
+      --sage-surface2: #F1ECE2;
+      --sage-text: #28281F;
+      --sage-text-secondary: #777267;
+      --sage-card-border: rgba(60, 50, 30, 0.06);
+      --sage-row-divider: rgba(60, 50, 30, 0.07);
+      --sage-segmented-bg: rgba(60, 50, 30, 0.06);
+      --sage-shadow: rgba(50, 60, 40, 0.06);
+      --sage-warn: #C46A4E;
+      --sage-settle: #6B8DA6;
+      --sage-settle-soft: rgba(107, 141, 166, 0.12);
+      --sage-settle-border: rgba(107, 141, 166, 0.25);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ECE7DC;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+      color: var(--sage-text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 48px 28px 96px;
+    }
+
+    .page-head {
+      text-align: center;
+      margin-bottom: 52px;
+    }
+    .page-head h1 {
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      margin: 0 0 10px;
+    }
+    .page-head p {
+      font-size: 14px;
+      color: var(--sage-text-secondary);
+      margin: 0 auto;
+      line-height: 1.55;
+      max-width: 760px;
+    }
+
+    /* flow section */
+    .flow-section {
+      margin-bottom: 64px;
+      padding: 32px 24px 28px;
+      background: rgba(255,255,255,0.4);
+      border-radius: 24px;
+      border: 1px solid var(--sage-card-border);
+    }
+    .flow-section.recommended {
+      background: linear-gradient(180deg, rgba(198, 214, 186, 0.45), rgba(198, 214, 186, 0.18));
+      border-color: var(--sage-accent-soft);
+    }
+    .flow-head {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .flow-head h2 {
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+      margin: 0;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    .badge.green { background: var(--sage-accent); color: #fff; }
+    .badge.blue { background: var(--sage-settle); color: #fff; }
+    .badge.muted { background: var(--sage-surface); color: var(--sage-text-secondary); border: 1px solid var(--sage-card-border); }
+
+    .flow-sub {
+      text-align: center;
+      color: var(--sage-text-secondary);
+      font-size: 13px;
+      margin: 0 auto 28px;
+      line-height: 1.5;
+      max-width: 700px;
+    }
+
+    .frames {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .frame-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      max-width: 390px;
+    }
+    .frame-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--sage-text-secondary);
+    }
+    .frame-caption {
+      font-size: 12px;
+      color: var(--sage-text-secondary);
+      text-align: center;
+      max-width: 340px;
+      line-height: 1.45;
+      margin-top: 2px;
+    }
+    .frame-arrow {
+      align-self: center;
+      color: var(--sage-text-secondary);
+      font-size: 28px;
+      padding-top: 380px;
+      user-select: none;
+    }
+
+    /* phone */
+    .phone {
+      width: 390px;
+      height: 844px;
+      background: var(--sage-bg);
+      border-radius: 44px;
+      border: 8px solid #1A1814;
+      box-shadow: 0 30px 60px -20px rgba(50, 60, 40, 0.25), 0 6px 12px rgba(0,0,0,0.04);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .status-bar {
+      height: 47px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 24px 0 28px;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.1px;
+    }
+    .status-bar .notch {
+      position: absolute;
+      top: 11px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 124px;
+      height: 32px;
+      background: #1A1814;
+      border-radius: 999px;
+    }
+    .battery {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--sage-text);
+    }
+    .battery::after {
+      content: "";
+      width: 22px;
+      height: 11px;
+      background: var(--sage-accent);
+      border-radius: 3px;
+    }
+
+    .nav-bar {
+      height: 52px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: 4px 14px 8px;
+    }
+    .nav-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      background: var(--sage-surface);
+      border-radius: 999px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      font-size: 17px;
+      letter-spacing: -0.1px;
+      color: var(--sage-text);
+      font-weight: 400;
+    }
+    .nav-pill.action { color: var(--sage-accent); font-weight: 600; }
+    .nav-pill.disabled { color: rgba(111, 152, 102, 0.4); font-weight: 500; }
+    .nav-bar .left { justify-self: start; }
+    .nav-bar .right { justify-self: end; }
+    .nav-bar .title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.07px;
+    }
+
+    /* amount block */
+    .amount-block {
+      padding: 18px 22px;
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      border-bottom: 1px solid var(--sage-row-divider);
+    }
+    .amount {
+      flex: 1;
+      font-size: 50px;
+      font-weight: 300;
+      letter-spacing: -1px;
+      line-height: 1;
+    }
+    .currency-pill {
+      background: var(--sage-surface);
+      border: 1px solid var(--sage-card-border);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.2px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .currency-pill .chev { font-size: 9px; opacity: 0.6; }
+
+    /* cards */
+    .card {
+      margin: 6px 18px 0;
+      background: var(--sage-surface);
+      border-radius: 14px;
+      border: 1px solid var(--sage-card-border);
+      overflow: hidden;
+    }
+    .row {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 15px;
+      letter-spacing: -0.07px;
+    }
+    .row + .row { border-top: 1px solid var(--sage-row-divider); }
+    .row .label { color: var(--sage-text); }
+    .row .value {
+      color: var(--sage-text);
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .row .value.muted { color: var(--sage-text-secondary); font-weight: 400; }
+    .row .chev { font-size: 11px; color: var(--sage-text-secondary); }
+
+    .sec-label {
+      padding: 18px 22px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--sage-text-secondary);
+    }
+
+    /* avatar dots */
+    .avatar-dot {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .avatar-dot.you { background: var(--sage-accent); }
+    .avatar-dot.a { background: #6B8DA6; }
+    .avatar-dot.b { background: #B97047; }
+    .avatar-dot.c { background: #8B6B96; }
+
+    /* person selector row */
+    .person-selector {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 15px;
+      letter-spacing: -0.07px;
+      cursor: pointer;
+    }
+    .person-selector + .person-selector { border-top: 1px solid var(--sage-row-divider); }
+    .person-selector .ps-label {
+      font-size: 13px;
+      color: var(--sage-text-secondary);
+      width: 44px;
+      flex-shrink: 0;
+    }
+    .person-selector .ps-name {
+      flex: 1;
+      font-weight: 500;
+      color: var(--sage-text);
+    }
+    .person-selector .ps-chev {
+      font-size: 11px;
+      color: var(--sage-text-secondary);
+    }
+
+    /* balance context */
+    .balance-context {
+      margin: 12px 18px 0;
+      padding: 12px 16px;
+      background: var(--sage-settle-soft);
+      border-radius: 12px;
+      border: 1px solid var(--sage-settle-border);
+      font-size: 13px;
+      color: var(--sage-text-secondary);
+      line-height: 1.45;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .balance-context .bc-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .balance-context strong {
+      color: var(--sage-text);
+      font-weight: 600;
+    }
+
+    /* note input row */
+    .note-row {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 15px;
+    }
+    .note-row .note-placeholder {
+      color: var(--sage-text-secondary);
+      font-style: italic;
+      font-weight: 400;
+    }
+    .note-row .note-text {
+      color: var(--sage-text);
+      font-weight: 400;
+    }
+    .note-row .note-icon {
+      font-size: 16px;
+      color: var(--sage-text-secondary);
+      flex-shrink: 0;
+    }
+
+    /* direction arrow between from/to */
+    .direction-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border-top: 1px solid var(--sage-row-divider);
+    }
+    .direction-arrow .arrow-circle {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: var(--sage-surface2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: var(--sage-text-secondary);
+      margin: -14px 0;
+      position: relative;
+      z-index: 2;
+      border: 2px solid var(--sage-surface);
+    }
+
+    /* home indicator */
+    .home-indicator {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 140px;
+      height: 5px;
+      background: #1A1814;
+      border-radius: 999px;
+      opacity: 0.85;
+    }
+
+    /* ============================================ */
+    /* SETTLE COMPACT ROW (timeline entry)          */
+    /* ============================================ */
+    .settle-row {
+      margin: 4px 18px 0;
+      background: var(--sage-surface);
+      border-radius: 12px;
+      border: 1px solid var(--sage-settle-border);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      padding: 10px 14px;
+      gap: 10px;
+    }
+    .settle-row .sr-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: var(--sage-settle-soft);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+      color: var(--sage-settle);
+    }
+    .settle-row .sr-text {
+      flex: 1;
+      font-size: 13.5px;
+      letter-spacing: -0.07px;
+      color: var(--sage-text-secondary);
+      line-height: 1.3;
+    }
+    .settle-row .sr-text strong {
+      color: var(--sage-text);
+      font-weight: 600;
+    }
+    .settle-row .sr-amount {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--sage-settle);
+      font-feature-settings: "tnum";
+      flex-shrink: 0;
+    }
+
+    /* expense row (for timeline context) */
+    .expense-row {
+      margin: 4px 18px 0;
+      background: var(--sage-surface);
+      border-radius: 14px;
+      border: 1px solid var(--sage-card-border);
+      overflow: hidden;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .expense-row .er-cat {
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .expense-row .er-info {
+      flex: 1;
+    }
+    .expense-row .er-desc {
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -0.07px;
+    }
+    .expense-row .er-meta {
+      font-size: 12px;
+      color: var(--sage-text-secondary);
+      margin-top: 1px;
+    }
+    .expense-row .er-amount {
+      font-size: 15px;
+      font-weight: 600;
+      font-feature-settings: "tnum";
+    }
+    .expense-row .er-share {
+      font-size: 11px;
+      color: var(--sage-text-secondary);
+      text-align: right;
+    }
+
+    /* day header */
+    .day-header {
+      padding: 14px 22px 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--sage-text-secondary);
+    }
+
+    /* dropdown menu overlay */
+    .dropdown-menu {
+      position: absolute;
+      background: var(--sage-surface);
+      border: 1px solid var(--sage-card-border);
+      border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.06);
+      padding: 6px 0;
+      width: 220px;
+      z-index: 20;
+      overflow: hidden;
+    }
+    .dm-item {
+      padding: 12px 16px;
+      font-size: 15px;
+      font-weight: 400;
+      letter-spacing: -0.07px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .dm-item + .dm-item { border-top: 1px solid var(--sage-row-divider); }
+    .dm-item.active { color: var(--sage-accent-strong); font-weight: 600; }
+    .dm-item .dm-icon { font-size: 18px; width: 24px; text-align: center; }
+    .dm-item .dm-check { font-size: 14px; color: var(--sage-accent); margin-left: auto; }
+    .dim-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(28, 28, 24, 0.08);
+      z-index: 15;
+    }
+
+    /* three-dots button */
+    .dots-btn {
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--sage-accent);
+      letter-spacing: 2px;
+    }
+
+    /* trip header in timeline context */
+    .trip-header {
+      padding: 8px 22px 6px;
+    }
+    .trip-title {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .trip-subtitle {
+      font-size: 13px;
+      color: var(--sage-text-secondary);
+      margin-top: 2px;
+    }
+
+    /* avatar group */
+    .avatar-group {
+      padding: 8px 22px 16px;
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+    .avatar-group .ag-dot {
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      border: 3px solid var(--sage-bg);
+      margin-left: -8px;
+    }
+    .avatar-group .ag-dot:first-child { margin-left: 0; }
+
+    /* balance card (trip detail context) */
+    .balance-card-mini {
+      margin: 0 18px 12px;
+      padding: 16px;
+      background: linear-gradient(135deg, rgba(111, 152, 102, 0.08), rgba(111, 152, 102, 0.03));
+      border: 1px solid rgba(111, 152, 102, 0.15);
+      border-radius: 14px;
+      text-align: center;
+    }
+    .balance-card-mini .bc-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--sage-accent-strong);
+    }
+    .balance-card-mini .bc-amount {
+      font-size: 32px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+      color: var(--sage-accent-strong);
+      margin-top: 4px;
+    }
+
+    /* segmented control */
+    .segmented {
+      margin: 4px 18px 8px;
+      display: flex;
+      background: var(--sage-segmented-bg);
+      border-radius: 10px;
+      padding: 3px;
+    }
+    .segmented .seg-item {
+      flex: 1;
+      text-align: center;
+      padding: 8px 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--sage-text-secondary);
+      border-radius: 8px;
+    }
+    .segmented .seg-item.active {
+      background: var(--sage-surface);
+      color: var(--sage-text);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    /* FAB */
+    .fab {
+      position: absolute;
+      bottom: 38px;
+      right: 18px;
+      background: var(--sage-accent);
+      color: #fff;
+      padding: 14px 20px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 600;
+      box-shadow: 0 6px 20px rgba(111, 152, 102, 0.35);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* person dropdown (expanded) */
+    .person-dropdown {
+      position: absolute;
+      background: var(--sage-surface);
+      border: 1px solid var(--sage-card-border);
+      border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.06);
+      padding: 6px 0;
+      width: 260px;
+      z-index: 20;
+      overflow: hidden;
+    }
+    .pd-item {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      letter-spacing: -0.07px;
+    }
+    .pd-item + .pd-item { border-top: 1px solid var(--sage-row-divider); }
+    .pd-item .pd-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .pd-item .pd-name { flex: 1; font-weight: 500; }
+    .pd-item .pd-sub {
+      font-size: 11px;
+      color: var(--sage-text-secondary);
+    }
+    .pd-item.selected .pd-name { color: var(--sage-accent-strong); font-weight: 600; }
+    .pd-item .pd-check { font-size: 14px; color: var(--sage-accent); }
+
+    /* summary box */
+    .summary-box {
+      margin-top: 64px;
+      padding: 28px 32px;
+      background: var(--sage-surface);
+      border-radius: 18px;
+      border: 1px solid var(--sage-card-border);
+    }
+    .summary-box h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+    .summary-box p {
+      color: var(--sage-text-secondary);
+      font-size: 13.5px;
+      margin: 0 0 14px;
+      line-height: 1.5;
+    }
+    .summary-box table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .summary-box th, .summary-box td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--sage-row-divider);
+      vertical-align: top;
+    }
+    .summary-box th {
+      font-weight: 600;
+      color: var(--sage-text-secondary);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+    .summary-box td:first-child { font-weight: 600; }
+    .summary-box tr:last-child td { border-bottom: 0; }
+
+    .callout {
+      margin-top: 16px;
+      padding: 14px 18px;
+      background: var(--sage-surface2);
+      border-radius: 12px;
+      font-size: 12.5px;
+      color: var(--sage-text-secondary);
+      line-height: 1.5;
+    }
+    .callout strong { color: var(--sage-text); }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="page-head">
+    <h1>Settle up — mid-trip settlement flow</h1>
+    <p>
+      Record partial or full cash payments between people mid-trip.
+      Settlements reduce balances but don't count toward expense totals.
+      Entry point is the three-dots menu on the trip detail screen.
+    </p>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- FLOW 1 — ENTRY POINT (three-dots menu)                            -->
+  <!-- ================================================================= -->
+  <div class="flow-section">
+    <div class="flow-head">
+      <h2>Entry point — three-dots menu</h2>
+      <span class="badge muted">Trigger</span>
+    </div>
+    <p class="flow-sub">
+      "Settle up" lives in the existing three-dots menu alongside "Export to Excel".
+      Tapping it opens the settlement form as a sheet.
+    </p>
+
+    <div class="frames">
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">&#x2039; Trips</span></span>
+            <span class="title"></span>
+            <span class="right"><span class="dots-btn">&#x2026;</span></span>
+          </div>
+
+          <div class="trip-header">
+            <div class="trip-title">Lisbon Trip</div>
+            <div class="trip-subtitle">Jun 14 &ndash; 21, 2026</div>
+          </div>
+
+          <div class="avatar-group">
+            <span class="ag-dot" style="background: var(--sage-accent);">R</span>
+            <span class="ag-dot" style="background: #6B8DA6;">A</span>
+            <span class="ag-dot" style="background: #B97047;">B</span>
+            <span class="ag-dot" style="background: #8B6B96;">S</span>
+          </div>
+
+          <div class="balance-card-mini">
+            <div class="bc-label">You're owed</div>
+            <div class="bc-amount">&euro;42.50</div>
+          </div>
+
+          <div class="segmented">
+            <div class="seg-item active">Expenses</div>
+            <div class="seg-item">Balances</div>
+          </div>
+
+          <div class="day-header">Today</div>
+          <div class="expense-row">
+            <span class="er-cat">&#x1F37D;</span>
+            <div class="er-info">
+              <div class="er-desc">Dinner at Trattoria</div>
+              <div class="er-meta">You paid &middot; 4-way split</div>
+            </div>
+            <div>
+              <div class="er-amount">&euro;120.00</div>
+              <div class="er-share">&euro;30.00 each</div>
+            </div>
+          </div>
+
+          <!-- dropdown open -->
+          <div class="dim-overlay" style="top: 100px;"></div>
+          <div class="dropdown-menu" style="top: 95px; right: 20px;">
+            <div class="dm-item">
+              <span class="dm-icon">&#x2194;</span>
+              Settle up
+            </div>
+            <div class="dm-item">
+              <span class="dm-icon">&#x2197;</span>
+              Export to Excel
+            </div>
+          </div>
+
+          <div class="fab">+ Add expense</div>
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Trip detail &mdash; menu open</div>
+        <div class="frame-caption">Three-dots menu now has "Settle up" as the first option. Tapping it opens the settlement form sheet.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- FLOW 2 — DEFAULT FORM (You settling with highest-balance person)   -->
+  <!-- ================================================================= -->
+  <div class="flow-section recommended">
+    <div class="flow-head">
+      <h2>Default flow — "You settle with highest balance"</h2>
+      <span class="badge green">Common case</span>
+    </div>
+    <p class="flow-sub">
+      Form opens pre-filled: "From" is you, "To" is whoever you owe the most.
+      Amount is pre-filled with the full balance. Adjust for partial settlements.
+      The balance context banner shows how much you currently owe this person.
+    </p>
+
+    <div class="frames">
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">Settle up</span>
+            <span class="right"><span class="nav-pill action">Save</span></span>
+          </div>
+
+          <!-- amount -->
+          <div class="amount-block">
+            <div class="amount">15.00</div>
+            <span class="currency-pill">EUR <span class="chev">&#9662;</span></span>
+          </div>
+
+          <!-- from/to card -->
+          <div class="sec-label">Payment</div>
+          <div class="card">
+            <div class="person-selector">
+              <span class="ps-label">From</span>
+              <span class="avatar-dot you" style="width:28px; height:28px; font-size:11px;">R</span>
+              <span class="ps-name">You</span>
+              <span class="ps-chev">&#x203A;</span>
+            </div>
+            <div class="direction-arrow">
+              <span class="arrow-circle">&#x2193;</span>
+            </div>
+            <div class="person-selector">
+              <span class="ps-label">To</span>
+              <span class="avatar-dot a" style="width:28px; height:28px; font-size:11px;">A</span>
+              <span class="ps-name">Alice</span>
+              <span class="ps-chev">&#x203A;</span>
+            </div>
+          </div>
+
+          <!-- balance context -->
+          <div class="balance-context">
+            <span class="bc-icon">&#x2139;</span>
+            <span>You owe <strong>Alice</strong> a total of <strong>&euro;15.00</strong>. This will settle the full balance.</span>
+          </div>
+
+          <!-- details card -->
+          <div class="sec-label">Details</div>
+          <div class="card">
+            <div class="row">
+              <span class="label">Date</span>
+              <span class="value muted">Today <span class="chev">&#x203A;</span></span>
+            </div>
+            <div class="row">
+              <span class="label">Note</span>
+              <span class="value muted" style="font-style: italic;">Add a note... <span class="chev">&#x203A;</span></span>
+            </div>
+          </div>
+
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Settle up form &mdash; default</div>
+        <div class="frame-caption">Pre-filled: "From" = You, "To" = Alice (highest balance). Amount = full &euro;15.00 owed. Blue info banner confirms this settles the full balance. Tap the amount to adjust for partial settlement.</div>
+      </div>
+
+      <div class="frame-arrow">&rarr;</div>
+
+      <!-- PARTIAL SETTLEMENT -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">Settle up</span>
+            <span class="right"><span class="nav-pill action">Save</span></span>
+          </div>
+
+          <!-- amount (partial) -->
+          <div class="amount-block">
+            <div class="amount">5.00</div>
+            <span class="currency-pill">EUR <span class="chev">&#9662;</span></span>
+          </div>
+
+          <!-- from/to card -->
+          <div class="sec-label">Payment</div>
+          <div class="card">
+            <div class="person-selector">
+              <span class="ps-label">From</span>
+              <span class="avatar-dot you" style="width:28px; height:28px; font-size:11px;">R</span>
+              <span class="ps-name">You</span>
+              <span class="ps-chev">&#x203A;</span>
+            </div>
+            <div class="direction-arrow">
+              <span class="arrow-circle">&#x2193;</span>
+            </div>
+            <div class="person-selector">
+              <span class="ps-label">To</span>
+              <span class="avatar-dot a" style="width:28px; height:28px; font-size:11px;">A</span>
+              <span class="ps-name">Alice</span>
+              <span class="ps-chev">&#x203A;</span>
+            </div>
+          </div>
+
+          <!-- balance context (partial) -->
+          <div class="balance-context">
+            <span class="bc-icon">&#x2139;</span>
+            <span>You owe <strong>Alice</strong> a total of <strong>&euro;15.00</strong>. After this, <strong>&euro;10.00</strong> will remain.</span>
+          </div>
+
+          <!-- details card -->
+          <div class="sec-label">Details</div>
+          <div class="card">
+            <div class="row">
+              <span class="label">Date</span>
+              <span class="value muted">Today <span class="chev">&#x203A;</span></span>
+            </div>
+            <div class="row">
+              <span class="label">Note</span>
+              <span class="value" style="font-weight: 400;">Cash at the airport <span class="chev">&#x203A;</span></span>
+            </div>
+          </div>
+
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Partial settlement</div>
+        <div class="frame-caption">User edited amount down to &euro;5.00 and added a note. The context banner dynamically updates: "&euro;10.00 will remain" after this settlement.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- FLOW 3 — THIRD-PARTY SETTLEMENT                                   -->
+  <!-- ================================================================= -->
+  <div class="flow-section">
+    <div class="flow-head">
+      <h2>Third-party flow — "Alice settles with Bob"</h2>
+      <span class="badge muted">Power use</span>
+    </div>
+    <p class="flow-sub">
+      Any trip member can record a settlement between any two people.
+      Tap the "From" or "To" row to open a person dropdown and pick someone else.
+      The balance context updates to reflect the selected pair.
+    </p>
+
+    <div class="frames">
+      <!-- PERSON DROPDOWN OPEN -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">Settle up</span>
+            <span class="right"><span class="nav-pill disabled">Save</span></span>
+          </div>
+
+          <div class="amount-block">
+            <div class="amount">15.00</div>
+            <span class="currency-pill">EUR <span class="chev">&#9662;</span></span>
+          </div>
+
+          <div class="sec-label">Payment</div>
+          <div class="card">
+            <div class="person-selector" style="background: rgba(111, 152, 102, 0.06);">
+              <span class="ps-label">From</span>
+              <span class="avatar-dot you" style="width:28px; height:28px; font-size:11px;">R</span>
+              <span class="ps-name" style="color: var(--sage-accent-strong);">You</span>
+              <span class="ps-chev">&#x203A;</span>
+            </div>
+            <div class="direction-arrow">
+              <span class="arrow-circle">&#x2193;</span>
+            </div>
+            <div class="person-selector">
+              <span class="ps-label">To</span>
+              <span class="avatar-dot a" style="width:28px; height:28px; font-size:11px;">A</span>
+              <span class="ps-name">Alice</span>
+              <span class="ps-chev">&#x203A;</span>
+            </div>
+          </div>
+
+          <!-- person dropdown open for "From" -->
+          <div class="dim-overlay" style="top: 250px;"></div>
+          <div class="person-dropdown" style="top: 245px; left: 60px;">
+            <div class="pd-item selected">
+              <span class="pd-avatar" style="background: var(--sage-accent);">R</span>
+              <span class="pd-name">You</span>
+              <span class="pd-check">&#10003;</span>
+            </div>
+            <div class="pd-item">
+              <span class="pd-avatar" style="background: #6B8DA6;">A</span>
+              <span class="pd-name">Alice</span>
+              <span class="pd-sub"></span>
+            </div>
+            <div class="pd-item">
+              <span class="pd-avatar" style="background: #B97047;">B</span>
+              <span class="pd-name">Bob</span>
+              <span class="pd-sub"></span>
+            </div>
+            <div class="pd-item">
+              <span class="pd-avatar" style="background: #8B6B96;">S</span>
+              <span class="pd-name">Sam</span>
+              <span class="pd-sub"></span>
+            </div>
+          </div>
+
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">"From" dropdown open</div>
+        <div class="frame-caption">Tapping the "From" row opens a person picker. All trip members are listed. Current selection is checked. Pick another person to record a third-party settlement.</div>
+      </div>
+
+      <div class="frame-arrow">&rarr;</div>
+
+      <!-- ALICE TO BOB -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">Cancel</span></span>
+            <span class="title">Settle up</span>
+            <span class="right"><span class="nav-pill action">Save</span></span>
+          </div>
+
+          <div class="amount-block">
+            <div class="amount">22.50</div>
+            <span class="currency-pill">EUR <span class="chev">&#9662;</span></span>
+          </div>
+
+          <div class="sec-label">Payment</div>
+          <div class="card">
+            <div class="person-selector">
+              <span class="ps-label">From</span>
+              <span class="avatar-dot a" style="width:28px; height:28px; font-size:11px;">A</span>
+              <span class="ps-name">Alice</span>
+              <span class="ps-chev">&#x203A;</span>
+            </div>
+            <div class="direction-arrow">
+              <span class="arrow-circle">&#x2193;</span>
+            </div>
+            <div class="person-selector">
+              <span class="ps-label">To</span>
+              <span class="avatar-dot b" style="width:28px; height:28px; font-size:11px;">B</span>
+              <span class="ps-name">Bob</span>
+              <span class="ps-chev">&#x203A;</span>
+            </div>
+          </div>
+
+          <div class="balance-context">
+            <span class="bc-icon">&#x2139;</span>
+            <span><strong>Alice</strong> owes <strong>Bob</strong> a total of <strong>&euro;22.50</strong>. This will settle the full balance.</span>
+          </div>
+
+          <div class="sec-label">Details</div>
+          <div class="card">
+            <div class="row">
+              <span class="label">Date</span>
+              <span class="value muted">Today <span class="chev">&#x203A;</span></span>
+            </div>
+            <div class="row">
+              <span class="label">Note</span>
+              <span class="value muted" style="font-style: italic;">Add a note... <span class="chev">&#x203A;</span></span>
+            </div>
+          </div>
+
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Third-party settlement</div>
+        <div class="frame-caption">User changed "From" to Alice and "To" to Bob. Amount auto-updates to the full balance between that pair (&euro;22.50). Context banner reflects the new pair.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- FLOW 4 — TIMELINE ENTRY (compact row in expense list)              -->
+  <!-- ================================================================= -->
+  <div class="flow-section">
+    <div class="flow-head">
+      <h2>Timeline entry — compact settlement row</h2>
+      <span class="badge blue">New element</span>
+    </div>
+    <p class="flow-sub">
+      After saving, the settlement appears inline in the expense list as a compact row.
+      Visually distinct from expenses: shorter height, muted blue accent, no category icon.
+      Settlements are clearly not expenses &mdash; they don't count toward totals.
+    </p>
+
+    <div class="frames">
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">&#x2039; Trips</span></span>
+            <span class="title"></span>
+            <span class="right"><span class="dots-btn">&#x2026;</span></span>
+          </div>
+
+          <div class="trip-header">
+            <div class="trip-title">Lisbon Trip</div>
+            <div class="trip-subtitle">Jun 14 &ndash; 21, 2026</div>
+          </div>
+
+          <div class="avatar-group">
+            <span class="ag-dot" style="background: var(--sage-accent);">R</span>
+            <span class="ag-dot" style="background: #6B8DA6;">A</span>
+            <span class="ag-dot" style="background: #B97047;">B</span>
+            <span class="ag-dot" style="background: #8B6B96;">S</span>
+          </div>
+
+          <div class="balance-card-mini">
+            <div class="bc-label">You're owed</div>
+            <div class="bc-amount">&euro;27.50</div>
+          </div>
+
+          <div class="segmented">
+            <div class="seg-item active">Expenses</div>
+            <div class="seg-item">Balances</div>
+          </div>
+
+          <div class="day-header">Today</div>
+
+          <!-- SETTLEMENT ROW -->
+          <div class="settle-row">
+            <span class="sr-icon">&#x2194;</span>
+            <span class="sr-text"><strong>You</strong> settled with <strong>Alice</strong></span>
+            <span class="sr-amount">&euro;5.00</span>
+          </div>
+
+          <div class="expense-row" style="margin-top: 4px;">
+            <span class="er-cat">&#x1F37D;</span>
+            <div class="er-info">
+              <div class="er-desc">Dinner at Trattoria</div>
+              <div class="er-meta">You paid &middot; 4-way split</div>
+            </div>
+            <div>
+              <div class="er-amount">&euro;120.00</div>
+              <div class="er-share">&euro;30.00 each</div>
+            </div>
+          </div>
+
+          <div class="day-header">Yesterday</div>
+
+          <!-- ANOTHER SETTLEMENT -->
+          <div class="settle-row">
+            <span class="sr-icon">&#x2194;</span>
+            <span class="sr-text"><strong>Alice</strong> settled with <strong>Bob</strong></span>
+            <span class="sr-amount">&euro;22.50</span>
+          </div>
+
+          <div class="expense-row" style="margin-top: 4px;">
+            <span class="er-cat">&#x1F697;</span>
+            <div class="er-info">
+              <div class="er-desc">Uber to Bel&eacute;m</div>
+              <div class="er-meta">Bob paid &middot; 4-way split</div>
+            </div>
+            <div>
+              <div class="er-amount">&euro;18.40</div>
+              <div class="er-share">&euro;4.60 each</div>
+            </div>
+          </div>
+
+          <div class="expense-row" style="margin-top: 4px;">
+            <span class="er-cat">&#x2615;</span>
+            <div class="er-info">
+              <div class="er-desc">Pasteis de Nata</div>
+              <div class="er-meta">Sam paid &middot; 4-way split</div>
+            </div>
+            <div>
+              <div class="er-amount">&euro;12.00</div>
+              <div class="er-share">&euro;3.00 each</div>
+            </div>
+          </div>
+
+          <div class="fab">+ Add expense</div>
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Timeline with settlements</div>
+        <div class="frame-caption">Settlements appear inline with expenses, sorted by date. Compact blue-tinted rows, roughly half the height of expense tiles. The arrow icon and blue accent make them instantly distinguishable from expenses.</div>
+      </div>
+
+      <div class="frame-arrow">&rarr;</div>
+
+      <!-- SETTLEMENT DETAIL (tapped) -->
+      <div class="frame-col">
+        <div class="phone">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="notch"></div>
+            <span class="battery">100</span>
+          </div>
+          <div class="nav-bar">
+            <span class="left"><span class="nav-pill">&#x2039; Back</span></span>
+            <span class="title">Settlement</span>
+            <span class="right"><span class="nav-pill" style="color: var(--sage-warn); font-weight: 500;">Delete</span></span>
+          </div>
+
+          <div style="padding: 24px 22px 0; text-align: center;">
+            <div style="font-size: 11px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: var(--sage-settle); margin-bottom: 10px;">Settlement recorded</div>
+            <div style="font-size: 46px; font-weight: 300; letter-spacing: -1px; margin-bottom: 4px;">&euro;5.00</div>
+          </div>
+
+          <div class="card" style="margin-top: 24px;">
+            <div class="person-selector" style="cursor: default;">
+              <span class="ps-label">From</span>
+              <span class="avatar-dot you" style="width:28px; height:28px; font-size:11px;">R</span>
+              <span class="ps-name">You</span>
+            </div>
+            <div class="direction-arrow">
+              <span class="arrow-circle">&#x2193;</span>
+            </div>
+            <div class="person-selector" style="cursor: default;">
+              <span class="ps-label">To</span>
+              <span class="avatar-dot a" style="width:28px; height:28px; font-size:11px;">A</span>
+              <span class="ps-name">Alice</span>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 12px;">
+            <div class="row">
+              <span class="label">Date</span>
+              <span class="value muted">Jun 18, 2026</span>
+            </div>
+            <div class="row">
+              <span class="label">Note</span>
+              <span class="value" style="font-weight: 400;">Cash at the airport</span>
+            </div>
+            <div class="row">
+              <span class="label">Recorded by</span>
+              <span class="value muted">You</span>
+            </div>
+          </div>
+
+          <div class="home-indicator"></div>
+        </div>
+        <div class="frame-label">Settlement detail</div>
+        <div class="frame-caption">Tapping a settlement row shows the detail view. Read-only layout showing from/to, amount, date, note, and who recorded it. Delete button in the nav bar (soft delete).</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- DESIGN NOTES                                                      -->
+  <!-- ================================================================= -->
+  <div class="summary-box">
+    <h2>How it works</h2>
+    <p>Settle up is a secondary action in the three-dots menu. The form follows the same patterns
+    as expense entry: Cancel/Save nav bar, large amount display, card-based form fields.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Element</th>
+          <th>Where</th>
+          <th>Behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Entry point</td>
+          <td>Three-dots menu</td>
+          <td>"Settle up" menu item. Opens form as a sheet.</td>
+        </tr>
+        <tr>
+          <td>From dropdown</td>
+          <td>Form, payment card</td>
+          <td>Defaults to current user. Tap to pick any trip member.</td>
+        </tr>
+        <tr>
+          <td>To dropdown</td>
+          <td>Form, payment card</td>
+          <td>Defaults to person the "From" user owes the most. Tap to change.</td>
+        </tr>
+        <tr>
+          <td>Amount</td>
+          <td>Form, top</td>
+          <td>Pre-filled with full owed balance. Tappable to edit for partial settlement.</td>
+        </tr>
+        <tr>
+          <td>Balance context</td>
+          <td>Form, below card</td>
+          <td>Blue info banner showing current balance and what remains after settlement. Updates dynamically.</td>
+        </tr>
+        <tr>
+          <td>Timeline row</td>
+          <td>Expense list</td>
+          <td>Compact row (~half expense height), blue accent, arrow icon. "Alice settled with Bob" + amount. Tappable for detail.</td>
+        </tr>
+        <tr>
+          <td>Settlement detail</td>
+          <td>Push page</td>
+          <td>Read-only view with from/to, amount, date, note, recorder. Delete in nav bar.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>Key decisions:</strong>
+      Settlements use a distinct blue accent (not sage green) to visually separate them from expenses.
+      The balance context banner is the key UX detail &mdash; it tells you what you owe, what you're settling, and what will remain.
+      When the user changes "From" or "To", the amount auto-updates to the full balance between that pair.
+      The compact timeline row is intentionally shorter and simpler than expense tiles &mdash; settlements are supporting entries, not primary content.
+      If "From" and "To" are set to the same person, Save is disabled.
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

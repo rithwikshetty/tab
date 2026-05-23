@@ -7,6 +7,8 @@ struct TripDetailView: View {
     let tripID: UUID
     var onAddExpense: () -> Void = {}
     var onOpenExpense: (UUID) -> Void = { _ in }
+    var onSettleUp: () -> Void = {}
+    var onOpenSettlement: (UUID) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -20,15 +22,20 @@ struct TripDetailView: View {
     @State private var segment: Int = 0
     @State private var showingPeople: Bool = false
     @State private var pendingDeletion: ExpenseEntity?
+    @State private var pendingSettlementDeletion: SettlementEntity?
 
     init(
         tripID: UUID,
         onAddExpense: @escaping () -> Void = {},
-        onOpenExpense: @escaping (UUID) -> Void = { _ in }
+        onOpenExpense: @escaping (UUID) -> Void = { _ in },
+        onSettleUp: @escaping () -> Void = {},
+        onOpenSettlement: @escaping (UUID) -> Void = { _ in }
     ) {
         self.tripID = tripID
         self.onAddExpense = onAddExpense
         self.onOpenExpense = onOpenExpense
+        self.onSettleUp = onSettleUp
+        self.onOpenSettlement = onOpenSettlement
         _trips = Query(filter: #Predicate<TripEntity> { $0.id == tripID })
     }
 
@@ -47,8 +54,7 @@ struct TripDetailView: View {
             }
         }
         .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(Sage.bg, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .task(id: tripID) {
             await realtime.subscribe(to: tripID)
         }
@@ -65,6 +71,19 @@ struct TripDetailView: View {
         ) { expense in
             Button("Delete", role: .destructive) { confirmDelete(expense) }
             Button("Cancel", role: .cancel) { pendingDeletion = nil }
+        } message: { _ in
+            Text("It will be removed from balances. You can recover it for 30 days.")
+        }
+        .alert(
+            "Delete this settlement?",
+            isPresented: Binding(
+                get: { pendingSettlementDeletion != nil },
+                set: { if !$0 { pendingSettlementDeletion = nil } }
+            ),
+            presenting: pendingSettlementDeletion
+        ) { settlement in
+            Button("Delete", role: .destructive) { confirmDeleteSettlement(settlement) }
+            Button("Cancel", role: .cancel) { pendingSettlementDeletion = nil }
         } message: { _ in
             Text("It will be removed from balances. You can recover it for 30 days.")
         }
@@ -88,9 +107,9 @@ struct TripDetailView: View {
             currentPersonID: currentPersonID,
             personFor: { id in peopleByID[id] }
         )
-        let activeExpenses = trip.expenses.filter { $0.deletedAt == nil }
-        let days = ExpenseListPresenter.days(
-            expenses: activeExpenses,
+        let days = TimelinePresenter.days(
+            expenses: trip.expenses,
+            settlements: trip.settlements,
             currentPersonID: currentPersonID,
             personFor: { id in peopleByID[id] },
             categoryFor: { id in id.flatMap { categoriesByID[$0] } }
@@ -98,20 +117,27 @@ struct TripDetailView: View {
 
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
-                LargeTitle(title: trip.name)
+                HStack(alignment: .center, spacing: 12) {
+                    Text(trip.name)
+                        .font(.largeTitle30)
+                        .tracking(-0.75)
+                        .foregroundStyle(Sage.text)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
 
-                HStack(spacing: 0) {
+                    Spacer(minLength: 8)
+
                     AvatarGroup(
                         members: memberCards,
-                        size: 44,
-                        borderWidth: 3,
+                        size: 34,
+                        borderWidth: 2.5,
+                        maxVisible: 5,
                         onAddTap: { showingPeople = true }
                     )
-                    Spacer()
                 }
-                .padding(.horizontal, 22)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+                .padding(.bottom, 14)
 
                 if summaries.isEmpty {
                     EmptyBalanceCard()
@@ -127,7 +153,7 @@ struct TripDetailView: View {
 
                 ZStack {
                     if segment == 0 {
-                        expensesSection(days: days)
+                        timelineSection(days: days)
                             .transition(.opacity)
                     } else {
                         balancesSection(summaries: summaries)
@@ -158,6 +184,11 @@ struct TripDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button {
+                        onSettleUp()
+                    } label: {
+                        Label("Settle up", systemImage: "arrow.right.arrow.left")
+                    }
                     ShareLink(
                         item: exportItem(for: trip),
                         preview: SharePreview("\(trip.name) Expenses")
@@ -176,7 +207,7 @@ struct TripDetailView: View {
     }
 
     @ViewBuilder
-    private func expensesSection(days: [ExpenseDay]) -> some View {
+    private func timelineSection(days: [TimelineDay]) -> some View {
         if days.isEmpty {
             VStack(spacing: 6) {
                 Text("No expenses yet")
@@ -200,28 +231,52 @@ struct TripDetailView: View {
                         .padding(.bottom, 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    VStack(spacing: 0) {
-                        ForEach(Array(day.expenses.enumerated()), id: \.element.id) { index, item in
+                    ForEach(timelineBlocks(for: day.items)) { block in
+                        switch block {
+                        case .expenses(let expenseItems):
+                            VStack(spacing: 0) {
+                                ForEach(Array(expenseItems.enumerated()), id: \.element.id) { index, e in
+                                    SwipeToDeleteRow(
+                                        onTap: {
+                                            Haptics.light()
+                                            onOpenExpense(e.id)
+                                        },
+                                        onTrigger: { requestDelete(for: e.id) }
+                                    ) {
+                                        ExpenseRow(item: e)
+                                    }
+                                    if index < expenseItems.count - 1 { RowDivider() }
+                                }
+                            }
+                            .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Sage.cardBorder, lineWidth: 1)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 6)
+
+                        case .settlement(let s):
                             SwipeToDeleteRow(
                                 onTap: {
                                     Haptics.light()
-                                    onOpenExpense(item.id)
+                                    onOpenSettlement(s.id)
                                 },
-                                onTrigger: { requestDelete(for: item.id) }
+                                onTrigger: { requestDeleteSettlement(for: s.id) }
                             ) {
-                                ExpenseRow(item: item)
+                                SettlementRow(item: s)
                             }
-                            if index < day.expenses.count - 1 { RowDivider() }
+                            .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Sage.Avatar.slate.opacity(0.18), lineWidth: 1)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 6)
                         }
                     }
-                    .background(Sage.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Sage.cardBorder, lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 6)
                 }
             }
         }
@@ -272,7 +327,45 @@ struct TripDetailView: View {
     }
 }
 
+private enum TimelineBlock: Identifiable {
+    case expenses([ExpenseRowItem])
+    case settlement(SettlementRowItem)
+
+    var id: String {
+        switch self {
+        case .expenses(let items):
+            "expenses-" + items.map(\.id.uuidString).joined(separator: "-")
+        case .settlement(let item):
+            "settlement-\(item.id.uuidString)"
+        }
+    }
+}
+
 extension TripDetailView {
+    private func timelineBlocks(for items: [TimelineItem]) -> [TimelineBlock] {
+        var blocks: [TimelineBlock] = []
+        var expenseRun: [ExpenseRowItem] = []
+
+        func flushExpenses() {
+            guard !expenseRun.isEmpty else { return }
+            blocks.append(.expenses(expenseRun))
+            expenseRun = []
+        }
+
+        for item in items {
+            switch item {
+            case .expense(let expense):
+                expenseRun.append(expense)
+            case .settlement(let settlement):
+                flushExpenses()
+                blocks.append(.settlement(settlement))
+            }
+        }
+
+        flushExpenses()
+        return blocks
+    }
+
     fileprivate func requestDelete(for expenseID: UUID) {
         guard
             let trip,
@@ -284,6 +377,21 @@ extension TripDetailView {
     fileprivate func confirmDelete(_ expense: ExpenseEntity) {
         pendingDeletion = nil
         Deletion.softDelete(expense: expense, in: context)
+        Haptics.success()
+        Task { await sync.pushPending() }
+    }
+
+    fileprivate func requestDeleteSettlement(for settlementID: UUID) {
+        guard
+            let trip,
+            let settlement = trip.settlements.first(where: { $0.id == settlementID && $0.deletedAt == nil })
+        else { return }
+        pendingSettlementDeletion = settlement
+    }
+
+    fileprivate func confirmDeleteSettlement(_ settlement: SettlementEntity) {
+        pendingSettlementDeletion = nil
+        Deletion.softDelete(settlement: settlement, in: context)
         Haptics.success()
         Task { await sync.pushPending() }
     }
