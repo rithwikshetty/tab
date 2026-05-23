@@ -253,6 +253,8 @@ struct PaymentSplitView: View {
                         get: { draft.exactPayerAmountText[personID, default: ""] },
                         set: { draft.setExactPayerAmount($0, for: personID) }
                     ),
+                    isFocused: focused == .payer(personID),
+                    onFocus: { focused = .payer(personID) },
                     accessibilityIdentifier: "paidBy.exactAmount.\(personID.uuidString)"
                 )
                 .frame(width: 88, height: 28)
@@ -263,7 +265,6 @@ struct PaymentSplitView: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(Sage.cardBorder, lineWidth: 1)
                 )
-                .focused($focused, equals: .payer(personID))
             } else {
                 Text(displayShare)
                     .font(.system(size: 13))
@@ -275,7 +276,6 @@ struct PaymentSplitView: View {
                         guard canTapToEdit else { return }
                         Haptics.light()
                         draft.setPayerMode(.exact, totalAmount: totalAmount, currency: currency)
-                        draft.clearExactPayerAmount(for: personID)
                         focused = .payer(personID)
                     }
             }
@@ -424,6 +424,8 @@ struct PaymentSplitView: View {
                         get: { draft.exactSplitAmountText[personID, default: ""] },
                         set: { draft.setExactSplitAmount($0, for: personID) }
                     ),
+                    isFocused: focused == .split(personID),
+                    onFocus: { focused = .split(personID) },
                     accessibilityIdentifier: "split.exactAmount.\(personID.uuidString)"
                 )
                 .frame(width: 88, height: 28)
@@ -434,7 +436,6 @@ struct PaymentSplitView: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(Sage.cardBorder, lineWidth: 1)
                 )
-                .focused($focused, equals: .split(personID))
             } else {
                 Text(displayShare)
                     .font(.system(size: 13))
@@ -445,8 +446,12 @@ struct PaymentSplitView: View {
                     .onTapGesture {
                         guard canTapToEdit else { return }
                         Haptics.light()
-                        draft.setSplitMode(1, totalAmount: totalAmount, currency: currency)
-                        draft.clearExactSplitAmount(for: personID)
+                        draft.setSplitMode(
+                            1,
+                            totalAmount: totalAmount,
+                            currency: currency,
+                            overwriteExactAmounts: true
+                        )
                         focused = .split(personID)
                     }
             }
@@ -589,10 +594,6 @@ final class PaymentSplitDraft: @unchecked Sendable {
         exactPayerAmountText[uid] = Self.sanitize(input)
     }
 
-    func clearExactPayerAmount(for uid: UUID) {
-        exactPayerAmountText[uid] = ""
-    }
-
     func computedPayments(totalAmount: Decimal, currency: String) -> [Payment]? {
         guard !selectedPayerIDs.isEmpty, totalAmount > 0 else { return nil }
         let payers = Array(selectedPayerIDs)
@@ -614,10 +615,19 @@ final class PaymentSplitDraft: @unchecked Sendable {
 
     // MARK: Split methods
 
-    func setSplitMode(_ newMode: Int, totalAmount: Decimal, currency: String) {
+    func setSplitMode(
+        _ newMode: Int,
+        totalAmount: Decimal,
+        currency: String,
+        overwriteExactAmounts: Bool = false
+    ) {
         splitMode = newMode
         if newMode == 1 {
-            seedSplitExact(totalAmount: totalAmount, currency: currency)
+            seedSplitExact(
+                totalAmount: totalAmount,
+                currency: currency,
+                overwrite: overwriteExactAmounts
+            )
         }
     }
 
@@ -635,10 +645,6 @@ final class PaymentSplitDraft: @unchecked Sendable {
 
     func setExactSplitAmount(_ input: String, for uid: UUID) {
         exactSplitAmountText[uid] = Self.sanitize(input)
-    }
-
-    func clearExactSplitAmount(for uid: UUID) {
-        exactSplitAmountText[uid] = ""
     }
 
     func computedSplits(totalAmount: Decimal, currency: String) -> [ExpenseSplit]? {
@@ -677,7 +683,7 @@ final class PaymentSplitDraft: @unchecked Sendable {
         }
     }
 
-    private func seedSplitExact(totalAmount: Decimal, currency: String) {
+    private func seedSplitExact(totalAmount: Decimal, currency: String, overwrite: Bool = false) {
         guard !selectedParticipants.isEmpty, totalAmount > 0 else { return }
         guard let splits = try? SplitCalculator.calculate(
             totalAmount: totalAmount, currency: currency,
@@ -685,7 +691,7 @@ final class PaymentSplitDraft: @unchecked Sendable {
         ) else { return }
         for s in splits {
             let existing = exactSplitAmountText[s.participantID, default: ""].trimmingCharacters(in: .whitespaces)
-            if existing.isEmpty {
+            if overwrite || existing.isEmpty {
                 exactSplitAmountText[s.participantID] = Self.plainAmountString(s.amountOwed)
             }
         }

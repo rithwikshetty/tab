@@ -798,6 +798,8 @@ struct ExpenseEntryView: View {
                         get: { exactAmountTextByPersonID[row.personID, default: ""] },
                         set: { exactAmountTextByPersonID[row.personID] = sanitizeAmount($0) }
                     ),
+                    isFocused: splitFieldFocused == row.personID,
+                    onFocus: { splitFieldFocused = row.personID },
                     accessibilityIdentifier: "expense.splitAmount.\(row.personID.uuidString)"
                 )
                 .frame(width: 88, height: 28)
@@ -808,7 +810,6 @@ struct ExpenseEntryView: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(Sage.cardBorder, lineWidth: 1)
                 )
-                .focused($splitFieldFocused, equals: row.personID)
             } else {
                 Text(row.share)
                     .font(.system(size: 13))
@@ -821,8 +822,7 @@ struct ExpenseEntryView: View {
                         Haptics.light()
                         descriptionFocused = false
                         splitMode = 1
-                        seedMissingExactAmountsFromEqual()
-                        exactAmountTextByPersonID[row.personID] = ""
+                        seedMissingExactAmountsFromEqual(overwrite: true)
                         splitFieldFocused = row.personID
                     }
             }
@@ -842,7 +842,7 @@ struct ExpenseEntryView: View {
         }
     }
 
-    private func seedMissingExactAmountsFromEqual() {
+    private func seedMissingExactAmountsFromEqual(overwrite: Bool = false) {
         guard totalAmount > 0, !participantSet.isEmpty else { return }
         guard let splits = try? SplitCalculator.calculate(
             totalAmount: totalAmount,
@@ -853,7 +853,7 @@ struct ExpenseEntryView: View {
 
         for split in splits {
             let current = exactAmountTextByPersonID[split.participantID, default: ""]
-            if current.trimmingCharacters(in: .whitespaces).isEmpty {
+            if overwrite || current.trimmingCharacters(in: .whitespaces).isEmpty {
                 exactAmountTextByPersonID[split.participantID] = plainAmountString(split.amountOwed)
             }
         }
@@ -1091,19 +1091,87 @@ private struct ParticipantRow: Hashable {
     let isOn: Bool
 }
 
-struct InlineDecimalTextField: View {
+struct InlineDecimalTextField: UIViewRepresentable {
     @Binding var text: String
+    let isFocused: Bool
+    let onFocus: () -> Void
     let accessibilityIdentifier: String
 
-    var body: some View {
-        TextField("0.00", text: $text)
-            .keyboardType(.decimalPad)
-            .textFieldStyle(.plain)
-            .font(.system(size: 13))
-            .foregroundStyle(Sage.text)
-            .multilineTextAlignment(.trailing)
-            .monospacedDigit()
-            .accessibilityIdentifier(accessibilityIdentifier)
+    func makeUIView(context: Context) -> UITextField {
+        let tf = SelectAllInlineTextField()
+        tf.accessibilityIdentifier = accessibilityIdentifier
+        tf.keyboardType = .decimalPad
+        tf.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        tf.textColor = UIColor(Sage.text)
+        tf.textAlignment = .right
+        tf.tintColor = UIColor(Sage.accent)
+        tf.placeholder = "0.00"
+        tf.delegate = context.coordinator
+        tf.selectAllOnTouch = { [weak tf] in
+            guard let tf else { return }
+            context.coordinator.selectAll(in: tf)
+        }
+        tf.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.editingChanged(_:)),
+            for: .editingChanged
+        )
+        return tf
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        context.coordinator.parent = self
+        uiView.accessibilityIdentifier = accessibilityIdentifier
+        if uiView.text != text {
+            uiView.text = text
+        }
+
+        if isFocused, !uiView.isFirstResponder {
+            DispatchQueue.main.async {
+                uiView.becomeFirstResponder()
+                context.coordinator.selectAll(in: uiView)
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: InlineDecimalTextField
+
+        init(parent: InlineDecimalTextField) {
+            self.parent = parent
+        }
+
+        @objc func editingChanged(_ textField: UITextField) {
+            parent.text = textField.text ?? ""
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            parent.onFocus()
+            selectAll(in: textField)
+        }
+
+        func textFieldDidChangeSelection(_ textField: UITextField) {
+            parent.text = textField.text ?? ""
+        }
+
+        func selectAll(in textField: UITextField) {
+            DispatchQueue.main.async {
+                textField.selectAll(nil)
+            }
+        }
+    }
+}
+
+private final class SelectAllInlineTextField: UITextField {
+    var selectAllOnTouch: (() -> Void)?
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesEnded(touches, with: event)
+        selectAllOnTouch?()
     }
 }
 

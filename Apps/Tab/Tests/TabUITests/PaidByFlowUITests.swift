@@ -76,6 +76,51 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertEqual(fieldValue(app.textFields["paidBy.exactAmount.\(samID)"]), "10.00")
     }
 
+    func testMockAuthTripSeedsPeopleAndExactAmountTapSelectsExistingValue() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
+        app.launchArguments.append("-ApplePersistenceIgnoreState")
+        app.launchArguments.append("YES")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Trips"].waitForExistence(timeout: 8))
+
+        let tripName = "Seeded \(UUID().uuidString.prefix(8))"
+        let addTripButton = app.buttons["trips.addButton"]
+        XCTAssertTrue(addTripButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntilHittable(addTripButton))
+        addTripButton.tap()
+
+        replaceText(in: app.textFields["newTrip.nameField"], with: tripName, app: app)
+        app.buttons["newTrip.createButton"].tap()
+
+        let tripRow = app.staticTexts[tripName].firstMatch
+        XCTAssertTrue(tripRow.waitForExistence(timeout: 5))
+        tripRow.tap()
+
+        let addExpenseButton = app.buttons["trip.addExpenseButton"]
+        XCTAssertTrue(addExpenseButton.waitForExistence(timeout: 5))
+        addExpenseButton.tap()
+
+        replaceText(in: app.textFields["expense.amountField"], with: "100", app: app)
+        replaceText(in: app.textFields["expense.descriptionField"], with: "Dinner", app: app)
+        app.buttons["expense.paidByRow"].tap()
+
+        XCTAssertTrue(app.navigationBars["Payment & Split"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["paidBy.toggle.\(alexID)"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["paidBy.toggle.\(samID)"].waitForExistence(timeout: 5))
+
+        app.buttons["split.toggle.\(alexID)"].tap()
+        app.buttons["paymentSplit.splitModePill"].tap()
+        app.buttons["Exact amounts"].tap()
+
+        let currentUserSplit = app.textFields["split.exactAmount.\(currentUserID)"]
+        XCTAssertTrue(currentUserSplit.waitForExistence(timeout: 5))
+        currentUserSplit.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        currentUserSplit.typeText("40")
+        XCTAssertEqual(fieldValue(currentUserSplit), "40")
+    }
+
     func testEditExpenseFromDetailOpensEditForm() throws {
         let app = XCUIApplication()
         app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
