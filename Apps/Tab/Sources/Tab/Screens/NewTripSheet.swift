@@ -101,7 +101,7 @@ struct NewTripSheet: View {
         context.insert(person)
 
         #if DEBUG
-        insertUITestPeopleIfRequested(into: trip, invitedByID: user.id)
+        insertDebugPeopleIfRequested(into: trip, invitedByID: user.id)
         #endif
 
         try? context.save()
@@ -114,7 +114,7 @@ struct NewTripSheet: View {
 
     private func creatorPersonID(for userID: UUID) -> UUID {
         #if DEBUG
-        if ProcessInfo.processInfo.environment["TAB_UI_TEST_SEED_PEOPLE"] == "1" {
+        if shouldSeedDebugPeople {
             return userID
         }
         #endif
@@ -122,8 +122,12 @@ struct NewTripSheet: View {
     }
 
     #if DEBUG
-    private func insertUITestPeopleIfRequested(into trip: TripEntity, invitedByID: UUID) {
-        guard ProcessInfo.processInfo.environment["TAB_UI_TEST_SEED_PEOPLE"] == "1" else { return }
+    private var shouldSeedDebugPeople: Bool {
+        ProcessInfo.processInfo.environment["TAB_DISABLE_DEBUG_PEOPLE"] != "1"
+    }
+
+    private func insertDebugPeopleIfRequested(into trip: TripEntity, invitedByID: UUID) {
+        guard shouldSeedDebugPeople else { return }
 
         let fixtures: [(id: UUID, email: String, displayName: String)] = [
             (UUID(uuidString: "22222222-2222-2222-2222-222222222222")!, "alex@test.tab", "Alex"),
