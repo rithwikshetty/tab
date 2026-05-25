@@ -3,25 +3,63 @@ import TabCore
 
 enum MoneyFormatter {
     static func currencySymbol(_ code: String) -> String {
-        switch code.uppercased() {
-        case "EUR": return "€"
-        case "USD": return "$"
-        case "GBP": return "£"
-        case "JPY": return "¥"
-        case "CHF": return "Fr"
-        case "SEK", "NOK", "DKK": return "kr"
-        default:    return code.uppercased() + " "
+        CurrencyCatalog.displayMetadata(for: code).symbol
+    }
+
+    static func amountPlaceholder(currency: String) -> String {
+        plainAmountString(0, currency: currency)
+    }
+
+    static func sanitizeAmountInput(_ input: String, currency: String) -> String {
+        let fractionDigits = CurrencyCatalog.fractionDigits(for: currency)
+        let normalized = input.replacingOccurrences(of: ",", with: ".")
+        var output = ""
+        var hasDecimalSeparator = false
+        var fractionCount = 0
+
+        for character in normalized {
+            if character.isNumber {
+                if hasDecimalSeparator {
+                    guard fractionCount < fractionDigits else { continue }
+                    fractionCount += 1
+                }
+                output.append(character)
+            } else if character == ".", fractionDigits > 0, !hasDecimalSeparator {
+                hasDecimalSeparator = true
+                output.append(character)
+            }
         }
+
+        return output
+    }
+
+    static func decimal(from input: String) -> Decimal? {
+        Decimal(string: input.replacingOccurrences(of: ",", with: "."))
+    }
+
+    static func plainAmountString(_ amount: Decimal, currency: String) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = CurrencyCatalog.fractionDigits(for: currency)
+        formatter.maximumFractionDigits = CurrencyCatalog.fractionDigits(for: currency)
+        formatter.usesGroupingSeparator = false
+        return formatter.string(from: amount as NSDecimalNumber) ?? NSDecimalNumber(decimal: amount).stringValue
     }
 
     static func format(_ amount: Decimal, currency: String) -> String {
+        let metadata = CurrencyCatalog.displayMetadata(for: currency)
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = metadata.fractionDigits
+        formatter.maximumFractionDigits = metadata.fractionDigits
         formatter.usesGroupingSeparator = true
-        let value = formatter.string(from: amount as NSDecimalNumber) ?? "0.00"
-        return "\(currencySymbol(currency))\(value)"
+        let value = formatter.string(from: amount as NSDecimalNumber) ?? plainAmountString(amount, currency: currency)
+
+        guard metadata.symbol.uppercased() != metadata.code else {
+            return "\(metadata.code) \(value)"
+        }
+        return "\(metadata.code) \(metadata.symbol)\(value)"
     }
 
     static func format(_ money: Money) -> String {

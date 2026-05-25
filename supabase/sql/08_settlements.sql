@@ -6,7 +6,7 @@ create table public.settlements (
   trip_id        uuid not null references public.trips(id) on delete restrict,
   from_person_id uuid not null references public.trip_people(id) on delete restrict,
   to_person_id   uuid not null references public.trip_people(id) on delete restrict,
-  amount         numeric(14, 2) not null check (amount > 0),
+  amount         numeric(20, 8) not null check (amount > 0),
   currency       text not null check (char_length(currency) = 3 and currency = upper(currency)),
   note           text check (note is null or char_length(note) <= 200),
   settled_at     timestamptz not null default now(),

@@ -93,6 +93,7 @@ struct PaymentSplitView: View {
                 splitMode: splitMode,
                 participantSet: participantSet,
                 exactSplitAmountText: exactSplitAmountText,
+                currency: currency,
                 currentPersonID: currentPersonID,
                 members: members.map(\.id)
             )
@@ -251,8 +252,9 @@ struct PaymentSplitView: View {
                 InlineDecimalTextField(
                     text: Binding(
                         get: { draft.exactPayerAmountText[personID, default: ""] },
-                        set: { draft.setExactPayerAmount($0, for: personID) }
+                        set: { draft.setExactPayerAmount($0, for: personID, currency: currency) }
                     ),
+                    placeholder: MoneyFormatter.amountPlaceholder(currency: currency),
                     isFocused: focused == .payer(personID),
                     onFocus: { focused = .payer(personID) },
                     accessibilityIdentifier: "paidBy.exactAmount.\(personID.uuidString)"
@@ -422,8 +424,9 @@ struct PaymentSplitView: View {
                 InlineDecimalTextField(
                     text: Binding(
                         get: { draft.exactSplitAmountText[personID, default: ""] },
-                        set: { draft.setExactSplitAmount($0, for: personID) }
+                        set: { draft.setExactSplitAmount($0, for: personID, currency: currency) }
                     ),
+                    placeholder: MoneyFormatter.amountPlaceholder(currency: currency),
                     isFocused: focused == .split(personID),
                     onFocus: { focused = .split(personID) },
                     accessibilityIdentifier: "split.exactAmount.\(personID.uuidString)"
@@ -540,7 +543,7 @@ final class PaymentSplitDraft: @unchecked Sendable {
     // MARK: Seed
 
     func seed(payments: [Payment], splitMode: Int, participantSet: Set<UUID>,
-              exactSplitAmountText: [UUID: String], currentPersonID: UUID?, members: [UUID]) {
+              exactSplitAmountText: [UUID: String], currency: String, currentPersonID: UUID?, members: [UUID]) {
         guard !hasSeeded else { return }
         hasSeeded = true
 
@@ -553,14 +556,14 @@ final class PaymentSplitDraft: @unchecked Sendable {
             if payerMode == .exact {
                 payerEdited = true
                 for p in payments {
-                    exactPayerAmountText[p.payerID] = Self.plainAmountString(p.amountPaid)
+                    exactPayerAmountText[p.payerID] = Self.plainAmountString(p.amountPaid, currency: currency)
                 }
             }
         }
 
         self.splitMode = splitMode
         self.selectedParticipants = participantSet
-        self.exactSplitAmountText = exactSplitAmountText
+        self.exactSplitAmountText = exactSplitAmountText.mapValues { Self.sanitize($0, currency: currency) }
     }
 
     // MARK: Payer methods
@@ -589,9 +592,9 @@ final class PaymentSplitDraft: @unchecked Sendable {
         }
     }
 
-    func setExactPayerAmount(_ input: String, for uid: UUID) {
+    func setExactPayerAmount(_ input: String, for uid: UUID, currency: String) {
         payerEdited = true
-        exactPayerAmountText[uid] = Self.sanitize(input)
+        exactPayerAmountText[uid] = Self.sanitize(input, currency: currency)
     }
 
     func computedPayments(totalAmount: Decimal, currency: String) -> [Payment]? {
@@ -643,8 +646,8 @@ final class PaymentSplitDraft: @unchecked Sendable {
         }
     }
 
-    func setExactSplitAmount(_ input: String, for uid: UUID) {
-        exactSplitAmountText[uid] = Self.sanitize(input)
+    func setExactSplitAmount(_ input: String, for uid: UUID, currency: String) {
+        exactSplitAmountText[uid] = Self.sanitize(input, currency: currency)
     }
 
     func computedSplits(totalAmount: Decimal, currency: String) -> [ExpenseSplit]? {
@@ -678,7 +681,7 @@ final class PaymentSplitDraft: @unchecked Sendable {
         for p in computed {
             let existing = exactPayerAmountText[p.payerID, default: ""].trimmingCharacters(in: .whitespaces)
             if overwrite || existing.isEmpty {
-                exactPayerAmountText[p.payerID] = Self.plainAmountString(p.amountPaid)
+                exactPayerAmountText[p.payerID] = Self.plainAmountString(p.amountPaid, currency: currency)
             }
         }
     }
@@ -692,30 +695,20 @@ final class PaymentSplitDraft: @unchecked Sendable {
         for s in splits {
             let existing = exactSplitAmountText[s.participantID, default: ""].trimmingCharacters(in: .whitespaces)
             if overwrite || existing.isEmpty {
-                exactSplitAmountText[s.participantID] = Self.plainAmountString(s.amountOwed)
+                exactSplitAmountText[s.participantID] = Self.plainAmountString(s.amountOwed, currency: currency)
             }
         }
     }
 
-    static func sanitize(_ input: String) -> String {
-        var cleaned = input.replacingOccurrences(of: ",", with: ".")
-        cleaned = cleaned.filter { $0.isNumber || $0 == "." }
-        let parts = cleaned.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-        if parts.count == 2 { return String(parts[0]) + "." + String(parts[1].prefix(2)) }
-        return cleaned
+    static func sanitize(_ input: String, currency: String) -> String {
+        MoneyFormatter.sanitizeAmountInput(input, currency: currency)
     }
 
     static func decimal(from input: String) -> Decimal? {
-        Decimal(string: input.replacingOccurrences(of: ",", with: "."))
+        MoneyFormatter.decimal(from: input)
     }
 
-    static func plainAmountString(_ amount: Decimal) -> String {
-        let f = NumberFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.numberStyle = .decimal
-        f.minimumFractionDigits = 2
-        f.maximumFractionDigits = 2
-        f.usesGroupingSeparator = false
-        return f.string(from: amount as NSDecimalNumber) ?? NSDecimalNumber(decimal: amount).stringValue
+    static func plainAmountString(_ amount: Decimal, currency: String) -> String {
+        MoneyFormatter.plainAmountString(amount, currency: currency)
     }
 }

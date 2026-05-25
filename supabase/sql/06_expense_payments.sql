@@ -5,7 +5,7 @@
 create table public.expense_payments (
   expense_id     uuid not null references public.expenses(id) on delete cascade,
   trip_person_id uuid not null references public.trip_people(id) on delete restrict,
-  amount_paid    numeric(14, 2) not null check (amount_paid >= 0),
+  amount_paid    numeric(20, 8) not null check (amount_paid >= 0),
   payment_mode   text not null check (payment_mode in ('equal', 'exact', 'percentage', 'shares', 'adjustment')),
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
@@ -64,10 +64,10 @@ security definer
 set search_path = public
 as $$
 declare
-  v_amount     numeric(14, 2);
+  v_amount     numeric(20, 8);
   v_deleted_at timestamptz;
   v_pay_count  int;
-  v_pay_total  numeric(14, 2);
+  v_pay_total  numeric(20, 8);
 begin
   select amount, deleted_at
   into v_amount, v_deleted_at
@@ -78,7 +78,7 @@ begin
     return;
   end if;
 
-  select count(*)::int, coalesce(sum(amount_paid), 0)::numeric(14, 2)
+  select count(*)::int, coalesce(sum(amount_paid), 0)::numeric(20, 8)
   into v_pay_count, v_pay_total
   from public.expense_payments
   where expense_id = p_expense_id;

@@ -42,10 +42,19 @@ struct CurrencyPill: View {
     let symbol: String
     var action: () -> Void = {}
 
+    private var title: String {
+        let normalizedCode = code.uppercased()
+        let cleanedSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanedSymbol.isEmpty || cleanedSymbol.uppercased() == normalizedCode {
+            return normalizedCode
+        }
+        return "\(cleanedSymbol) \(normalizedCode)"
+    }
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Text("\(symbol) \(code)")
+                Text(title)
                     .font(.pill)
                     .tracking(-0.07)
                 Text("▾")

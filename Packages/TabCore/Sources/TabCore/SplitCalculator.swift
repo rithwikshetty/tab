@@ -6,6 +6,7 @@ public enum SplitCalculatorError: Error, Equatable, Sendable {
     case exactAmountsRequired
     case missingAmountForParticipant(UUID)
     case extraAmountForNonParticipant(UUID)
+    case amountHasTooManyFractionDigits(currency: String, maximumFractionDigits: Int)
     case amountsDoNotSumToTotal(expected: Decimal, actual: Decimal)
 }
 
@@ -21,41 +22,45 @@ public enum SplitCalculator {
             throw SplitCalculatorError.emptyParticipants
         }
 
+        try validatePrecision(totalAmount, currency: currency)
+
         switch splitType {
         case .equal:
-            return calculateEqual(total: totalAmount, participants: participants)
+            return calculateEqual(total: totalAmount, currency: currency, participants: participants)
         case .exact:
             guard let amounts = exactAmounts else {
                 throw SplitCalculatorError.exactAmountsRequired
             }
-            return try calculateExact(total: totalAmount, participants: participants, amounts: amounts)
+            return try calculateExact(total: totalAmount, currency: currency, participants: participants, amounts: amounts)
         case .percentage, .shares, .adjustment:
             throw SplitCalculatorError.unsupportedSplitType(splitType)
         }
     }
 
-    // Distributes `total` evenly across participants, rounded to 2 decimals.
-    // Any 1-cent remainder is assigned to the participants with the lowest sorted UUIDs.
-    private static func calculateEqual(total: Decimal, participants: [UUID]) -> [ExpenseSplit] {
+    // Distributes `total` evenly at the smallest supported unit for the currency.
+    // Any remainder is assigned one minor unit at a time to the lowest sorted UUIDs.
+    private static func calculateEqual(total: Decimal, currency: String, participants: [UUID]) -> [ExpenseSplit] {
         let n = Decimal(participants.count)
-        let totalCents = roundToInteger(total * 100)
-        let baseCents = roundDownToInteger(totalCents / n)
-        let baseShare = baseCents / 100
-        let remainderCents = totalCents - baseCents * n
+        let multiplier = CurrencyCatalog.minorUnitMultiplier(for: currency)
+        let totalMinorUnits = roundToInteger(total * multiplier)
+        let baseMinorUnits = roundDownToInteger(totalMinorUnits / n)
+        let baseShare = baseMinorUnits / multiplier
+        let remainderUnits = totalMinorUnits - baseMinorUnits * n
 
-        let extraCount = (remainderCents as NSDecimalNumber).intValue
+        let extraCount = (remainderUnits as NSDecimalNumber).intValue
         let sortedIDs = participants.sorted { $0.uuidString < $1.uuidString }
         let bonusIDs = Set(sortedIDs.prefix(extraCount))
 
-        let oneCent = Decimal(1) / Decimal(100)
+        let smallestUnit = Decimal(1) / multiplier
         return participants.map { id in
-            let owed = bonusIDs.contains(id) ? (baseShare + oneCent) : baseShare
+            let owed = bonusIDs.contains(id) ? (baseShare + smallestUnit) : baseShare
             return ExpenseSplit(participantID: id, amountOwed: owed, splitType: .equal)
         }
     }
 
     private static func calculateExact(
         total: Decimal,
+        currency: String,
         participants: [UUID],
         amounts: [UUID: Decimal]
     ) throws -> [ExpenseSplit] {
@@ -68,6 +73,10 @@ public enum SplitCalculator {
             throw SplitCalculatorError.missingAmountForParticipant(participant)
         }
 
+        for amount in amounts.values {
+            try validatePrecision(amount, currency: currency)
+        }
+
         let sum = amounts.values.reduce(Decimal(0), +)
         if sum != total {
             throw SplitCalculatorError.amountsDoNotSumToTotal(expected: total, actual: sum)
@@ -75,6 +84,15 @@ public enum SplitCalculator {
 
         return participants.map { id in
             ExpenseSplit(participantID: id, amountOwed: amounts[id]!, splitType: .exact)
+        }
+    }
+
+    private static func validatePrecision(_ amount: Decimal, currency: String) throws {
+        guard CurrencyCatalog.hasValidPrecision(amount, currency: currency) else {
+            throw SplitCalculatorError.amountHasTooManyFractionDigits(
+                currency: CurrencyCatalog.normalizedCode(currency),
+                maximumFractionDigits: CurrencyCatalog.fractionDigits(for: currency)
+            )
         }
     }
 

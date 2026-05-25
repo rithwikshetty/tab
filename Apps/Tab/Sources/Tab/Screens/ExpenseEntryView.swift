@@ -30,7 +30,8 @@ struct ExpenseEntryView: View {
     @State private var splitMode: Int = 0
     @State private var exactAmountTextByPersonID: [UUID: String] = [:]
     @State private var participantSet: Set<UUID> = []
-    @State private var currency: String = "EUR"
+    @State private var currency: String = CurrencyDefaults.initialCurrency
+    @State private var isCurrencyPickerPresented = false
     @State private var expenseDate: Date = .now
     @State private var isDatePickerPresented = false
     @State private var paymentMethodIndex: Int = 1 // 0=cash, 1=card, 2=bank_transfer
@@ -77,7 +78,7 @@ struct ExpenseEntryView: View {
     private var trip: TripEntity? { trips.first }
 
     private var totalAmount: Decimal {
-        Decimal(string: amountText.replacingOccurrences(of: ",", with: ".")) ?? 0
+        MoneyFormatter.decimal(from: amountText) ?? 0
     }
 
     private var selectedSplitType: SplitType {
@@ -90,8 +91,19 @@ struct ExpenseEntryView: View {
         Self.paymentMethodOrder[paymentMethodIndex]
     }
 
+    private var currencySelection: Binding<String> {
+        Binding(
+            get: { currency },
+            set: { newValue in
+                currency = newValue
+                CurrencyDefaults.remember(newValue)
+            }
+        )
+    }
+
     private var canSave: Bool {
         totalAmount > 0
+            && CurrencyCatalog.hasValidPrecision(totalAmount, currency: currency)
             && !description.trimmingCharacters(in: .whitespaces).isEmpty
             && !participantSet.isEmpty
             && auth.currentUser != nil
@@ -203,38 +215,7 @@ struct ExpenseEntryView: View {
         .toolbarBackground(Sage.bg, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .onAppear {
-            if !hasPrePopulated, let expense = editingExpense {
-                hasPrePopulated = true
-                amountText = plainAmountString(expense.amount)
-                description = expense.descriptionText
-                selectedCategoryID = expense.categoryID ?? DefaultCategories.food.id
-                currency = expense.currency
-                expenseDate = expense.expenseDate
-
-                let splitType = expense.splits.first?.splitType ?? .equal
-                splitMode = splitType == .equal ? 0 : 1
-                participantSet = Set(expense.splits.map(\.tripPersonID))
-
-                if splitType == .exact {
-                    for split in expense.splits {
-                        exactAmountTextByPersonID[split.tripPersonID] = plainAmountString(split.amountOwed)
-                    }
-                }
-
-                paymentMethodIndex = Self.paymentMethodOrder.firstIndex(of: expense.paymentMethod) ?? 1
-
-                paymentEntries = expense.payments.map { $0.toCorePayment() }
-
-                if let path = expense.receiptStoragePath {
-                    existingReceiptPath = path
-                }
-            }
-            if participantSet.isEmpty, let trip {
-                participantSet = Set(trip.people.map(\.id))
-            }
-            if selectedSplitType == .exact {
-                seedMissingExactAmountsFromEqual()
-            }
+            prepopulate()
         }
         .onChange(of: splitMode) { _, newValue in
             if newValue == 1 {
@@ -245,6 +226,9 @@ struct ExpenseEntryView: View {
             if selectedSplitType == .exact {
                 seedMissingExactAmountsFromEqual()
             }
+        }
+        .onChange(of: currency) {
+            normalizeAmountTextForCurrency()
         }
         .onChange(of: receiptPickerItem) { _, newItem in
             guard let newItem else { return }
@@ -295,7 +279,7 @@ struct ExpenseEntryView: View {
         HStack(alignment: .lastTextBaseline, spacing: 14) {
             DecimalTextField(
                 text: $amountText,
-                placeholder: "0.00",
+                placeholder: MoneyFormatter.amountPlaceholder(currency: currency),
                 font: .systemFont(ofSize: 52, weight: .light),
                 textColor: UIColor(Sage.text),
                 placeholderColor: UIColor(Sage.textSecondary.opacity(0.55)),
@@ -315,16 +299,11 @@ struct ExpenseEntryView: View {
                 }
             }
 
-            Menu {
-                ForEach(["EUR", "USD", "GBP", "JPY", "CHF"], id: \.self) { code in
-                    Button(action: {
-                        withAnimation(.snappy(duration: 0.18)) { currency = code }
-                    }) {
-                        Label(code, systemImage: code == currency ? "checkmark" : "")
-                    }
-                }
-            } label: {
-                CurrencyPill(code: currency, symbol: MoneyFormatter.currencySymbol(currency))
+            CurrencyPill(code: currency, symbol: MoneyFormatter.currencySymbol(currency)) {
+                isCurrencyPickerPresented = true
+            }
+            .sheet(isPresented: $isCurrencyPickerPresented) {
+                CurrencyPickerSheet(selection: currencySelection)
             }
         }
         .padding(.horizontal, Layout.hPad)
@@ -332,30 +311,59 @@ struct ExpenseEntryView: View {
         .padding(.bottom, 14)
     }
 
-    private func sanitizeAmount(_ input: String) -> String {
-        var cleaned = input.replacingOccurrences(of: ",", with: ".")
-        cleaned = cleaned.filter { $0.isNumber || $0 == "." }
-        let parts = cleaned.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-        if parts.count == 2 {
-            let whole = String(parts[0])
-            let frac = String(parts[1].prefix(2))
-            return whole + "." + frac
+    private func prepopulate() {
+        if !hasPrePopulated {
+            hasPrePopulated = true
+
+            if let expense = editingExpense {
+                currency = expense.currency
+                amountText = plainAmountString(expense.amount)
+                description = expense.descriptionText
+                selectedCategoryID = expense.categoryID ?? DefaultCategories.food.id
+                expenseDate = expense.expenseDate
+
+                let splitType = expense.splits.first?.splitType ?? .equal
+                splitMode = splitType == .equal ? 0 : 1
+                participantSet = Set(expense.splits.map(\.tripPersonID))
+
+                if splitType == .exact {
+                    for split in expense.splits {
+                        exactAmountTextByPersonID[split.tripPersonID] = plainAmountString(split.amountOwed)
+                    }
+                }
+
+                paymentMethodIndex = Self.paymentMethodOrder.firstIndex(of: expense.paymentMethod) ?? 1
+                paymentEntries = expense.payments.map { $0.toCorePayment() }
+                existingReceiptPath = expense.receiptStoragePath
+            } else {
+                currency = CurrencyDefaults.defaultCurrency(for: trip)
+            }
         }
-        return cleaned
+
+        if participantSet.isEmpty, let trip {
+            participantSet = Set(trip.people.map(\.id))
+        }
+        if selectedSplitType == .exact {
+            seedMissingExactAmountsFromEqual()
+        }
+    }
+
+    private func sanitizeAmount(_ input: String) -> String {
+        MoneyFormatter.sanitizeAmountInput(input, currency: currency)
     }
 
     private func decimalAmount(from input: String) -> Decimal? {
-        Decimal(string: input.replacingOccurrences(of: ",", with: "."))
+        MoneyFormatter.decimal(from: input)
     }
 
     private func plainAmountString(_ amount: Decimal) -> String {
-        let formatter = NumberFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        formatter.usesGroupingSeparator = false
-        return formatter.string(from: amount as NSDecimalNumber) ?? NSDecimalNumber(decimal: amount).stringValue
+        MoneyFormatter.plainAmountString(amount, currency: currency)
+    }
+
+    private func normalizeAmountTextForCurrency() {
+        amountText = sanitizeAmount(amountText)
+        exactAmountTextByPersonID = exactAmountTextByPersonID.mapValues(sanitizeAmount)
+        refreshEqualPaymentsForCurrentTotal()
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -833,6 +841,7 @@ struct ExpenseEntryView: View {
                         get: { exactAmountTextByPersonID[row.personID, default: ""] },
                         set: { exactAmountTextByPersonID[row.personID] = sanitizeAmount($0) }
                     ),
+                    placeholder: MoneyFormatter.amountPlaceholder(currency: currency),
                     isFocused: splitFieldFocused == row.personID,
                     onFocus: { splitFieldFocused = row.personID },
                     accessibilityIdentifier: "expense.splitAmount.\(row.personID.uuidString)"
@@ -981,6 +990,7 @@ struct ExpenseEntryView: View {
         trip.writeID = UUID()
 
         try? context.save()
+        CurrencyDefaults.remember(currency)
         Haptics.success()
 
         dismiss()
@@ -1053,6 +1063,7 @@ struct ExpenseEntryView: View {
         trip.writeID = UUID()
 
         try? context.save()
+        CurrencyDefaults.remember(currency)
         Haptics.success()
 
         dismiss()
@@ -1130,6 +1141,7 @@ private struct ParticipantRow: Hashable {
 
 struct InlineDecimalTextField: UIViewRepresentable {
     @Binding var text: String
+    var placeholder: String = "0.00"
     let isFocused: Bool
     let onFocus: () -> Void
     let accessibilityIdentifier: String
@@ -1142,7 +1154,7 @@ struct InlineDecimalTextField: UIViewRepresentable {
         tf.textColor = UIColor(Sage.text)
         tf.textAlignment = .right
         tf.tintColor = UIColor(Sage.accent)
-        tf.placeholder = "0.00"
+        tf.placeholder = placeholder
         tf.delegate = context.coordinator
         tf.selectAllOnTouch = { [weak tf] in
             guard let tf else { return }
@@ -1159,6 +1171,7 @@ struct InlineDecimalTextField: UIViewRepresentable {
     func updateUIView(_ uiView: UITextField, context: Context) {
         context.coordinator.parent = self
         uiView.accessibilityIdentifier = accessibilityIdentifier
+        uiView.placeholder = placeholder
         if uiView.text != text {
             uiView.text = text
         }
@@ -1256,6 +1269,10 @@ struct DecimalTextField: UIViewRepresentable {
         if uiView.text != text {
             uiView.text = text
         }
+        uiView.attributedPlaceholder = NSAttributedString(
+            string: placeholder,
+            attributes: [.foregroundColor: placeholderColor, .font: font]
+        )
     }
 
     func makeCoordinator() -> Coordinator {

@@ -6,6 +6,7 @@ public enum PaymentCalculatorError: Error, Equatable, Sendable {
     case exactAmountsRequired
     case missingAmountForPayer(UUID)
     case extraAmountForNonPayer(UUID)
+    case amountHasTooManyFractionDigits(currency: String, maximumFractionDigits: Int)
     case amountsDoNotSumToTotal(expected: Decimal, actual: Decimal)
 }
 
@@ -86,6 +87,11 @@ public enum PaymentCalculator {
             return .missingAmountForPayer(id)
         case .extraAmountForNonParticipant(let id):
             return .extraAmountForNonPayer(id)
+        case .amountHasTooManyFractionDigits(let currency, let maximumFractionDigits):
+            return .amountHasTooManyFractionDigits(
+                currency: currency,
+                maximumFractionDigits: maximumFractionDigits
+            )
         case .amountsDoNotSumToTotal(let expected, let actual):
             return .amountsDoNotSumToTotal(expected: expected, actual: actual)
         }

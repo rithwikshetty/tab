@@ -4,7 +4,7 @@
 create table public.expenses (
   id                   uuid primary key default gen_random_uuid(),
   trip_id              uuid not null references public.trips(id) on delete restrict,
-  amount               numeric(14, 2) not null check (amount > 0),
+  amount               numeric(20, 8) not null check (amount > 0),
   currency             text not null check (char_length(currency) = 3 and currency = upper(currency)),
   category_id          uuid references public.categories(id) on delete set null,
   description          text not null check (char_length(trim(description)) > 0 and char_length(description) <= 200),

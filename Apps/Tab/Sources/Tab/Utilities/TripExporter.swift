@@ -535,16 +535,8 @@ enum TripExporter {
 
     // MARK: - Helpers
 
-    private static func formatDecimal(_ value: Decimal) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: value as NSDecimalNumber) ?? "0.00"
-    }
-
     private static func formatMoney(_ value: Decimal, currency: String) -> String {
-        "\(currency) \(formatDecimal(value))"
+        MoneyFormatter.format(value, currency: currency)
     }
 
     private static func personName(_ id: UUID, peopleByID: [UUID: TripPersonEntity]) -> String {

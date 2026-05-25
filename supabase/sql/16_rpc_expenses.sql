@@ -65,7 +65,7 @@ begin
     values (
         v_expense_id,
         v_trip_id,
-        (p_expense->>'amount')::numeric(14, 2),
+        (p_expense->>'amount')::numeric(20, 8),
         p_expense->>'currency',
         nullif(p_expense->>'category_id', '')::uuid,
         p_expense->>'description',
@@ -96,7 +96,7 @@ begin
         values (
             v_expense_id,
             (v_payment->>'trip_person_id')::uuid,
-            (v_payment->>'amount_paid')::numeric(14, 2),
+            (v_payment->>'amount_paid')::numeric(20, 8),
             v_payment->>'payment_mode'
         );
     end loop;
@@ -109,7 +109,7 @@ begin
         values (
             v_expense_id,
             (v_split->>'trip_person_id')::uuid,
-            (v_split->>'amount_owed')::numeric(14, 2),
+            (v_split->>'amount_owed')::numeric(20, 8),
             v_split->>'split_type'
         );
     end loop;

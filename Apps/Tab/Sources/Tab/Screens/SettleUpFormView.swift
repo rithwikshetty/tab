@@ -17,7 +17,8 @@ struct SettleUpFormView: View {
     @State private var amountText: String = ""
     @State private var fromPersonID: UUID?
     @State private var toPersonID: UUID?
-    @State private var currency: String = "EUR"
+    @State private var currency: String = CurrencyDefaults.initialCurrency
+    @State private var isCurrencyPickerPresented = false
     @State private var settledAt: Date = .now
     @State private var isDatePickerPresented = false
     @State private var note: String = ""
@@ -37,11 +38,22 @@ struct SettleUpFormView: View {
     private var trip: TripEntity? { trips.first }
 
     private var totalAmount: Decimal {
-        Decimal(string: amountText.replacingOccurrences(of: ",", with: ".")) ?? 0
+        MoneyFormatter.decimal(from: amountText) ?? 0
+    }
+
+    private var currencySelection: Binding<String> {
+        Binding(
+            get: { currency },
+            set: { newValue in
+                currency = newValue
+                CurrencyDefaults.remember(newValue)
+            }
+        )
     }
 
     private var canSave: Bool {
         totalAmount > 0
+            && CurrencyCatalog.hasValidPrecision(totalAmount, currency: currency)
             && fromPersonID != nil
             && toPersonID != nil
             && fromPersonID != toPersonID
@@ -102,6 +114,10 @@ struct SettleUpFormView: View {
         .toolbarBackground(Sage.bg, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .onAppear { prepopulate() }
+        .onChange(of: currency) {
+            amountText = sanitizeAmount(amountText)
+            updateAmountForPair()
+        }
     }
 
     private var form: some View {
@@ -141,7 +157,7 @@ struct SettleUpFormView: View {
         HStack(alignment: .lastTextBaseline, spacing: 14) {
             DecimalTextField(
                 text: $amountText,
-                placeholder: "0.00",
+                placeholder: MoneyFormatter.amountPlaceholder(currency: currency),
                 font: .systemFont(ofSize: 52, weight: .light),
                 textColor: UIColor(Sage.text),
                 placeholderColor: UIColor(Sage.textSecondary.opacity(0.55)),
@@ -157,16 +173,11 @@ struct SettleUpFormView: View {
                 if sanitized != new { amountText = sanitized }
             }
 
-            Menu {
-                ForEach(["EUR", "USD", "GBP", "JPY", "CHF"], id: \.self) { code in
-                    Button(action: {
-                        withAnimation(.snappy(duration: 0.18)) { currency = code }
-                    }) {
-                        Label(code, systemImage: code == currency ? "checkmark" : "")
-                    }
-                }
-            } label: {
-                CurrencyPill(code: currency, symbol: MoneyFormatter.currencySymbol(currency))
+            CurrencyPill(code: currency, symbol: MoneyFormatter.currencySymbol(currency)) {
+                isCurrencyPickerPresented = true
+            }
+            .sheet(isPresented: $isCurrencyPickerPresented) {
+                CurrencyPickerSheet(selection: currencySelection)
             }
         }
         .padding(.horizontal, 18)
@@ -386,14 +397,16 @@ struct SettleUpFormView: View {
         hasPrePopulated = true
 
         if let settlement = editingSettlement {
+            currency = settlement.currency
             amountText = plainAmountString(settlement.amount)
             fromPersonID = settlement.fromPersonID
             toPersonID = settlement.toPersonID
-            currency = settlement.currency
             settledAt = settlement.settledAt
             note = settlement.note ?? ""
             return
         }
+
+        currency = CurrencyDefaults.defaultCurrency(for: trip)
 
         guard let trip, let cpID = currentPersonID else { return }
         fromPersonID = cpID
@@ -454,6 +467,7 @@ struct SettleUpFormView: View {
         trip.writeID = UUID()
 
         try? context.save()
+        CurrencyDefaults.remember(currency)
         Haptics.success()
         dismiss()
         Task { await sync.pushPending() }
@@ -478,6 +492,7 @@ struct SettleUpFormView: View {
         trip.writeID = UUID()
 
         try? context.save()
+        CurrencyDefaults.remember(currency)
         Haptics.success()
         dismiss()
         Task { await sync.pushPending() }
@@ -486,25 +501,11 @@ struct SettleUpFormView: View {
     // MARK: - Helpers
 
     private func sanitizeAmount(_ input: String) -> String {
-        var cleaned = input.replacingOccurrences(of: ",", with: ".")
-        cleaned = cleaned.filter { $0.isNumber || $0 == "." }
-        let parts = cleaned.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-        if parts.count == 2 {
-            let whole = String(parts[0])
-            let frac = String(parts[1].prefix(2))
-            return whole + "." + frac
-        }
-        return cleaned
+        MoneyFormatter.sanitizeAmountInput(input, currency: currency)
     }
 
     private func plainAmountString(_ amount: Decimal) -> String {
-        let formatter = NumberFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        formatter.usesGroupingSeparator = false
-        return formatter.string(from: amount as NSDecimalNumber) ?? NSDecimalNumber(decimal: amount).stringValue
+        MoneyFormatter.plainAmountString(amount, currency: currency)
     }
 
     private static let dateFormatter: DateFormatter = {

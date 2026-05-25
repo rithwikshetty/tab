@@ -83,6 +83,31 @@ struct PaymentCalculatorTests {
         #expect(payments.allSatisfy { $0.amountPaid == 0 })
     }
 
+    @Test("equal mode: JPY uses whole-yen minor units")
+    func equalJPYUsesWholeUnits() throws {
+        let payments = try PaymentCalculator.calculate(
+            totalAmount: 101,
+            currency: "JPY",
+            payers: [bob, alice],
+            paymentMode: .equal
+        )
+        let byUser = Dictionary(uniqueKeysWithValues: payments.map { ($0.payerID, $0.amountPaid) })
+        #expect(byUser[alice] == 51)
+        #expect(byUser[bob] == 50)
+    }
+
+    @Test("equal mode: invalid currency precision is mapped from split calculator")
+    func equalInvalidCurrencyPrecisionThrows() {
+        #expect(throws: PaymentCalculatorError.amountHasTooManyFractionDigits(currency: "JPY", maximumFractionDigits: 0)) {
+            _ = try PaymentCalculator.calculate(
+                totalAmount: Decimal(string: "10.25")!,
+                currency: "JPY",
+                payers: [alice, bob],
+                paymentMode: .equal
+            )
+        }
+    }
+
     @Test("equal mode: empty payers throws emptyPayers")
     func equalEmptyPayersThrows() {
         #expect(throws: PaymentCalculatorError.emptyPayers) {

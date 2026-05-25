@@ -114,6 +114,44 @@ struct SplitCalculatorTests {
         #expect(byUser[charlie] == Decimal(string: "0.01"))
     }
 
+    @Test("equal split: JPY uses whole-yen minor units")
+    func equalJPYUsesWholeUnits() throws {
+        let splits = try SplitCalculator.calculate(
+            totalAmount: 101,
+            currency: "JPY",
+            participants: [bob, alice],
+            splitType: .equal
+        )
+        let byUser = Dictionary(uniqueKeysWithValues: splits.map { ($0.participantID, $0.amountOwed) })
+        #expect(byUser[alice] == 51)
+        #expect(byUser[bob] == 50)
+    }
+
+    @Test("equal split: KWD uses three decimal minor units")
+    func equalKWDUsesThreeDecimals() throws {
+        let splits = try SplitCalculator.calculate(
+            totalAmount: Decimal(string: "1.001")!,
+            currency: "KWD",
+            participants: [alice, bob],
+            splitType: .equal
+        )
+        let byUser = Dictionary(uniqueKeysWithValues: splits.map { ($0.participantID, $0.amountOwed) })
+        #expect(byUser[alice] == Decimal(string: "0.501"))
+        #expect(byUser[bob] == Decimal(string: "0.500"))
+    }
+
+    @Test("equal split: rejects amounts with too many currency fraction digits")
+    func equalRejectsInvalidCurrencyPrecision() {
+        #expect(throws: SplitCalculatorError.amountHasTooManyFractionDigits(currency: "JPY", maximumFractionDigits: 0)) {
+            _ = try SplitCalculator.calculate(
+                totalAmount: Decimal(string: "10.25")!,
+                currency: "JPY",
+                participants: [alice, bob],
+                splitType: .equal
+            )
+        }
+    }
+
     // MARK: exact
 
     @Test("exact split: amounts sum to total")

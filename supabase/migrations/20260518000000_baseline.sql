@@ -402,7 +402,7 @@ insert into public.categories (id, trip_id, name, icon, is_default) values
 create table public.expenses (
   id                   uuid primary key default gen_random_uuid(),
   trip_id              uuid not null references public.trips(id) on delete restrict,
-  amount               numeric(14, 2) not null check (amount > 0),
+  amount               numeric(20, 8) not null check (amount > 0),
   currency             text not null check (char_length(currency) = 3 and currency = upper(currency)),
   category_id          uuid references public.categories(id) on delete set null,
   description          text not null check (char_length(trim(description)) > 0 and char_length(description) <= 200),
@@ -500,7 +500,7 @@ create trigger trg_expenses_touch_trip
 create table public.expense_payments (
   expense_id     uuid not null references public.expenses(id) on delete cascade,
   trip_person_id uuid not null references public.trip_people(id) on delete restrict,
-  amount_paid    numeric(14, 2) not null check (amount_paid >= 0),
+  amount_paid    numeric(20, 8) not null check (amount_paid >= 0),
   payment_mode   text not null check (payment_mode in ('equal', 'exact', 'percentage', 'shares', 'adjustment')),
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
@@ -559,10 +559,10 @@ security definer
 set search_path = public
 as $$
 declare
-  v_amount     numeric(14, 2);
+  v_amount     numeric(20, 8);
   v_deleted_at timestamptz;
   v_pay_count  int;
-  v_pay_total  numeric(14, 2);
+  v_pay_total  numeric(20, 8);
 begin
   select amount, deleted_at
   into v_amount, v_deleted_at
@@ -573,7 +573,7 @@ begin
     return;
   end if;
 
-  select count(*)::int, coalesce(sum(amount_paid), 0)::numeric(14, 2)
+  select count(*)::int, coalesce(sum(amount_paid), 0)::numeric(20, 8)
   into v_pay_count, v_pay_total
   from public.expense_payments
   where expense_id = p_expense_id;
@@ -641,7 +641,7 @@ create constraint trigger trg_expense_payments_total
 create table public.expense_splits (
   expense_id     uuid not null references public.expenses(id) on delete cascade,
   trip_person_id uuid not null references public.trip_people(id) on delete restrict,
-  amount_owed    numeric(14, 2) not null check (amount_owed >= 0),
+  amount_owed    numeric(20, 8) not null check (amount_owed >= 0),
   split_type     text not null check (split_type in ('equal', 'exact', 'percentage', 'shares', 'adjustment')),
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
@@ -700,10 +700,10 @@ security definer
 set search_path = public
 as $$
 declare
-  v_amount numeric(14, 2);
+  v_amount numeric(20, 8);
   v_deleted_at timestamptz;
   v_split_count int;
-  v_split_total numeric(14, 2);
+  v_split_total numeric(20, 8);
 begin
   select amount, deleted_at
   into v_amount, v_deleted_at
@@ -714,7 +714,7 @@ begin
     return;
   end if;
 
-  select count(*)::int, coalesce(sum(amount_owed), 0)::numeric(14, 2)
+  select count(*)::int, coalesce(sum(amount_owed), 0)::numeric(20, 8)
   into v_split_count, v_split_total
   from public.expense_splits
   where expense_id = p_expense_id;
@@ -786,7 +786,7 @@ create table public.settlements (
   trip_id        uuid not null references public.trips(id) on delete restrict,
   from_person_id uuid not null references public.trip_people(id) on delete restrict,
   to_person_id   uuid not null references public.trip_people(id) on delete restrict,
-  amount         numeric(14, 2) not null check (amount > 0),
+  amount         numeric(20, 8) not null check (amount > 0),
   currency       text not null check (char_length(currency) = 3 and currency = upper(currency)),
   note           text check (note is null or char_length(note) <= 200),
   settled_at     timestamptz not null default now(),
@@ -1670,7 +1670,7 @@ begin
     values (
         v_expense_id,
         v_trip_id,
-        (p_expense->>'amount')::numeric(14, 2),
+        (p_expense->>'amount')::numeric(20, 8),
         p_expense->>'currency',
         nullif(p_expense->>'category_id', '')::uuid,
         p_expense->>'description',
@@ -1701,7 +1701,7 @@ begin
         values (
             v_expense_id,
             (v_payment->>'trip_person_id')::uuid,
-            (v_payment->>'amount_paid')::numeric(14, 2),
+            (v_payment->>'amount_paid')::numeric(20, 8),
             v_payment->>'payment_mode'
         );
     end loop;
@@ -1714,7 +1714,7 @@ begin
         values (
             v_expense_id,
             (v_split->>'trip_person_id')::uuid,
-            (v_split->>'amount_owed')::numeric(14, 2),
+            (v_split->>'amount_owed')::numeric(20, 8),
             v_split->>'split_type'
         );
     end loop;

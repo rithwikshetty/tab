@@ -3,7 +3,7 @@
 begin;
 set search_path = extensions, public, pg_temp;
 
-select plan(19);
+select plan(20);
 create temp table _r (line text);
 
 insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
@@ -68,6 +68,16 @@ insert into _r select lives_ok(
       values ('aaaaaaaa-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 10, 'equal');
     set constraints all immediate; set constraints all deferred;$$,
   'valid one-person expense accepted');
+
+insert into _r select lives_ok(
+  $$insert into public.expenses (id, trip_id, amount, currency, description, expense_date, created_by)
+      values ('aaaaaaaa-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 1.001, 'KWD', 'Kuwaiti coffee', '2026-05-01', '00000000-0000-0000-0000-000000000001');
+    insert into public.expense_payments (expense_id, trip_person_id, amount_paid, payment_mode)
+      values ('aaaaaaaa-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 1.001, 'equal');
+    insert into public.expense_splits (expense_id, trip_person_id, amount_owed, split_type)
+      values ('aaaaaaaa-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 1.001, 'equal');
+    set constraints all immediate; set constraints all deferred;$$,
+  'three-decimal currency amounts accepted');
 
 insert into _r select throws_ok(
   $$insert into public.expense_payments (expense_id, trip_person_id, amount_paid, payment_mode)
