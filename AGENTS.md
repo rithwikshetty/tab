@@ -110,6 +110,20 @@ bash supabase/tests/00_sql_assembly.sh
 ./supabase/scripts/recreate_db.sh
 ```
 
+### Developer mode (mock auth)
+
+The simulator cannot do Apple Sign-In. To bypass auth and sign in as a mock user (`Test User`, `mock@tab.local`), launch with `TAB_MOCK_AUTH=1`:
+
+```bash
+# Via simctl (after building)
+SIMCTL_CHILD_TAB_MOCK_AUTH=1 xcrun simctl launch <SIMULATOR_UDID> com.rithwikshetty.tab
+
+# Via XcodeBuildMCP session defaults
+session_set_defaults with env: {"TAB_MOCK_AUTH": "1"}
+```
+
+**Always use mock auth when testing the app in the simulator.** The mock user ID is `11111111-1111-1111-1111-111111111111`. Set `TAB_REAL_AUTH=1` to force real auth even in debug builds.
+
 ## Pointers
 
 - **Design tokens** → `design/mockups/v1.html` (Sage palette is locked)

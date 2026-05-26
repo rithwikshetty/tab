@@ -23,6 +23,7 @@ struct TripDetailView: View {
     @State private var showingPeople: Bool = false
     @State private var pendingDeletion: ExpenseEntity?
     @State private var pendingSettlementDeletion: SettlementEntity?
+    @State private var showingEditDetails: Bool = false
 
     init(
         tripID: UUID,
@@ -181,9 +182,19 @@ struct TripDetailView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showingEditDetails) {
+            EditTripSheet(tripID: trip.id)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button {
+                        showingEditDetails = true
+                    } label: {
+                        Label("Edit details", systemImage: "pencil")
+                    }
                     Button {
                         onSettleUp()
                     } label: {
