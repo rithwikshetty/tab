@@ -8,7 +8,7 @@ This file mirrors [`CLAUDE.md`](CLAUDE.md) — both are kept in sync. If they di
 
 ## What tab is
 
-A Splitwise replacement for tracking expenses on group trips. Private friend-group use, no monetisation. iOS-first (iOS 18+). Itinerary and analytics are out of scope for V1.
+A Splitwise replacement for tracking expenses on group trips. Private friend-group use, no monetisation. iOS-first (iOS 18+). Itinerary and analytics are out of scope.
 
 ## Architecture at a glance
 
@@ -93,7 +93,7 @@ Mockups live in `design/` organised by feature area, one subfolder per area:
 
 ## Don't do these
 
-- No V2 scope creep (itinerary, analytics, simplified debts, multi-payer, %/shares splits, payment-app links, currency conversion, Android).
+- Don't add features outside the current scope: itinerary, analytics, simplified debts, %/shares splits, payment-app links, currency conversion, Android.
 - No `Double` for money — only `Decimal`.
 - No XCTest — Swift Testing only.
 - No mocking SwiftData or Supabase in unit tests. TabCore is pure; it doesn't need mocks.

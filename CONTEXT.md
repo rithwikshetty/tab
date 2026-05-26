@@ -2,7 +2,7 @@
 
 A multi-user, multi-currency group expense tracker for trips. iOS-first, offline-first, private friend-group use; no monetisation.
 
-The current model covers trips, members, expenses, multi-payer payment ledgers, split ledgers, pairwise balances, settlements, categories, receipt photos, and trip export. The server contract also includes an activity log, push devices, and trip mute preferences. V1 does **not** cover itinerary, analytics, simplified debts, payment-app links, currency conversion, Android, or percentage/share split UI.
+The current model covers trips, members, expenses, multi-payer payment ledgers, split ledgers, pairwise balances, settlements, categories, receipt photos, and trip export. The server contract also includes an activity log, push devices, and trip mute preferences. Not in scope: itinerary, analytics, simplified debts, payment-app links, currency conversion, Android, or percentage/share split UI.
 
 This file is the project's domain glossary. Only terms meaningful to a domain expert (someone reasoning about expenses, balances, and trips) belong here — implementation specifics live in code.
 
@@ -41,16 +41,16 @@ How the expense was paid at a high level: `cash`, `card`, or `bank_transfer`. Th
 Set of [[Payment]]s on one [[Expense]]. Invariant: `sum(payment.amount_paid) = expense.amount`. Records *who actually fronted cash*.
 
 ### Payment
-A single trip person's contribution toward an Expense. Has trip person, non-negative amount paid, and mode (`equal` or `exact` in the V1 UI).
+A single trip person's contribution toward an Expense. Has trip person, non-negative amount paid, and mode (`equal` or `exact`).
 
 ### Payer
-A trip person represented in the Payment ledger for a given Expense. An Expense always has at least one Payer. Multi-payer is V1 behavior, not future scope.
+A trip person represented in the Payment ledger for a given Expense. An Expense always has at least one Payer. Multi-payer is supported.
 
 ### Split ledger
 Set of [[Split]]s on one [[Expense]]. Invariant: `sum(split.amount_owed) = expense.amount`. Records *who is on the hook for the cost*.
 
 ### Split
-A single trip person's owed share of an Expense. Has trip person, non-negative amount owed, and mode (`equal` or `exact` in the V1 UI).
+A single trip person's owed share of an Expense. Has trip person, non-negative amount owed, and mode (`equal` or `exact`).
 
 ### Participant
 A trip person with ≥ 1 Split on a given Expense. May or may not also be a Payer.
@@ -58,14 +58,14 @@ A trip person with ≥ 1 Split on a given Expense. May or may not also be a Paye
 ### Payment mode / Split mode
 - `equal` — total auto-divided across selected users. 1-cent remainders are distributed to lex-lowest UUIDs (deterministic, see `SplitCalculator` / `PaymentCalculator`).
 - `exact` — user enters per-user amount directly. Sum must equal total.
-- Future enum values (`percentage`, `shares`, `adjustment`) exist in the schema but are not supported by the V1 UI or TabCore calculators.
+- Additional enum values (`percentage`, `shares`, `adjustment`) exist in the schema but are not yet supported by the UI or TabCore calculators.
 
 ### Net per trip person per expense
 `net = sum(payments by trip person) - sum(splits owed by trip person)`.
 Drives [[Pair balance]] aggregation. Sums to zero across all trip people on a single expense (because both ledgers sum to `expense.amount`).
 
 ### Pair balance
-Per `(trip_person_pair, currency)` balance derived from all expense nets plus settlements within a trip. Always pairwise — **never simplified across the group** in V1. Computed by `BalanceEngine`.
+Per `(trip_person_pair, currency)` balance derived from all expense nets plus settlements within a trip. Always pairwise — **never simplified across the group**. Computed by `BalanceEngine`.
 
 The canonical pair key sorts the two trip-person UUIDs `(lo, hi)`. Positive canonical amount means `hi` owes `lo`. External presentation uses mirrored [[User balance]] rows.
 
@@ -88,7 +88,7 @@ A trip is **Completed** when all pair balances across all currencies are zero an
 The activity clock starts at trip creation and is bumped by expense or settlement writes, including edits/deletes. A new expense or settlement on a Completed trip reactivates it. State is derived from data; never stored.
 
 ### Currency
-A trip-level concept only in the sense that each expense and settlement carries its own ISO currency code. **No FX conversion in V1**. Totals, balances, and exports are computed and displayed strictly per currency.
+A trip-level concept only in the sense that each expense and settlement carries its own ISO currency code. **No FX conversion**. Totals, balances, and exports are computed and displayed strictly per currency.
 
 ### Timeline
 The visible trip activity stream, grouped by date, containing active expenses and active settlements in reverse chronological order.
@@ -112,4 +112,4 @@ A spreadsheet-style export for a trip. It includes active expenses, payment rows
 
 Significant decisions live as ADRs under `docs/adr/`. Current set:
 
-- `0001-multi-payer-in-v1.md` — multi-payer expenses promoted to V1 from V2.
+- `0001-multi-payer-in-v1.md` — multi-payer expenses adopted into the initial design.

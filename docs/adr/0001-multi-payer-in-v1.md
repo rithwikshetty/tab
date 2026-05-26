@@ -1,4 +1,4 @@
-# ADR-0001: Multi-payer expenses in V1
+# ADR-0001: Multi-payer expenses
 
 ## Status
 
@@ -6,7 +6,7 @@ Accepted — 2026-05-18
 
 ## Context
 
-`PRD.md` line 198 lists *"Multiple payers per expense"* as explicitly out-of-scope for V1, deferred to V2. The V1 schema modelled the payer as a single column on the expense row:
+`PRD.md` line 198 lists *"Multiple payers per expense"* as explicitly out-of-scope, deferred to a later phase. The original schema modelled the payer as a single column on the expense row:
 
 ```
 expenses.payer_id : UUID
@@ -15,13 +15,13 @@ expenses.payer_id : UUID
 During the design grill for the expense-entry flow, the user's actual mental model surfaced: a real trip expense routinely has **multiple payers** (e.g., A and B split a €250 dinner check 100/100/50). Treating that as V2 would force one of two bad outcomes:
 
 1. **Log as multiple distinct expenses, one per payer.** Breaks the "one bill, one expense" mental model — each fragment has its own receipt-attachment, category, description. Doubles or triples the entry effort. Pollutes the activity log.
-2. **Defer until V2 and rewrite later.** Pre-launch this is cheap; post-launch it requires destructive schema change across all live data + clients.
+2. **Defer and rewrite later.** Pre-launch this is cheap; post-launch it requires destructive schema change across all live data + clients.
 
 Tab has **zero real users** today. CLAUDE.md explicitly blesses destructive schema evolution at this stage: *"Pre-launch default: there are no real users. Prefer destructive schema evolution and full DB recreation/reset…"*. The cost of adopting multi-payer now is mechanical schema work plus a balance-engine refactor; the cost of deferring is permanent data-model debt the moment we have real users.
 
 ## Decision
 
-Promote multi-payer to V1.
+Adopt multi-payer from the start.
 
 ### Data model
 - Drop `expenses.payer_id`.
@@ -80,4 +80,4 @@ Promote multi-payer to V1.
 - **Keep `payer_id`, add `expense_payments` only when N > 1.** Two sources of truth — `null` payer_id meaning "see table". Reads branch. Rejected.
 - **Store payments as JSON column on `expenses`.** Cheap migration, but loses DB-enforced sum invariant, RLS granularity, and queryability for future "expenses where I paid" views. Rejected.
 - **Model each payment as a separate expense row grouped by `parent_id`.** Most general (could absorb sub-receipts). Rewires balance engine and UI completely for an edge case. Rejected as overkill.
-- **Defer to V2.** See Context — would force destructive change post-launch. Rejected.
+- **Defer to a later phase.** See Context — would force destructive change post-launch. Rejected.
