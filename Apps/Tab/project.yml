@@ -35,6 +35,10 @@ targets:
       properties:
         CFBundleDisplayName: tab
         CFBundleShortVersionString: "0.1.0"
+        CFBundleURLTypes:
+          - CFBundleURLName: com.rithwikshetty.tab.auth
+            CFBundleURLSchemes:
+              - com.rithwikshetty.tab
         CFBundleVersion: "5"
         UILaunchScreen: {}
         UIRequiresFullScreen: false

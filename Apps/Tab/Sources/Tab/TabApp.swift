@@ -63,6 +63,9 @@ private struct AppShell: View {
                     .zIndex(1)
             }
         }
+        .onOpenURL { url in
+            auth.handleAuthCallback(url)
+        }
         .animation(.easeOut(duration: 0.35), value: splashAnimationDone)
         .animation(.easeOut(duration: 0.35), value: isLoading)
     }

@@ -57,6 +57,7 @@ final class SyncService {
         if auth?.isUsingMockAuth == true { return false }
         #endif
         guard let session = client.auth.currentSession,
+              !session.isExpired,
               let currentUserID = auth?.currentUser?.id else {
             return false
         }

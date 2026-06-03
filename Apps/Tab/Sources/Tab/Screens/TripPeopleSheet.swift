@@ -196,13 +196,14 @@ struct TripPeopleSheet: View {
 
     private func personRow(_ person: TripPersonEntity) -> some View {
         let isYou = person.id == currentPersonID
+        let emailText = currentUserEmailText(isYou: isYou, fallback: person.email)
         return HStack(spacing: 12) {
             Avatar(initial: AvatarInitial.from(isYou ? (auth.currentUser?.displayName ?? person.displayName) : person.displayName), tone: AvatarTone.deterministic(for: person.id), size: 30, borderWidth: 2)
             VStack(alignment: .leading, spacing: 2) {
                 Text(isYou ? "You" : person.displayName)
                     .font(.system(size: 14.5, weight: .medium))
                     .foregroundStyle(Sage.text)
-                Text(person.email)
+                Text(emailText)
                     .font(.system(size: 12.5))
                     .foregroundStyle(Sage.textSecondary)
             }
@@ -216,6 +217,11 @@ struct TripPeopleSheet: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
+    }
+
+    private func currentUserEmailText(isYou: Bool, fallback: String) -> String {
+        guard isYou, let user = auth.currentUser else { return fallback }
+        return user.presentableEmail ?? fallback
     }
 
     private func addEmail() {

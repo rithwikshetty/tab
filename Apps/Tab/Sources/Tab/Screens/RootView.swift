@@ -149,15 +149,17 @@ struct SettingsPlaceholderView: View {
             Text("Settings")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Sage.text)
-            Text("Coming soon")
-                .font(.system(size: 14))
-                .foregroundStyle(Sage.textSecondary)
-
-            if let email = auth.currentUser?.email {
-                Text(email)
-                    .font(.system(size: 13))
+            if let user = auth.currentUser {
+                Text(user.displayName)
+                    .font(.system(size: 14))
                     .foregroundStyle(Sage.textSecondary)
-                    .padding(.top, 6)
+
+                if let presentableEmail = user.presentableEmail {
+                    Text(presentableEmail)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Sage.textSecondary)
+                        .padding(.top, 2)
+                }
             }
             Spacer()
 
