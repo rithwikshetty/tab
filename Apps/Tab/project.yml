@@ -39,7 +39,7 @@ targets:
           - CFBundleURLName: com.rithwikshetty.tab.auth
             CFBundleURLSchemes:
               - com.rithwikshetty.tab
-        CFBundleVersion: "5"
+        CFBundleVersion: "6"
         UILaunchScreen: {}
         UIRequiresFullScreen: false
         UISupportedInterfaceOrientations:
