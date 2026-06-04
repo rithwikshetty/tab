@@ -1,6 +1,9 @@
 name: Tab
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
 options:
-  bundleIdPrefix: com.rithwikshetty
+  bundleIdPrefix: com.example
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
@@ -36,10 +39,13 @@ targets:
         CFBundleDisplayName: tab
         CFBundleShortVersionString: "0.1.0"
         CFBundleURLTypes:
-          - CFBundleURLName: com.rithwikshetty.tab.auth
+          - CFBundleURLName: $(TAB_AUTH_CALLBACK_SCHEME).auth
             CFBundleURLSchemes:
-              - com.rithwikshetty.tab
+              - $(TAB_AUTH_CALLBACK_SCHEME)
         CFBundleVersion: "6"
+        TABSupabaseURL: $(TAB_SUPABASE_URL)
+        TABSupabasePublishableKey: $(TAB_SUPABASE_PUBLISHABLE_KEY)
+        TABAuthCallbackScheme: $(TAB_AUTH_CALLBACK_SCHEME)
         UILaunchScreen: {}
         UIRequiresFullScreen: false
         UISupportedInterfaceOrientations:
@@ -47,7 +53,7 @@ targets:
         UIUserInterfaceStyle: Light
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.rithwikshetty.tab
+        PRODUCT_BUNDLE_IDENTIFIER: $(TAB_BUNDLE_ID)
         PRODUCT_NAME: Tab
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -70,7 +76,7 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.rithwikshetty.tab.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: $(TAB_BUNDLE_ID).uitests
         IPHONEOS_DEPLOYMENT_TARGET: "18.0"
     dependencies:
       - target: Tab
@@ -84,7 +90,7 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.rithwikshetty.tab.tests
+        PRODUCT_BUNDLE_IDENTIFIER: $(TAB_BUNDLE_ID).tests
         IPHONEOS_DEPLOYMENT_TARGET: "18.0"
     dependencies:
       - target: Tab

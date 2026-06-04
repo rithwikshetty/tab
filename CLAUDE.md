@@ -39,7 +39,7 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `T
 
 - **iOS 18+**, SwiftUI, SwiftData, Observation, Swift 6 strict concurrency.
 - **Swift Testing** (`@Test`, `#expect`, `@Suite`) — not XCTest.
-- **Supabase** (Postgres 17.6, EU-West-1, project `gaseuxsieddlksxtdliq`) for auth (Apple Sign-In + email magic link), realtime, storage, edge functions.
+- **Supabase** (Postgres 17.6) for auth (Apple Sign-In + email magic link), realtime, storage, edge functions.
 - **Decimal** for all money math. **Never Double.**
 - **Multi-currency, no FX conversion** — per-currency pairwise balances only.
 - **Last-write-wins** conflict resolution with delete-wins + UUID `writeID` tiebreaker on identical timestamps.
@@ -125,7 +125,7 @@ The simulator cannot do Apple Sign-In. To bypass auth and sign in as a mock user
 
 ```bash
 # Via simctl (after building)
-SIMCTL_CHILD_TAB_MOCK_AUTH=1 xcrun simctl launch <SIMULATOR_UDID> com.rithwikshetty.tab
+SIMCTL_CHILD_TAB_MOCK_AUTH=1 xcrun simctl launch <SIMULATOR_UDID> <BUNDLE_ID>
 
 # Via XcodeBuildMCP session defaults
 session_set_defaults with env: {"TAB_MOCK_AUTH": "1"}
@@ -136,5 +136,5 @@ session_set_defaults with env: {"TAB_MOCK_AUTH": "1"}
 ## Where to find things
 
 - **Design tokens (Sage palette)** → `design/mockups/v1.html` — Sage hex values are the locked source of truth; port them to the Asset Catalog when scaffolding the app.
-- **Supabase project ID** → `gaseuxsieddlksxtdliq` (EU-West-1, Postgres 17.6).
+- **Supabase project ref** → set locally with `SUPABASE_PROJECT_REF`; no public default is checked in.
 - **MCP servers** → `.mcp.json` (Supabase MCP is HTTP-typed).

@@ -17,8 +17,8 @@ empty app state.
 
 Receipt files live in Supabase Storage and are not deleted by SQL teardown.
 Use `./scripts/clear_receipts_storage.sh` to empty the `receipts` bucket. To
-delete the bucket itself, run it with `SUPABASE_SERVICE_ROLE_KEY` and
-`--delete-bucket`.
+delete the bucket itself, run it with `SUPABASE_PROJECT_REF`,
+`SUPABASE_SERVICE_ROLE_KEY`, and `--delete-bucket`.
 
 ## Client write paths
 

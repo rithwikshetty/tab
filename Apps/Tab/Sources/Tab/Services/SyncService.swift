@@ -3,7 +3,7 @@ import SwiftData
 import Supabase
 import os
 
-private let syncLog = Logger(subsystem: "com.rithwikshetty.tab", category: "sync")
+private let syncLog = Logger(subsystem: "com.example.tab", category: "sync")
 
 private struct ExpensePaymentRemoteKey: Hashable, Sendable {
     let expenseID: UUID

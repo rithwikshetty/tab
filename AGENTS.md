@@ -116,7 +116,7 @@ The simulator cannot do Apple Sign-In. To bypass auth and sign in as a mock user
 
 ```bash
 # Via simctl (after building)
-SIMCTL_CHILD_TAB_MOCK_AUTH=1 xcrun simctl launch <SIMULATOR_UDID> com.rithwikshetty.tab
+SIMCTL_CHILD_TAB_MOCK_AUTH=1 xcrun simctl launch <SIMULATOR_UDID> <BUNDLE_ID>
 
 # Via XcodeBuildMCP session defaults
 session_set_defaults with env: {"TAB_MOCK_AUTH": "1"}
@@ -127,5 +127,5 @@ session_set_defaults with env: {"TAB_MOCK_AUTH": "1"}
 ## Pointers
 
 - **Design tokens** → `design/mockups/v1.html` (Sage palette is locked)
-- **Supabase project ID** → `gaseuxsieddlksxtdliq` (EU-West-1)
+- **Supabase project ref** → set locally with `SUPABASE_PROJECT_REF`; no public default is checked in
 - **MCP config** → `.mcp.json`

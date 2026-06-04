@@ -2,8 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PROJECT_REF_DEFAULT="gaseuxsieddlksxtdliq"
-PROJECT_REF="${SUPABASE_PROJECT_REF:-$PROJECT_REF_DEFAULT}"
 BUCKET="${SUPABASE_RECEIPTS_BUCKET:-receipts}"
 
 usage() {
@@ -22,7 +20,7 @@ Behavior:
 Environment variables:
   SUPABASE_SERVICE_ROLE_KEY  Optional service-role key for Storage API cleanup.
   SUPABASE_ACCESS_TOKEN      Optional Supabase access token for CLI fallback.
-  SUPABASE_PROJECT_REF       Optional project ref (defaults to gaseuxsieddlksxtdliq).
+  SUPABASE_PROJECT_REF       Required when using SUPABASE_SERVICE_ROLE_KEY.
   SUPABASE_RECEIPTS_BUCKET   Optional bucket name (defaults to receipts).
 EOF
 }
@@ -41,6 +39,11 @@ fi
 cd "$ROOT_DIR"
 
 if [[ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+  if [[ -z "${SUPABASE_PROJECT_REF:-}" ]]; then
+    echo "[storage-cleanup] SUPABASE_PROJECT_REF is required when using SUPABASE_SERVICE_ROLE_KEY." >&2
+    exit 1
+  fi
+  PROJECT_REF="$SUPABASE_PROJECT_REF"
   BASE_URL="https://${PROJECT_REF}.supabase.co/storage/v1"
   AUTH_HEADER="Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}"
   APIKEY_HEADER="apikey: ${SUPABASE_SERVICE_ROLE_KEY}"

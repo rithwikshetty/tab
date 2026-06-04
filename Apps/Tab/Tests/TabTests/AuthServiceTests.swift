@@ -14,18 +14,18 @@ struct AuthServiceTests {
 
     @Test("regular emails remain visible and produce readable fallback names")
     func regularEmailsRemainVisible() {
-        let email = "  rithwik@example.com  "
+        let email = "  alex@example.com  "
 
         #expect(!AuthService.isApplePrivateRelayEmail(email))
-        #expect(AuthService.visibleEmail(from: email) == "rithwik@example.com")
-        #expect(AuthService.fallbackDisplayName(fromEmail: email) == "Rithwik")
+        #expect(AuthService.visibleEmail(from: email) == "alex@example.com")
+        #expect(AuthService.fallbackDisplayName(fromEmail: email) == "Alex")
     }
 
     @Test("display names are trimmed and capped")
     func displayNamesAreNormalized() {
         let longName = "  " + String(repeating: "A", count: 80) + "  "
 
-        #expect(AuthService.normalizedDisplayName("  Rithwik Shetty  ") == "Rithwik Shetty")
+        #expect(AuthService.normalizedDisplayName("  Alex Chen  ") == "Alex Chen")
         #expect(AuthService.normalizedDisplayName(longName)?.count == 60)
         #expect(AuthService.normalizedDisplayName("   ") == nil)
     }

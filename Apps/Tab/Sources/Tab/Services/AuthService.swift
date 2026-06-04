@@ -36,6 +36,7 @@ final class AuthService {
         case invalidEmail
         case invalidCode
         case missingVerifiedSession
+        case missingSupabaseConfig
 
         var errorDescription: String? {
             switch self {
@@ -47,6 +48,8 @@ final class AuthService {
                 "Enter the \(AuthService.emailVerificationCodeLength)-digit code from your email."
             case .missingVerifiedSession:
                 "We verified the code but couldn't start a session. Request a new code and try again."
+            case .missingSupabaseConfig:
+                "Configure Supabase in Apps/Tab/Config/Secrets.xcconfig before using real authentication."
             }
         }
     }
@@ -72,6 +75,12 @@ final class AuthService {
             return
         }
         #endif
+
+        guard SupabaseConfig.isConfigured else {
+            currentUser = nil
+            phase = .signedOut
+            return
+        }
 
         Task { [weak self] in
             await self?.observeAuthState()
@@ -125,6 +134,8 @@ final class AuthService {
     }
 
     func signInWithApple(idToken: String, nonce: String, fullName: String?) async throws {
+        try requireSupabaseConfig()
+
         let session = try await client.auth.signInWithIdToken(
             credentials: .init(provider: .apple, idToken: idToken, nonce: nonce)
         )
@@ -140,6 +151,8 @@ final class AuthService {
     }
 
     func signInWithGoogle() async throws {
+        try requireSupabaseConfig()
+
         let session = try await client.auth.signInWithOAuth(
             provider: .google,
             redirectTo: SupabaseConfig.authCallbackURL
@@ -152,6 +165,8 @@ final class AuthService {
 
     @discardableResult
     func sendEmailCode(email rawEmail: String, fullName rawFullName: String) async throws -> String {
+        try requireSupabaseConfig()
+
         guard let displayName = Self.normalizedDisplayName(rawFullName) else {
             throw AuthInputError.missingName
         }
@@ -171,6 +186,8 @@ final class AuthService {
     }
 
     func verifyEmailCode(email rawEmail: String, code rawCode: String) async throws {
+        try requireSupabaseConfig()
+
         guard let email = Self.normalizedEmail(rawEmail), Self.looksLikeEmail(email) else {
             throw AuthInputError.invalidEmail
         }
@@ -228,6 +245,12 @@ final class AuthService {
         try await client.auth.update(
             user: UserAttributes(data: Self.displayNameMetadata(displayName))
         )
+    }
+
+    private func requireSupabaseConfig() throws {
+        guard SupabaseConfig.isConfigured else {
+            throw AuthInputError.missingSupabaseConfig
+        }
     }
 
     private nonisolated static func displayNameMetadata(_ displayName: String) -> [String: AnyJSON] {

@@ -1,0 +1,9 @@
+// Public build defaults. Copy Secrets.xcconfig.example to Secrets.xcconfig
+// for local values; Secrets.xcconfig is ignored by git.
+
+TAB_BUNDLE_ID = com.example.tab
+TAB_AUTH_CALLBACK_SCHEME = $(TAB_BUNDLE_ID)
+TAB_SUPABASE_URL = https:/$()/example.supabase.co
+TAB_SUPABASE_PUBLISHABLE_KEY = replace-with-supabase-publishable-key
+
+#include? "Secrets.xcconfig"

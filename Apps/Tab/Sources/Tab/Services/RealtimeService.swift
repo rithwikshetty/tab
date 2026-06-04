@@ -3,7 +3,7 @@ import Supabase
 import Realtime
 import os
 
-private let realtimeLog = Logger(subsystem: "com.rithwikshetty.tab", category: "realtime")
+private let realtimeLog = Logger(subsystem: "com.example.tab", category: "realtime")
 
 @MainActor
 @Observable

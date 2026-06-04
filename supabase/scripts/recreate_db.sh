@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PROJECT_REF_DEFAULT="gaseuxsieddlksxtdliq"
 
 usage() {
   cat <<'EOF'
@@ -15,14 +14,14 @@ Behavior:
   1) Builds the generated schema from supabase/sql/*.sql.
   2) If SUPABASE_DB_URL is set, applies destructive teardown + schema to that DB.
   3) Else if SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD are set, links to
-     SUPABASE_PROJECT_REF (or default project ref) and applies destructive SQL.
+     SUPABASE_PROJECT_REF and applies destructive SQL.
   4) Else applies destructive SQL to the currently linked database.
 
 Environment variables:
   SUPABASE_DB_URL         Optional direct Postgres URL (percent-encoded).
   SUPABASE_ACCESS_TOKEN   Optional Supabase personal access token.
   SUPABASE_DB_PASSWORD    Optional database password for link.
-  SUPABASE_PROJECT_REF    Optional project ref (defaults to gaseuxsieddlksxtdliq).
+  SUPABASE_PROJECT_REF    Required when linking with access token + password.
 EOF
 }
 
@@ -63,7 +62,11 @@ if [[ -n "${SUPABASE_DB_URL:-}" ]]; then
 fi
 
 if [[ -n "${SUPABASE_ACCESS_TOKEN:-}" && -n "${SUPABASE_DB_PASSWORD:-}" ]]; then
-  PROJECT_REF="${SUPABASE_PROJECT_REF:-$PROJECT_REF_DEFAULT}"
+  if [[ -z "${SUPABASE_PROJECT_REF:-}" ]]; then
+    echo "[recreate-db] SUPABASE_PROJECT_REF is required when linking with SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD." >&2
+    exit 1
+  fi
+  PROJECT_REF="$SUPABASE_PROJECT_REF"
   echo "[recreate-db] Linking to project $PROJECT_REF"
   "${SUPABASE_CMD[@]}" login --token "$SUPABASE_ACCESS_TOKEN" --workdir "$ROOT_DIR" >/dev/null
   "${SUPABASE_CMD[@]}" link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD" --workdir "$ROOT_DIR"
@@ -75,7 +78,7 @@ if ! apply_files --linked; then
 [recreate-db] Linked recreate failed.
 Provide one of:
   - SUPABASE_DB_URL (recommended for CI/non-interactive usage), or
-  - SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD (+ optional SUPABASE_PROJECT_REF)
+  - SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD + SUPABASE_PROJECT_REF
 Then rerun the script.
 EOF
   exit 1

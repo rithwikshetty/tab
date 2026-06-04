@@ -16,6 +16,8 @@ DerivedData/
 *.moved-aside
 *.hmap
 *.ipa
+*.xcarchive
+*.xcresult
 *.dSYM.zip
 *.dSYM
 timeline.xctimeline
@@ -57,10 +59,21 @@ fastlane/test_output
 # Env / secrets
 .env
 .env.local
+.env.*
+!.env.example
 .env.*.local
+Apps/Tab/Config/Secrets.xcconfig
 *.pem
 *.p12
 *.cer
+*.key
+*.mobileprovision
+*.provisionprofile
+
+# Local agent/tool state
+.claude/
+.codex/
+.pi/
 
 # Supabase CLI local state
 supabase/.branches/
