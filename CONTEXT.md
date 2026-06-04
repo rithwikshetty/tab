@@ -2,7 +2,7 @@
 
 A multi-user, multi-currency group expense tracker for trips. iOS-first, offline-first, private friend-group use; no monetisation.
 
-The current model covers trips, members, expenses, multi-payer payment ledgers, split ledgers, pairwise balances, settlements, categories, receipt photos, and trip export. The server contract also includes an activity log, push devices, and trip mute preferences. Not in scope: itinerary, analytics, simplified debts, payment-app links, currency conversion, Android, or percentage/share split UI.
+The current model covers trips, members, expenses, multi-payer payment ledgers, split ledgers, pairwise balances, settlements, categories, receipt photos, trip export, and a per-trip spend [[Overview]]. The server contract also includes an activity log, push devices, and trip mute preferences. Not in scope: itinerary, cross-trip analytics, simplified debts, payment-app links, currency conversion, Android, or percentage/share split UI.
 
 This file is the project's domain glossary. Only terms meaningful to a domain expert (someone reasoning about expenses, balances, and trips) belong here — implementation specifics live in code.
 
@@ -89,6 +89,14 @@ The activity clock starts at trip creation and is bumped by expense or settlemen
 
 ### Currency
 A trip-level concept only in the sense that each expense and settlement carries its own ISO currency code. **No FX conversion**. Totals, balances, and exports are computed and displayed strictly per currency.
+
+### Overview
+A per-trip, read-only summary of **spend** — what the trip cost and how that cost is distributed. Scoped to one currency at a time (see [[Currency]]); a currency picker selects which when a trip has more than one. Shows total trip spend, the current user's *paid* and *share* totals, a per-person breakdown (both paid and share), a per-category breakdown, and spend over time. **Settlements are excluded entirely** — a settlement is debt-clearing, not trip cost, so it never appears in any Overview total or chart. Distinct from the Balances tab, which answers debt (who owes whom, settlements included); Overview never shows net-owed. Surfaced as a third segment alongside Expenses and Balances on the trip detail screen.
+
+"Spend" splits into two figures, never blurred:
+- **Paid** — what a trip person fronted (from the [[Payment ledger]]).
+- **Share** — what a trip person consumed / is on the hook for (from the [[Split ledger]]).
+Both are shown so neither sense of "who spent the most" is hidden. Total trip spend = `sum(active expense.amount)` per currency and equals both the summed paid and summed share.
 
 ### Timeline
 The visible trip activity stream, grouped by date, containing active expenses and active settlements in reverse chronological order.
