@@ -96,3 +96,62 @@ struct TimelineDay: Identifiable, Hashable, Sendable {
     let dateLabel: String
     let items: [TimelineItem]
 }
+
+// MARK: - Overview (per-trip spend)
+
+struct OverviewState: Hashable, Sendable {
+    /// Currencies present in active expenses, sorted. Picker is shown only when `count > 1`.
+    let currencies: [String]
+    /// One page per currency, same order as `currencies`. Empty when the trip has no expenses.
+    let pages: [OverviewPage]
+
+    var isEmpty: Bool { pages.isEmpty }
+}
+
+struct OverviewPage: Identifiable, Hashable, Sendable {
+    var id: String { currency }
+    let currency: String
+    let totalSpent: String
+    let youPaid: String
+    let yourShare: String
+    /// e.g. "26% of trip spend". Nil when total is zero.
+    let yourSharePercent: String?
+    let people: [OverviewPersonRow]
+    let categories: [OverviewCategoryRow]
+    let days: [OverviewDayBar]
+}
+
+struct OverviewPersonRow: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let name: String
+    let isYou: Bool
+    let paid: String
+    let share: String
+    /// share / total, for the share-of-trip mini bar (0...1).
+    let shareFraction: Double
+}
+
+struct OverviewCategoryRow: Identifiable, Hashable, Sendable {
+    let id: String
+    let categoryID: UUID?
+    let name: String
+    let amount: String
+    /// Share of trip total (0...1), for the "39%" readout.
+    let percent: Double
+    /// Width relative to the largest category (0...1), for the bar.
+    let fraction: Double
+}
+
+struct OverviewDayBar: Identifiable, Hashable, Sendable {
+    let id: String
+    let label: String
+    /// Height relative to the busiest day (0...1).
+    let heightFraction: Double
+    let segments: [OverviewDaySegment]
+}
+
+struct OverviewDaySegment: Hashable, Sendable {
+    let categoryID: UUID?
+    /// Share of that day's total (0...1).
+    let fraction: Double
+}

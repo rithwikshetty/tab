@@ -115,6 +115,12 @@ struct TripDetailView: View {
             personFor: { id in peopleByID[id] },
             categoryFor: { id in id.flatMap { categoriesByID[$0] } }
         )
+        let overview = OverviewPresenter.overview(
+            expenses: trip.expenses,
+            currentPersonID: currentPersonID,
+            personName: { id in peopleByID[id]?.displayName ?? "Member" },
+            categoryName: { id in id.flatMap { categoriesByID[$0]?.name } ?? "Other" }
+        )
 
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
@@ -148,7 +154,7 @@ struct TripDetailView: View {
                     }
                 }
 
-                Segmented(options: ["Expenses", "Balances"], selection: $segment)
+                Segmented(options: ["Expenses", "Balances", "Overview"], selection: $segment)
                     .padding(.top, 2)
                     .padding(.bottom, 16)
 
@@ -156,8 +162,11 @@ struct TripDetailView: View {
                     if segment == 0 {
                         timelineSection(days: days)
                             .transition(.opacity)
-                    } else {
+                    } else if segment == 1 {
                         balancesSection(summaries: summaries)
+                            .transition(.opacity)
+                    } else {
+                        OverviewView(state: overview)
                             .transition(.opacity)
                     }
                 }
