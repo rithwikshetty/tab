@@ -127,15 +127,33 @@ final class SyncService {
     func pullAll() async {
         guard hasRealSession else { return }
         phase = .pulling
+
+        // Pull each table independently so a failure in one (e.g. a single
+        // undecodable row) can't abort the rest — every table that succeeds
+        // still lands. A failed pull yields nil, which reconciliation treats as
+        // "remote state unknown" and skips, so a transient fetch failure is never
+        // mistaken for a remote deletion (which would wrongly delete local rows).
+        var firstError: Error?
+        func attempt<T>(_ table: String, _ work: () async throws -> T) async -> T? {
+            do {
+                return try await work()
+            } catch {
+                syncLog.error("\(table, privacy: .public) pull failed: \(error.localizedDescription, privacy: .public)")
+                if firstError == nil { firstError = error }
+                return nil
+            }
+        }
+
+        let profileIDs         = await attempt("profiles") { try await self.pullProfiles() }
+        let tripIDs            = await attempt("trips") { try await self.pullTrips() }
+        let tripPersonIDs      = await attempt("trip_people") { try await self.pullTripPeople() }
+        let categoryIDs        = await attempt("categories") { try await self.pullCategories() }
+        let expenseIDs         = await attempt("expenses") { try await self.pullExpenses() }
+        let expensePaymentKeys = await attempt("expense_payments") { try await self.pullExpensePayments() }
+        let expenseSplitKeys   = await attempt("expense_splits") { try await self.pullExpenseSplits() }
+        let settlementIDs      = await attempt("settlements") { try await self.pullSettlements() }
+
         do {
-            let profileIDs = try await pullProfiles()
-            let tripIDs = try await pullTrips()
-            let tripPersonIDs = try await pullTripPeople()
-            let categoryIDs = try await pullCategories()
-            let expenseIDs = try await pullExpenses()
-            let expensePaymentKeys = try await pullExpensePayments()
-            let expenseSplitKeys = try await pullExpenseSplits()
-            let settlementIDs = try await pullSettlements()
             try reconcileLocalRows(
                 remoteProfileIDs: profileIDs,
                 remoteTripIDs: tripIDs,
@@ -146,11 +164,16 @@ final class SyncService {
                 remoteExpenseSplitKeys: expenseSplitKeys,
                 remoteSettlementIDs: settlementIDs
             )
+        } catch {
+            syncLog.error("reconcile failed: \(error.localizedDescription, privacy: .public)")
+            if firstError == nil { firstError = error }
+        }
+
+        if let firstError {
+            phase = .error(firstError.localizedDescription)
+        } else {
             lastPullAt = .now
             phase = .idle
-        } catch {
-            syncLog.error("pull failed: \(error.localizedDescription, privacy: .public)")
-            phase = .error(error.localizedDescription)
         }
     }
 
@@ -274,69 +297,91 @@ final class SyncService {
         return Set(rows.map(\.id))
     }
 
+    /// Deletes local rows that the server no longer has. Each remote set is
+    /// optional: `nil` means that table's pull failed this cycle, so its remote
+    /// state is unknown and we skip its deletions entirely rather than risk
+    /// deleting rows that still exist on the server. Parent→child relationships
+    /// are `.cascade`, so deleting a remotely-removed trip/expense also clears its
+    /// children locally even when the child table's own pull was skipped.
     private func reconcileLocalRows(
-        remoteProfileIDs: Set<UUID>,
-        remoteTripIDs: Set<UUID>,
-        remoteTripPersonIDs: Set<UUID>,
-        remoteCategoryIDs: Set<UUID>,
-        remoteExpenseIDs: Set<UUID>,
-        remoteExpensePaymentKeys: Set<ExpensePaymentRemoteKey>,
-        remoteExpenseSplitKeys: Set<ExpenseSplitRemoteKey>,
-        remoteSettlementIDs: Set<UUID>
+        remoteProfileIDs: Set<UUID>?,
+        remoteTripIDs: Set<UUID>?,
+        remoteTripPersonIDs: Set<UUID>?,
+        remoteCategoryIDs: Set<UUID>?,
+        remoteExpenseIDs: Set<UUID>?,
+        remoteExpensePaymentKeys: Set<ExpensePaymentRemoteKey>?,
+        remoteExpenseSplitKeys: Set<ExpenseSplitRemoteKey>?,
+        remoteSettlementIDs: Set<UUID>?
     ) throws {
         let ctx = container.mainContext
 
-        for payment in try ctx.fetch(FetchDescriptor<PaymentEntity>()) {
-            guard payment.pushedWriteID != nil, let expenseID = payment.expense?.id else { continue }
-            if !remoteExpensePaymentKeys.contains(ExpensePaymentRemoteKey(expenseID: expenseID, tripPersonID: payment.tripPersonID)) {
-                ctx.delete(payment)
+        if let remoteExpensePaymentKeys {
+            for payment in try ctx.fetch(FetchDescriptor<PaymentEntity>()) {
+                guard payment.pushedWriteID != nil, let expenseID = payment.expense?.id else { continue }
+                if !remoteExpensePaymentKeys.contains(ExpensePaymentRemoteKey(expenseID: expenseID, tripPersonID: payment.tripPersonID)) {
+                    ctx.delete(payment)
+                }
             }
         }
 
-        for split in try ctx.fetch(FetchDescriptor<ExpenseSplitEntity>()) {
-            guard split.pushedWriteID != nil, let expenseID = split.expense?.id else { continue }
-            if !remoteExpenseSplitKeys.contains(ExpenseSplitRemoteKey(expenseID: expenseID, tripPersonID: split.tripPersonID)) {
-                ctx.delete(split)
+        if let remoteExpenseSplitKeys {
+            for split in try ctx.fetch(FetchDescriptor<ExpenseSplitEntity>()) {
+                guard split.pushedWriteID != nil, let expenseID = split.expense?.id else { continue }
+                if !remoteExpenseSplitKeys.contains(ExpenseSplitRemoteKey(expenseID: expenseID, tripPersonID: split.tripPersonID)) {
+                    ctx.delete(split)
+                }
             }
         }
 
-        for settlement in try ctx.fetch(FetchDescriptor<SettlementEntity>()) {
-            if settlement.pushedWriteID != nil && !remoteSettlementIDs.contains(settlement.id) {
-                ctx.delete(settlement)
+        if let remoteSettlementIDs {
+            for settlement in try ctx.fetch(FetchDescriptor<SettlementEntity>()) {
+                if settlement.pushedWriteID != nil && !remoteSettlementIDs.contains(settlement.id) {
+                    ctx.delete(settlement)
+                }
             }
         }
 
-        for expense in try ctx.fetch(FetchDescriptor<ExpenseEntity>()) {
-            if expense.pushedWriteID != nil && !remoteExpenseIDs.contains(expense.id) {
-                ctx.delete(expense)
+        if let remoteExpenseIDs {
+            for expense in try ctx.fetch(FetchDescriptor<ExpenseEntity>()) {
+                if expense.pushedWriteID != nil && !remoteExpenseIDs.contains(expense.id) {
+                    ctx.delete(expense)
+                }
             }
         }
 
-        for person in try ctx.fetch(FetchDescriptor<TripPersonEntity>()) {
-            guard person.pushedWriteID != nil else { continue }
-            if !remoteTripPersonIDs.contains(person.id) {
-                ctx.delete(person)
+        if let remoteTripPersonIDs {
+            for person in try ctx.fetch(FetchDescriptor<TripPersonEntity>()) {
+                guard person.pushedWriteID != nil else { continue }
+                if !remoteTripPersonIDs.contains(person.id) {
+                    ctx.delete(person)
+                }
             }
         }
 
-        for trip in try ctx.fetch(FetchDescriptor<TripEntity>()) {
-            if trip.pushedWriteID != nil && !remoteTripIDs.contains(trip.id) {
-                ctx.delete(trip)
+        if let remoteTripIDs {
+            for trip in try ctx.fetch(FetchDescriptor<TripEntity>()) {
+                if trip.pushedWriteID != nil && !remoteTripIDs.contains(trip.id) {
+                    ctx.delete(trip)
+                }
             }
         }
 
-        for category in try ctx.fetch(FetchDescriptor<CategoryEntity>()) {
-            guard !category.isDefault else { continue }
-            if category.pushedWriteID != nil && !remoteCategoryIDs.contains(category.id) {
-                ctx.delete(category)
+        if let remoteCategoryIDs {
+            for category in try ctx.fetch(FetchDescriptor<CategoryEntity>()) {
+                guard !category.isDefault else { continue }
+                if category.pushedWriteID != nil && !remoteCategoryIDs.contains(category.id) {
+                    ctx.delete(category)
+                }
             }
         }
 
-        for profile in try ctx.fetch(FetchDescriptor<ProfileEntity>()) {
-            guard profile.pushedWriteID != nil else { continue }
-            if auth?.currentUser?.id == profile.id { continue }
-            if !remoteProfileIDs.contains(profile.id) {
-                ctx.delete(profile)
+        if let remoteProfileIDs {
+            for profile in try ctx.fetch(FetchDescriptor<ProfileEntity>()) {
+                guard profile.pushedWriteID != nil else { continue }
+                if auth?.currentUser?.id == profile.id { continue }
+                if !remoteProfileIDs.contains(profile.id) {
+                    ctx.delete(profile)
+                }
             }
         }
 
