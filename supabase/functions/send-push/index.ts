@@ -1,0 +1,105 @@
+// send-push: Database webhook (pg_net) -> resolve recipients -> APNs.
+// Authenticated by a shared secret header (verify_jwt = false), so the call must
+// come from the DB trigger, which reads the secret from private.app_config.
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { apnsConfigured, sendPush } from "./apns.ts";
+
+const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+interface ActivityEvent {
+  activity_id: string;
+  trip_id: string;
+  actor_id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  snapshot: Record<string, string> | null;
+}
+
+interface PushTarget {
+  user_id: string;
+  apns_token: string;
+  push_device_id: string;
+  badge: number;
+}
+
+/// Compose the banner: trip name as title, action-specific body. Mirrors the
+/// in-app ActivityPresenter so push and feed read consistently.
+function composeAlert(event: ActivityEvent): { title: string; body: string } {
+  const s = event.snapshot ?? {};
+  const actor = s.actor_name ?? "Someone";
+  const title = s.trip_name ?? "Tab";
+  const money = s.amount && s.currency ? ` ${s.currency} ${s.amount}` : "";
+  const desc = s.description ?? "an expense";
+
+  let body: string;
+  switch (event.action) {
+    case "expense_created": body = `${actor} added ${desc}${money}`; break;
+    case "expense_updated": body = `${actor} edited ${desc}${money}`; break;
+    case "expense_deleted": body = `${actor} deleted ${desc}`; break;
+    case "settlement_created": body = `${actor} recorded a payment${money}`; break;
+    case "settlement_updated": body = `${actor} edited a payment${money}`; break;
+    case "settlement_deleted": body = `${actor} removed a payment`; break;
+    case "member_joined": body = `${actor} added ${s.member_name ?? "someone"}`; break;
+    case "member_left": body = `${actor} removed ${s.member_name ?? "someone"}`; break;
+    case "trip_updated": body = `${actor} renamed the trip`; break;
+    default: body = `${actor} updated the trip`;
+  }
+  return { title, body };
+}
+
+Deno.serve(async (req) => {
+  if (req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET || WEBHOOK_SECRET === "") {
+    return new Response("unauthorized", { status: 401 });
+  }
+
+  const event = (await req.json()) as ActivityEvent;
+
+  if (!apnsConfigured()) {
+    // Push not configured (no .p8 / keys). Acknowledge so the webhook doesn't error.
+    return new Response(JSON.stringify({ skipped: "apns_not_configured" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  const { data: targets, error } = await supabase.rpc("push_targets_for_activity", {
+    p_activity_id: event.activity_id,
+  });
+  if (error) {
+    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+  }
+
+  const { title, body } = composeAlert(event);
+  let sent = 0;
+  const deadDeviceIds: string[] = [];
+
+  for (const target of (targets ?? []) as PushTarget[]) {
+    const payload = {
+      aps: {
+        alert: { title, body },
+        badge: target.badge,
+        sound: "default",
+        "thread-id": event.trip_id,
+      },
+      trip_id: event.trip_id,
+      entity_type: event.entity_type,
+      entity_id: event.entity_id,
+    };
+    const result = await sendPush(target.apns_token, payload, { collapseId: event.entity_id });
+    if (result.ok) sent++;
+    else if (result.tokenDead) deadDeviceIds.push(target.push_device_id);
+  }
+
+  if (deadDeviceIds.length > 0) {
+    await supabase.from("push_devices").delete().in("id", deadDeviceIds);
+  }
+
+  return new Response(JSON.stringify({ sent, pruned: deadDeviceIds.length }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+});

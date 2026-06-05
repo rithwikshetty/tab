@@ -82,3 +82,15 @@ Environment:
 - Limitation (tooling): MCP UI tap/gesture not enabled + simctl can't grant notif auth -> deep-screen nav,
   mute toggle interaction, and foreground banner visual not click-driven here. Code is standard + verified to
   compile/wire; same untestable class as live APNs (no .p8 / no device).
+
+### 2026-06-06 — Edge function + push pipe DONE + verified
+- supabase/functions/send-push/: apns.ts (ES256 .p8 token auth, raw r||s no DER, JWT reuse ~50m, 410 prune)
+  + index.ts (webhook-secret auth, push_targets_for_activity RPC, composeAlert per action, badge per recipient,
+  thread-id=trip, collapse-id=entity) + README (secrets + wiring + status). Deployed (verify_jwt=false, ACTIVE).
+- push_targets_for_activity(activity_id) RPC added (recipients=members-actor-muters + per-user badge), applied live.
+- FULL PIPE VERIFIED: set WEBHOOK_SECRET via mgmt API + app_config rows -> inserted activity -> net._http_response
+  shows 200 {"skipped":"apns_not_configured"} = trigger->pg_net->edge(auth ok)->response. Only the APNs network
+  send is unverified (no .p8 / no device) — function correctly no-ops without it.
+- Left wired (app_config set, WEBHOOK_SECRET=8f59...; APNS_ENV=sandbox) so push goes live the moment the .p8 +
+  APNS_TEAM_ID/KEY_ID/BUNDLE_ID are added. Test activity row cleaned. Baseline rebuilt; assembly holds.
+- ADR-0002 updated to match implementation (column-comparison idempotency; cursor as profiles column).

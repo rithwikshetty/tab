@@ -19,8 +19,8 @@ Treat notifications as **one event stream rendered through two channels**: the i
 ### Event sourcing — shared row, written by DB triggers
 
 - The single source of truth is the existing append-only `activity_log` (one row per event, **not** one row per recipient).
-- Rows are written **server-side by database triggers** on `expenses`, `expense_payments`/`expense_splits`' parent `expenses`, `settlements`, `trip_people`, and `trips`. The trigger records `actor_id = auth.uid()`, the action, the entity, and a `snapshot_json`.
-- Triggers are **idempotent on `write_id`** (a new column on `activity_log`): the offline-first sync engine re-upserts the same logical change under a stable `write_id`, and the trigger must not emit a duplicate event for a re-sync. Service-role/maintenance writes (e.g. purge) are skipped (`auth.uid()` null → no event).
+- Rows are written **server-side by database triggers** on `expenses`, `settlements`, `trip_people`, and `trips`. The trigger records `actor_id = auth.uid()`, the action, the entity, and a `snapshot_json` (actor name, trip name, and type-specific fields for offline rendering + push text).
+- Triggers are **idempotent against offline re-syncs**: because `set_sync_fields` regenerates `write_id` on every write, `write_id` can't be the dedup key. Instead an UPDATE emits an event only when a *user-visible* column actually changed (`IS DISTINCT FROM` across amount/currency/description/etc.), so a no-op re-upsert produces nothing. Service-role/maintenance writes are skipped (`auth.uid()` null → no event).
 - Targeting, self-exclusion, and read/unread are **derived per user at read time**, never duplicated into per-recipient rows:
   - In-app feed = `activity_log` rows for trips the user belongs to, `actor != me`, newest first.
   - Read state = a **single per-user `last_seen_at` cursor** (synced). Unread = events newer than the cursor on non-muted trips. Opening the Activity tab advances the cursor.
@@ -46,7 +46,7 @@ Treat notifications as **one event stream rendered through two channels**: the i
 
 ## Consequences
 
-- `activity_log` gains a `write_id` and joins the sync pull. `push_devices`, `trip_mute_prefs`, and the per-user `last_seen_at` cursor join the sync push/pull in `SyncService`.
+- `activity_log` joins the sync pull (a rolling ~90-day / 300-row window, pruned locally). `push_devices`, `trip_mute_prefs`, and the per-user `activity_last_seen_at` cursor (a column on `profiles`) join the sync push/pull in `SyncService`.
 - New DB triggers across the mutable tables; a Database Webhook; one new edge function (the project's first — `supabase/functions/` is created here).
 - App gains the `aps-environment` entitlement, an AppDelegate (`didRegisterForRemoteNotifications` + `UNUserNotificationCenterDelegate`), token upsert, deep-link handling for taps, and a `RootView` restructure to three tabs with per-tab `NavigationStack`s plus the Activity screen and tab/icon badge.
 - A trip-mute toggle is added to the trip-detail overflow menu.

@@ -2093,6 +2093,33 @@ $$;
 comment on function public.unread_activity_count(uuid) is
   'Count of unread Activity events for a user (excludes own actions and muted trips). For the push badge.';
 
+-- One round-trip for the edge function: every device that should receive a push
+-- for an activity (members - actor - muters), with that recipient's badge count.
+create or replace function public.push_targets_for_activity(p_activity_id uuid)
+returns table (user_id uuid, apns_token text, push_device_id uuid, badge integer)
+language sql
+security definer
+stable
+set search_path = public, private
+as $$
+  select pd.user_id, pd.apns_token, pd.id, public.unread_activity_count(pd.user_id)
+  from public.activity_log a
+  join public.trip_people tp
+    on tp.trip_id = a.trip_id
+   and tp.user_id is not null
+   and tp.user_id <> a.actor_id
+   and tp.joined_at is not null
+  join public.push_devices pd on pd.user_id = tp.user_id
+  where a.id = p_activity_id
+    and not exists (
+      select 1 from public.trip_mute_prefs m
+      where m.trip_id = a.trip_id and m.user_id = tp.user_id
+    );
+$$;
+
+comment on function public.push_targets_for_activity(uuid) is
+  'Recipient devices + badge for an activity event. Called by the send-push edge function (service role).';
+
 create or replace function public.notify_activity_push()
 returns trigger
 language plpgsql
@@ -2136,5 +2163,6 @@ create trigger trg_activity_notify_push
 revoke execute on function private.config(text)              from public, anon, authenticated;
 revoke execute on function public.notify_activity_push()     from public, anon, authenticated;
 revoke execute on function public.unread_activity_count(uuid) from public, anon, authenticated;
+revoke execute on function public.push_targets_for_activity(uuid) from public, anon, authenticated;
 
 -- <<< END 18_notifications_push.sql
