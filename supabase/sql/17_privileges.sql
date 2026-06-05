@@ -18,6 +18,14 @@ revoke execute on function public.validate_expense_payment_total_from_payment_tr
 revoke execute on function public.validate_settlement_row() from public, anon, authenticated;
 revoke execute on function public.validate_trip_mute_pref_row() from public, anon, authenticated;
 revoke execute on function public.purge_soft_deleted_records(timestamptz) from public, anon, authenticated;
+revoke execute on function public.log_expense_activity()    from public, anon, authenticated;
+revoke execute on function public.log_settlement_activity() from public, anon, authenticated;
+revoke execute on function public.log_membership_activity() from public, anon, authenticated;
+revoke execute on function public.log_trip_activity()       from public, anon, authenticated;
+revoke execute on function private.profile_display_name(uuid) from public, anon, authenticated;
+revoke execute on function private.trip_name(uuid)            from public, anon, authenticated;
+revoke execute on function private.person_display_name(uuid)  from public, anon, authenticated;
+revoke execute on function private.money_text(numeric)        from public, anon, authenticated;
 
 revoke execute on function public.ensure_current_profile(text, text) from public, anon;
 grant  execute on function public.ensure_current_profile(text, text) to authenticated;
@@ -31,6 +39,8 @@ revoke execute on function public.suggest_trip_people(text, int) from public, an
 grant  execute on function public.suggest_trip_people(text, int) to authenticated;
 revoke execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) from public, anon;
 grant  execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) to authenticated;
+revoke execute on function public.mark_activity_seen() from public, anon;
+grant  execute on function public.mark_activity_seen() to authenticated;
 
 -- private helpers are not PostgREST-exposed, but authenticated sessions need
 -- EXECUTE for policy evaluation.

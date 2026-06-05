@@ -1,0 +1,113 @@
+-- 08_activity_notifications.sql — activity_log event-sourcing triggers,
+-- read cursor, mute, and unread badge count.
+
+begin;
+set search_path = extensions, public, pg_temp;
+
+select plan(15);
+create temp table _r (line text);
+grant insert, select on _r to authenticated;
+
+-- Schema surface
+insert into _r select has_column('public', 'profiles', 'activity_last_seen_at', 'profiles.activity_last_seen_at exists');
+insert into _r select has_function('public', 'mark_activity_seen', array[]::text[], 'mark_activity_seen() exists');
+insert into _r select has_function('public', 'unread_activity_count', array['uuid'], 'unread_activity_count(uuid) exists');
+
+-- Fixtures: alice + bob (profiles auto-created by handle_new_user)
+insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)
+values
+  ('00000000-0000-0000-0000-000000000001', 'alice@test.tab', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', '{"display_name":"Alice"}'),
+  ('00000000-0000-0000-0000-000000000002', 'bob@test.tab',   '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', '{"display_name":"Bob"}');
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}';
+
+-- alice creates a trip (self-add must NOT emit member_joined) and adds bob (must emit member_joined)
+select public.create_trip_with_self('11111111-1111-1111-1111-111111111111', '10000000-0000-0000-0000-000000000001', 'Lisbon');
+select public.add_trip_person_by_email('11111111-1111-1111-1111-111111111111', 'bob@test.tab', 'Bob', '10000000-0000-0000-0000-000000000002');
+
+-- After setup: exactly trip_created + member_joined(bob) = 2 (creator self-add is skipped)
+insert into _r select is(
+  (select count(*)::int from public.activity_log where trip_id = '11111111-1111-1111-1111-111111111111'),
+  2, 'trip_created + member_joined only (self-add skipped)');
+insert into _r select is(
+  (select count(*)::int from public.activity_log where action = 'member_joined' and snapshot_json->>'member_name' = 'Bob'),
+  1, 'member_joined emitted for added member');
+
+-- Expense lifecycle
+select public.create_expense_with_payments_and_splits(
+  jsonb_build_object('id','aaaaaaaa-0000-0000-0000-000000000001','trip_id','11111111-1111-1111-1111-111111111111','amount',50,'currency','EUR','description','Dinner','expense_date','2026-05-01'),
+  jsonb_build_array(jsonb_build_object('trip_person_id','10000000-0000-0000-0000-000000000001','amount_paid',50,'payment_mode','equal')),
+  jsonb_build_array(jsonb_build_object('trip_person_id','10000000-0000-0000-0000-000000000001','amount_owed',50,'split_type','equal')));
+insert into _r select is(
+  (select count(*)::int from public.activity_log where action='expense_created' and entity_id='aaaaaaaa-0000-0000-0000-000000000001'),
+  1, 'expense_created emitted on insert');
+
+-- Meaningful edit -> expense_updated
+select public.create_expense_with_payments_and_splits(
+  jsonb_build_object('id','aaaaaaaa-0000-0000-0000-000000000001','trip_id','11111111-1111-1111-1111-111111111111','amount',80,'currency','EUR','description','Dinner','expense_date','2026-05-01','last_edited_by','x'),
+  jsonb_build_array(jsonb_build_object('trip_person_id','10000000-0000-0000-0000-000000000001','amount_paid',80,'payment_mode','equal')),
+  jsonb_build_array(jsonb_build_object('trip_person_id','10000000-0000-0000-0000-000000000001','amount_owed',80,'split_type','equal')));
+insert into _r select is(
+  (select count(*)::int from public.activity_log where action='expense_updated' and entity_id='aaaaaaaa-0000-0000-0000-000000000001'),
+  1, 'expense_updated emitted on meaningful edit');
+
+-- No-op edit (identical fields) -> NO new event (idempotency vs re-sync)
+select public.create_expense_with_payments_and_splits(
+  jsonb_build_object('id','aaaaaaaa-0000-0000-0000-000000000001','trip_id','11111111-1111-1111-1111-111111111111','amount',80,'currency','EUR','description','Dinner','expense_date','2026-05-01','last_edited_by','x'),
+  jsonb_build_array(jsonb_build_object('trip_person_id','10000000-0000-0000-0000-000000000001','amount_paid',80,'payment_mode','equal')),
+  jsonb_build_array(jsonb_build_object('trip_person_id','10000000-0000-0000-0000-000000000001','amount_owed',80,'split_type','equal')));
+insert into _r select is(
+  (select count(*)::int from public.activity_log where entity_id='aaaaaaaa-0000-0000-0000-000000000001'),
+  2, 'no-op edit emits nothing (still create+update)');
+
+-- Soft delete -> expense_deleted
+update public.expenses set deleted_at = clock_timestamp() where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+insert into _r select is(
+  (select count(*)::int from public.activity_log where action='expense_deleted' and entity_id='aaaaaaaa-0000-0000-0000-000000000001'),
+  1, 'expense_deleted emitted on soft delete');
+
+-- Settlement create
+insert into public.settlements (id, trip_id, from_person_id, to_person_id, amount, currency, created_by)
+values ('bbbbbbbb-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','10000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002',20,'EUR','00000000-0000-0000-0000-000000000001');
+insert into _r select is(
+  (select count(*)::int from public.activity_log where action='settlement_created' and entity_id='bbbbbbbb-0000-0000-0000-000000000001'),
+  1, 'settlement_created emitted');
+
+-- Badge counts (run as owner: execute revoked from authenticated)
+reset role;
+-- alice authored everything -> 0 unread; bob authored nothing -> all 5 (trip_created,member_joined,exp_created,exp_updated,exp_deleted,settlement = 6)
+insert into _r select is(public.unread_activity_count('00000000-0000-0000-0000-000000000001'), 0, 'actor sees 0 unread (own actions excluded)');
+insert into _r select is(public.unread_activity_count('00000000-0000-0000-0000-000000000002'), 6, 'other member sees all 6 events as unread');
+
+-- bob marks seen -> 0 unread
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated"}';
+select public.mark_activity_seen();
+reset role;
+insert into _r select is(public.unread_activity_count('00000000-0000-0000-0000-000000000002'), 0, 'unread clears after mark_activity_seen');
+
+-- bob mutes the trip; a new alice event must NOT count for bob
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated"}';
+insert into public.trip_mute_prefs (trip_id, user_id) values ('11111111-1111-1111-1111-111111111111','00000000-0000-0000-0000-000000000002');
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}';
+insert into public.settlements (id, trip_id, from_person_id, to_person_id, amount, currency, created_by)
+values ('bbbbbbbb-0000-0000-0000-000000000002','11111111-1111-1111-1111-111111111111','10000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002',5,'EUR','00000000-0000-0000-0000-000000000001');
+reset role;
+insert into _r select is(public.unread_activity_count('00000000-0000-0000-0000-000000000002'), 0, 'muted trip events excluded from unread badge');
+
+-- member_left on hard delete of a reference-free trip person
+-- (people referenced by expenses/settlements are on delete restrict and cannot be removed)
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}';
+select public.add_trip_person_by_email('11111111-1111-1111-1111-111111111111', 'temp@test.tab', 'Temp', '10000000-0000-0000-0000-000000000003');
+delete from public.trip_people where id = '10000000-0000-0000-0000-000000000003';
+reset role;
+insert into _r select is(
+  (select count(*)::int from public.activity_log where action='member_left'),
+  1, 'member_left emitted on trip person removal');
+
+insert into _r select * from finish();
+select line from _r;
+rollback;
