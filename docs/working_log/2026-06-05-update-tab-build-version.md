@@ -13,3 +13,9 @@ Confirmed `Apps/Tab/project.yml` now has `CFBundleVersion: "7"` and validated `A
 ## 2026-06-05 21:00:40 BST
 
 Started a destructive database recreate with `./supabase/scripts/recreate_db.sh`. The script built `supabase/.temp/generated_schema.sql`, then failed because the Supabase CLI could not find a linked project ref. Checked available local environment wiring: `.env.local` has `SUPABASE_PROJECT_REF` and `SUPABASE_ACCESS_TOKEN`, but not `SUPABASE_DB_PASSWORD` or `SUPABASE_DB_URL`, which the recreate script requires for non-interactive linking/apply.
+
+## 2026-06-05 21:08:13 BST
+
+Supabase MCP became available. Confirmed project `gaseuxsieddlksxtdliq` (`tab-it`) was active, applied the destructive teardown, then recreated the schema in ordered batches from `supabase/sql/*.sql`. Verified all 11 public tables exist with RLS enabled and the six default categories seeded. Security advisor warnings are the expected authenticated `SECURITY DEFINER` RPCs plus leaked-password protection being disabled.
+
+Updated ignored `.env.local` with `TAB_SUPABASE_URL` and `TAB_SUPABASE_PUBLISHABLE_KEY` aliases derived from the existing Supabase values, then confirmed `.env.local` is ignored by `.gitignore`.
