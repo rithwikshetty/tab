@@ -59,3 +59,26 @@ Environment:
   Test data fully cleaned up (activity_log back to 0 rows).
 - pgTAP supabase/tests/08_activity_notifications.sql: 15/15 pass (run via MCP in rolled-back txn).
 - Finding: trip_people referenced by ledgers are on-delete-restrict -> member_left only for ref-free people.
+
+### 2026-06-06 — App layer DONE + verified in simulator
+- Models: ActivityEntity, TripMuteEntity, ProfileEntity.activityLastSeenAt; DTOs; container registration.
+- SyncService: pullActivity (90d/300 window + prune), pullMutes + reconcile, pushMutes (upsert/delete),
+  markActivitySeen (optimistic + RPC), registerPushDevice, setTripMuted. Wired into pullAll/pushPending.
+- Push: PushService (@MainActor @Observable singleton) + PushAppDelegate (UIApplicationDelegateAdaptor),
+  requestAuthorizationAndRegister, setBadgeCount, deviceToken/lastTap observation, aps-environment entitlement.
+- UI: RootView rewritten to native TabView (Trips · Activity · Settings), per-tab NavigationStacks,
+  .toolbar(.hidden, for: .tabBar) on deep screens, unread .badge on Activity tab, deep-link from push +
+  feed rows. ActivityView + ActivityPresenter (date-grouped, icons, money, unread dots, "You were added").
+  SettingsView with notification status row. Mute toggle in trip-detail overflow. Removed custom TabBar.
+- Swift 6 strict concurrency: delegate methods nonisolated + Sendable PushPayload extraction.
+- Simulator (mock auth) VERIFIED via screenshots:
+  * 3-tab bar renders, Activity badge "5" from seeded unread events.
+  * Permission prompt fires (requestAuthorization).
+  * Activity feed: date sections (Today/Yesterday/Thu/Wed), correct icons+tints (add/edit/delete/settlement/
+    member), money (€84.00 etc), trip subtitle, "Cy → You" settlement detail, unread dots -> read after open.
+  * Settings tab: user card + push status row.
+  * Read cursor: badge 5 -> open Activity -> markActivitySeen -> badge clears (persisted across launches).
+  * simctl push: edge-function payload shape valid + accepted; provisional auth path exercised.
+- Limitation (tooling): MCP UI tap/gesture not enabled + simctl can't grant notif auth -> deep-screen nav,
+  mute toggle interaction, and foreground banner visual not click-driven here. Code is standard + verified to
+  compile/wire; same untestable class as live APNs (no .p8 / no device).

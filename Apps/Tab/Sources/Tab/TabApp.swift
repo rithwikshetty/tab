@@ -3,9 +3,11 @@ import SwiftData
 
 @main
 struct TabApp: App {
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var appDelegate
     @State private var auth: AuthService
     @State private var sync: SyncService
     @State private var realtime: RealtimeService
+    @State private var push = PushService.shared
     let container: ModelContainer
 
     init() {
@@ -25,6 +27,7 @@ struct TabApp: App {
                 .environment(auth)
                 .environment(sync)
                 .environment(realtime)
+                .environment(push)
                 .preferredColorScheme(.light)
         }
         .modelContainer(container)

@@ -18,6 +18,7 @@ struct TripDetailView: View {
 
     @Query private var trips: [TripEntity]
     @Query private var categories: [CategoryEntity]
+    @Query private var muteRows: [TripMuteEntity]
 
     @State private var segment: Int = 0
     @State private var showingPeople: Bool = false
@@ -38,9 +39,12 @@ struct TripDetailView: View {
         self.onSettleUp = onSettleUp
         self.onOpenSettlement = onOpenSettlement
         _trips = Query(filter: #Predicate<TripEntity> { $0.id == tripID })
+        _muteRows = Query(filter: #Predicate<TripMuteEntity> { $0.tripID == tripID })
     }
 
     private var trip: TripEntity? { trips.first }
+
+    private var isMuted: Bool { muteRows.first?.isMuted ?? false }
 
     private var categoriesByID: [UUID: CategoryEntity] {
         Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
@@ -208,6 +212,15 @@ struct TripDetailView: View {
                         onSettleUp()
                     } label: {
                         Label("Settle up", systemImage: "arrow.right.arrow.left")
+                    }
+                    Button {
+                        Haptics.light()
+                        sync.setTripMuted(tripID: trip.id, muted: !isMuted)
+                    } label: {
+                        Label(
+                            isMuted ? "Unmute notifications" : "Mute notifications",
+                            systemImage: isMuted ? "bell.slash" : "bell"
+                        )
                     }
                     ShareLink(
                         item: exportItem(for: trip),

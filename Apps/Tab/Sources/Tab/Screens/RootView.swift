@@ -1,68 +1,64 @@
 import SwiftUI
 import SwiftData
+import UIKit
+
+enum RootTab: Hashable { case trips, activity, settings }
+
+enum Route: Hashable {
+    case trip(UUID)
+    case newExpense(UUID)
+    case editExpense(tripID: UUID, expenseID: UUID)
+    case expense(UUID)
+    case settleUp(tripID: UUID)
+    case editSettlement(tripID: UUID, settlementID: UUID)
+    case settlement(UUID)
+}
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(AuthService.self) private var auth
     @Environment(SyncService.self) private var sync
+    @Environment(PushService.self) private var push
 
-    @State private var tab: RootTab = .trips
-    @State private var path = NavigationPath()
+    @State private var selectedTab: RootTab = .trips
+    @State private var tripsPath: [Route] = []
+    @State private var activityPath: [Route] = []
+
+    @Query private var activities: [ActivityEntity]
+    @Query private var profiles: [ProfileEntity]
+    @Query private var mutes: [TripMuteEntity]
+
+    private var currentUserID: UUID? { auth.currentUser?.id }
+
+    private var mutedTripIDs: Set<UUID> { Set(mutes.filter(\.isMuted).map(\.tripID)) }
+
+    private var unreadCount: Int {
+        guard let uid = currentUserID else { return 0 }
+        let cursor = profiles.first { $0.id == uid }?.activityLastSeenAt
+        return ActivityPresenter.unreadCount(
+            from: activities, currentUserID: uid, lastSeenAt: cursor, mutedTripIDs: mutedTripIDs
+        )
+    }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            ZStack(alignment: .bottom) {
-                ZStack {
-                    TripListView { tripID in
-                        path.append(Route.trip(tripID))
-                    }
-                    .opacity(tab == .trips ? 1 : 0)
-                    .allowsHitTesting(tab == .trips)
-
-                    SettingsPlaceholderView()
-                        .opacity(tab == .settings ? 1 : 0)
-                        .allowsHitTesting(tab == .settings)
+        TabView(selection: $selectedTab) {
+            Tab("Trips", systemImage: "suitcase", value: RootTab.trips) {
+                NavigationStack(path: $tripsPath) {
+                    TripListView { tripID in tripsPath.append(.trip(tripID)) }
+                        .navigationDestination(for: Route.self) { destination($0, path: $tripsPath) }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                TabBar(selection: $tab)
             }
-            .background(Sage.bg.ignoresSafeArea())
-            .navigationTitle(tab == .trips ? "Trips" : "Settings")
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: Route.self) { route in
-                switch route {
-                case .trip(let tripID):
-                    TripDetailView(
-                        tripID: tripID,
-                        onAddExpense: { path.append(Route.newExpense(tripID)) },
-                        onOpenExpense: { expenseID in path.append(Route.expense(expenseID)) },
-                        onSettleUp: { path.append(Route.settleUp(tripID: tripID)) },
-                        onOpenSettlement: { settlementID in path.append(Route.settlement(settlementID)) }
-                    )
-                case .newExpense(let tripID):
-                    ExpenseEntryView(tripID: tripID)
-                case .editExpense(let tripID, let expenseID):
-                    ExpenseEntryView(tripID: tripID, editingExpenseID: expenseID)
-                case .expense(let expenseID):
-                    ExpenseDetailView(
-                        expenseID: expenseID,
-                        onEditExpense: { tripID, expenseID in
-                            path.append(Route.editExpense(tripID: tripID, expenseID: expenseID))
-                        }
-                    )
-                case .settleUp(let tripID):
-                    SettleUpFormView(tripID: tripID)
-                case .editSettlement(let tripID, let settlementID):
-                    SettleUpFormView(tripID: tripID, editingSettlementID: settlementID)
-                case .settlement(let settlementID):
-                    SettlementDetailView(
-                        settlementID: settlementID,
-                        onEditSettlement: { tripID, settlementID in
-                            path.append(Route.editSettlement(tripID: tripID, settlementID: settlementID))
-                        }
-                    )
+
+            Tab("Activity", systemImage: "bell", value: RootTab.activity) {
+                NavigationStack(path: $activityPath) {
+                    ActivityView { target in open(target, into: $activityPath) }
+                        .navigationDestination(for: Route.self) { destination($0, path: $activityPath) }
                 }
+            }
+            .badge(unreadCount)
+
+            Tab("Settings", systemImage: "gearshape", value: RootTab.settings) {
+                NavigationStack { SettingsView() }
             }
         }
         .tint(Sage.accent)
@@ -70,11 +66,135 @@ struct RootView: View {
             removeLegacyMockSeedIfNeeded()
             bootstrapProfile()
             bootstrapDefaultCategories()
+            #if DEBUG
+            DebugActivitySeed.seedIfRequested(in: context, currentUserID: currentUserID)
+            #endif
             await sync.pushPending()
             await sync.claimTripPeopleForCurrentEmail()
             await sync.pullAll()
+            #if DEBUG
+            let env = ProcessInfo.processInfo.environment
+            if env["TAB_PROVISIONAL_PUSH"] == "1" {
+                await push.requestProvisionalForTesting()
+            } else if env["TAB_SKIP_PUSH_PROMPT"] != "1" {
+                await push.requestAuthorizationAndRegister()
+            }
+            #else
+            await push.requestAuthorizationAndRegister()
+            #endif
+        }
+        .onAppear {
+            #if DEBUG
+            switch ProcessInfo.processInfo.environment["TAB_START_TAB"] {
+            case "activity": selectedTab = .activity
+            case "settings": selectedTab = .settings
+            default: break
+            }
+            #endif
+        }
+        .onChange(of: push.deviceToken) { _, token in
+            guard let token else { return }
+            Task { await sync.registerPushDevice(token: token, deviceName: UIDevice.current.name) }
+        }
+        .onChange(of: push.lastTap) { _, tap in
+            guard let tap else { return }
+            handlePushTap(tap)
+            push.lastTap = nil
+        }
+        .onChange(of: unreadCount) { _, count in
+            Task { await push.setBadgeCount(count) }
+        }
+        .onAppear {
+            Task { await push.setBadgeCount(unreadCount) }
         }
     }
+
+    // MARK: - Navigation
+
+    @ViewBuilder
+    private func destination(_ route: Route, path: Binding<[Route]>) -> some View {
+        switch route {
+        case .trip(let id):
+            TripDetailView(
+                tripID: id,
+                onAddExpense: { path.wrappedValue.append(.newExpense(id)) },
+                onOpenExpense: { expenseID in path.wrappedValue.append(.expense(expenseID)) },
+                onSettleUp: { path.wrappedValue.append(.settleUp(tripID: id)) },
+                onOpenSettlement: { settlementID in path.wrappedValue.append(.settlement(settlementID)) }
+            )
+        case .newExpense(let tripID):
+            ExpenseEntryView(tripID: tripID)
+                .toolbar(.hidden, for: .tabBar)
+        case .editExpense(let tripID, let expenseID):
+            ExpenseEntryView(tripID: tripID, editingExpenseID: expenseID)
+                .toolbar(.hidden, for: .tabBar)
+        case .expense(let expenseID):
+            ExpenseDetailView(
+                expenseID: expenseID,
+                onEditExpense: { tripID, expenseID in
+                    path.wrappedValue.append(.editExpense(tripID: tripID, expenseID: expenseID))
+                }
+            )
+            .toolbar(.hidden, for: .tabBar)
+        case .settleUp(let tripID):
+            SettleUpFormView(tripID: tripID)
+                .toolbar(.hidden, for: .tabBar)
+        case .editSettlement(let tripID, let settlementID):
+            SettleUpFormView(tripID: tripID, editingSettlementID: settlementID)
+                .toolbar(.hidden, for: .tabBar)
+        case .settlement(let settlementID):
+            SettlementDetailView(
+                settlementID: settlementID,
+                onEditSettlement: { tripID, settlementID in
+                    path.wrappedValue.append(.editSettlement(tripID: tripID, settlementID: settlementID))
+                }
+            )
+            .toolbar(.hidden, for: .tabBar)
+        }
+    }
+
+    /// Deep-link from an Activity feed row (stays within the Activity tab's stack).
+    private func open(_ target: ActivityTarget, into path: Binding<[Route]>) {
+        switch target {
+        case .trip(let id):
+            path.wrappedValue = [.trip(id)]
+        case .expense(let tripID, let expenseID):
+            path.wrappedValue = expenseIsOpenable(expenseID) ? [.trip(tripID), .expense(expenseID)] : [.trip(tripID)]
+        case .settlement(let tripID, let settlementID):
+            path.wrappedValue = settlementIsOpenable(settlementID) ? [.trip(tripID), .settlement(settlementID)] : [.trip(tripID)]
+        }
+    }
+
+    /// Deep-link from a tapped push notification (opens in the Trips tab).
+    private func handlePushTap(_ tap: PushPayload) {
+        var stack: [Route] = [.trip(tap.tripID)]
+        if let type = tap.entityType, let entityID = tap.entityID {
+            switch type {
+            case "expense" where expenseIsOpenable(entityID):
+                stack.append(.expense(entityID))
+            case "settlement" where settlementIsOpenable(entityID):
+                stack.append(.settlement(entityID))
+            default:
+                break
+            }
+        }
+        selectedTab = .trips
+        tripsPath = stack
+    }
+
+    private func expenseIsOpenable(_ id: UUID) -> Bool {
+        ((try? context.fetch(FetchDescriptor<ExpenseEntity>(
+            predicate: #Predicate { $0.id == id && $0.deletedAt == nil }
+        )))?.first) != nil
+    }
+
+    private func settlementIsOpenable(_ id: UUID) -> Bool {
+        ((try? context.fetch(FetchDescriptor<SettlementEntity>(
+            predicate: #Predicate { $0.id == id && $0.deletedAt == nil }
+        )))?.first) != nil
+    }
+
+    // MARK: - Bootstrap
 
     private func removeLegacyMockSeedIfNeeded() {
         let seedTripID = UUID(uuidString: "99999999-9999-9999-9999-999999999999")!
@@ -124,52 +244,5 @@ struct RootView: View {
             }
             try context.save()
         } catch { }
-    }
-}
-
-enum Route: Hashable {
-    case trip(UUID)
-    case newExpense(UUID)
-    case editExpense(tripID: UUID, expenseID: UUID)
-    case expense(UUID)
-    case settleUp(tripID: UUID)
-    case editSettlement(tripID: UUID, settlementID: UUID)
-    case settlement(UUID)
-}
-
-struct SettingsPlaceholderView: View {
-    @Environment(AuthService.self) private var auth
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "gearshape")
-                .font(.system(size: 44, weight: .light))
-                .foregroundStyle(Sage.textSecondary)
-            Text("Settings")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Sage.text)
-            if let user = auth.currentUser {
-                Text(user.displayName)
-                    .font(.system(size: 14))
-                    .foregroundStyle(Sage.textSecondary)
-
-                if let presentableEmail = user.presentableEmail {
-                    Text(presentableEmail)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Sage.textSecondary)
-                        .padding(.top, 2)
-                }
-            }
-            Spacer()
-
-            Button("Sign out") {
-                Task { await auth.signOut() }
-            }
-            .font(.system(size: 15, weight: .medium))
-            .foregroundStyle(Sage.warning)
-            .padding(.bottom, 120)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
