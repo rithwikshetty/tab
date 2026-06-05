@@ -58,3 +58,21 @@ currency totals (JPY/INR) would crush a fixed side-by-side layout.
 - Updated `design/overview/v1.html` Direction A to match and added a "responsive (the
   cramming fix)" comparison (EUR beside vs large JPY stacked).
 - App build green; presenter/analytics tests unchanged.
+
+## 2026-06-05 — summary-card currency + overflow fixes
+
+User feedback on the live card: the total was bleeding into the donut ring, and "GBP £640.00"
+repeated the currency three times.
+
+- Added `MoneyFormatter.formatSymbol` (symbol only, e.g. `£640.00`; falls back to code when a
+  currency has no distinct symbol). `OverviewPresenter` now uses it for every Overview amount —
+  the rest of the app keeps the `CODE symbol` convention. Presenter tests updated to match.
+- Donut centre: clamped the total's width well inside the inner radius and lowered
+  `minimumScaleFactor` to 0.4, so large totals (e.g. £48,000.00) scale down to fit instead of
+  overflowing into the ring. Ring `innerRadius` 0.68 → 0.70, donut 112 → 116.
+- Fixed the "Per person · paid vs share" card: horizontal padding 16 → 18 so its title lines up
+  with the other cards.
+- Verified live in the simulator at the £640 trip: symbol-only, no donut overflow, aligned title.
+  TabTests 20/20 green. (Could not auto-inject a five-figure expense to eyeball the extreme case —
+  synthetic taps on the sim's small fields were unreliable on the off-display window; the clamp is
+  proven by its constraints + the JPY donut in the mockup.)

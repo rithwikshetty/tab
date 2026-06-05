@@ -100,20 +100,23 @@ struct OverviewView: View {
         let shareFraction = page.people.first(where: \.isYou)?.shareFraction ?? 0
         return ZStack {
             Chart {
-                SectorMark(angle: .value("Your share", shareFraction), innerRadius: .ratio(0.68), angularInset: 1.2)
+                SectorMark(angle: .value("Your share", shareFraction), innerRadius: .ratio(0.70), angularInset: 1.2)
                     .foregroundStyle(Sage.accentStrong)
-                SectorMark(angle: .value("Rest", max(0.0001, 1 - shareFraction)), innerRadius: .ratio(0.68), angularInset: 1.2)
+                SectorMark(angle: .value("Rest", max(0.0001, 1 - shareFraction)), innerRadius: .ratio(0.70), angularInset: 1.2)
                     .foregroundStyle(Sage.accentSoft)
             }
-            .frame(width: 112, height: 112)
+            .frame(width: 116, height: 116)
+            // Total lives inside the hole. Width is clamped well inside the inner
+            // radius and the amount scales down (not out), so a large total — e.g.
+            // £48,000.00 — shrinks to fit rather than bleeding into the ring.
             VStack(spacing: 2) {
                 Text("TOTAL").font(.system(size: 8.5, weight: .semibold)).tracking(0.8).foregroundStyle(Sage.textSecondary)
-                Text(page.totalSpent).font(.system(size: 12.5, weight: .semibold)).monospaced().foregroundStyle(Sage.text)
-                    .lineLimit(1).minimumScaleFactor(0.5)
+                Text(page.totalSpent).font(.system(size: 13, weight: .semibold)).monospaced().foregroundStyle(Sage.text)
+                    .lineLimit(1).minimumScaleFactor(0.4)
             }
-            .frame(width: 80)
+            .frame(width: 70)
         }
-        .frame(width: 112, height: 112)
+        .frame(width: 116, height: 116)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             "Total spend \(page.totalSpent)"
@@ -142,6 +145,7 @@ struct OverviewView: View {
         Card {
             VStack(alignment: .leading, spacing: 0) {
                 cardEyebrow("Per person · paid vs share")
+                    .padding(.bottom, 6)
                 ForEach(Array(page.people.enumerated()), id: \.element.id) { index, person in
                     if index > 0 { RowDivider() }
                     HStack(spacing: 10) {
@@ -165,8 +169,9 @@ struct OverviewView: View {
                     .padding(.vertical, 11)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 6)
         }
     }
 
