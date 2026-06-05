@@ -225,12 +225,27 @@ enum BalancePresenter {
 
             let details: [BalanceDetailItem] = entries
                 .filter { $0.amount != 0 }
-                .sorted { abs($0.amount) > abs($1.amount) }
                 .map { entry in
-                    let name = personFor(entry.withUser)?.displayName ?? "Member"
+                    BalanceDetailCandidate(
+                        entry: entry,
+                        name: personFor(entry.withUser)?.displayName ?? "Member"
+                    )
+                }
+                .sorted { lhs, rhs in
+                    let lhsAmount = abs(lhs.entry.amount)
+                    let rhsAmount = abs(rhs.entry.amount)
+                    if lhsAmount != rhsAmount { return lhsAmount > rhsAmount }
+
+                    let nameOrder = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                    if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
+
+                    return lhs.entry.withUser.uuidString < rhs.entry.withUser.uuidString
+                }
+                .map { candidate in
+                    let entry = candidate.entry
                     let phrase = entry.amount > 0
-                        ? "\(name) owes you"
-                        : "You owe \(name)"
+                        ? "\(candidate.name) owes you"
+                        : "You owe \(candidate.name)"
                     let amount = MoneyFormatter.format(
                         entry.amount > 0 ? entry.amount : -entry.amount,
                         currency: currency
@@ -240,6 +255,11 @@ enum BalancePresenter {
 
             return BalanceSummary(label: label, amount: displayAmount, details: details)
         }
+    }
+
+    private struct BalanceDetailCandidate {
+        let entry: UserBalance
+        let name: String
     }
 }
 

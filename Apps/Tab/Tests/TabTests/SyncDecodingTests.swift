@@ -66,13 +66,22 @@ import Testing
         #expect(dto.deletedAt == nil)
         #expect(dto.createdAt <= dto.updatedAt)
 
-        // expense_date resolves to the UTC midnight of the stated calendar day.
+        // expense_date resolves to UTC noon of the stated calendar day so local
+        // date-only formatters west of UTC do not show the previous day.
         var utc = Calendar(identifier: .iso8601)
         utc.timeZone = TimeZone(identifier: "UTC")!
-        let parts = utc.dateComponents([.year, .month, .day], from: dto.expenseDate)
+        let parts = utc.dateComponents([.year, .month, .day, .hour], from: dto.expenseDate)
         #expect(parts.year == 2026)
         #expect(parts.month == 5)
         #expect(parts.day == 9)
+        #expect(parts.hour == 12)
+
+        let westOfUTCFormatter = DateFormatter()
+        westOfUTCFormatter.calendar = Calendar(identifier: .iso8601)
+        westOfUTCFormatter.dateFormat = "yyyy-MM-dd"
+        westOfUTCFormatter.locale = Locale(identifier: "en_US_POSIX")
+        westOfUTCFormatter.timeZone = TimeZone(secondsFromGMT: -8 * 60 * 60)
+        #expect(westOfUTCFormatter.string(from: dto.expenseDate) == "2026-05-09")
     }
 
     @Test func defaultDateStrategyRejectsBareDate() {

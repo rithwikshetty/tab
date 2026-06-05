@@ -153,6 +153,53 @@ struct BalanceEngineTests {
         #expect(aliceBobUSD?.amount == 20)
     }
 
+    @Test("balances are emitted in deterministic pair and currency order")
+    func deterministicOutputOrder() {
+        let eurExpense = makeExpense(
+            payer: alice, amount: 90, currency: "EUR",
+            splits: [
+                ExpenseSplit(participantID: alice, amountOwed: 30, splitType: .equal),
+                ExpenseSplit(participantID: bob, amountOwed: 30, splitType: .equal),
+                ExpenseSplit(participantID: charlie, amountOwed: 30, splitType: .equal),
+            ]
+        )
+        let usdExpense = makeExpense(
+            payer: bob, amount: 20, currency: "USD",
+            splits: [
+                ExpenseSplit(participantID: alice, amountOwed: 10, splitType: .equal),
+                ExpenseSplit(participantID: bob, amountOwed: 10, splitType: .equal),
+            ]
+        )
+
+        let balances = BalanceEngine.compute(expenses: [eurExpense, usdExpense], settlements: [])
+
+        #expect(balances.count == 6)
+        #expect(balances[0].forUser == alice)
+        #expect(balances[0].withUser == bob)
+        #expect(balances[0].currency == "EUR")
+        #expect(balances[0].amount == 30)
+        #expect(balances[1].forUser == bob)
+        #expect(balances[1].withUser == alice)
+        #expect(balances[1].currency == "EUR")
+        #expect(balances[1].amount == -30)
+        #expect(balances[2].forUser == alice)
+        #expect(balances[2].withUser == bob)
+        #expect(balances[2].currency == "USD")
+        #expect(balances[2].amount == -10)
+        #expect(balances[3].forUser == bob)
+        #expect(balances[3].withUser == alice)
+        #expect(balances[3].currency == "USD")
+        #expect(balances[3].amount == 10)
+        #expect(balances[4].forUser == alice)
+        #expect(balances[4].withUser == charlie)
+        #expect(balances[4].currency == "EUR")
+        #expect(balances[4].amount == 30)
+        #expect(balances[5].forUser == charlie)
+        #expect(balances[5].withUser == alice)
+        #expect(balances[5].currency == "EUR")
+        #expect(balances[5].amount == -30)
+    }
+
     // MARK: settlements
 
     @Test("settlement reduces the debtor's balance to the creditor")

@@ -46,8 +46,19 @@ public enum BalanceEngine {
         }
 
         var balances: [UserBalance] = []
-        for (key, byCurrency) in canonical {
-            for (currency, amount) in byCurrency where amount != 0 {
+        let orderedKeys = canonical.keys.sorted { lhs, rhs in
+            if lhs.lo.uuidString != rhs.lo.uuidString {
+                return lhs.lo.uuidString < rhs.lo.uuidString
+            }
+            return lhs.hi.uuidString < rhs.hi.uuidString
+        }
+
+        for key in orderedKeys {
+            let byCurrency = canonical[key] ?? [:]
+            for currency in byCurrency.keys.sorted() {
+                let amount = byCurrency[currency] ?? 0
+                guard amount != 0 else { continue }
+
                 balances.append(UserBalance(
                     forUser: key.lo, withUser: key.hi, currency: currency, amount: amount
                 ))

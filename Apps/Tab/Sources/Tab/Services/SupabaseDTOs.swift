@@ -211,7 +211,7 @@ struct ExpenseDTO: Codable, Sendable {
         _ raw: String,
         container: KeyedDecodingContainer<CodingKeys>
     ) throws -> Date {
-        if let date = dateOnlyFormatter.date(from: raw) { return date }
+        if let date = parseDateOnlyAtUTCNoon(raw) { return date }
         // Defensive fallback: tolerate a full ISO-8601 timestamp if the column shape ever changes.
         if let date = try? Date(raw, strategy: .iso8601) { return date }
         throw DecodingError.dataCorruptedError(
@@ -221,16 +221,17 @@ struct ExpenseDTO: Codable, Sendable {
         )
     }
 
-    /// Matches the UTC `yyyy-MM-dd` shape produced by `SyncService` on push, so the
-    /// `expense_date` round-trips to the same calendar day it was stored under.
-    static let dateOnlyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .iso8601)
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f
-    }()
+    /// Date-only values are represented at UTC noon so local date formatters do
+    /// not render the previous day for users west of UTC.
+    private static func parseDateOnlyAtUTCNoon(_ raw: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.date(from: raw)?.addingTimeInterval(12 * 60 * 60)
+    }
 }
 
 struct ExpenseInsertDTO: Codable, Sendable {
