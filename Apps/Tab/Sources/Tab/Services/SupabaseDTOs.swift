@@ -180,6 +180,57 @@ struct ExpenseDTO: Codable, Sendable {
         case deletedAt = "deleted_at"
         case writeID = "write_id"
     }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        tripID = try c.decode(UUID.self, forKey: .tripID)
+        amount = try c.decode(Decimal.self, forKey: .amount)
+        currency = try c.decode(String.self, forKey: .currency)
+        categoryID = try c.decodeIfPresent(UUID.self, forKey: .categoryID)
+        description = try c.decode(String.self, forKey: .description)
+        // `expense_date` is a Postgres `date` (bare `yyyy-MM-dd`, no time component).
+        // The Supabase client's default date strategy only parses full ISO-8601
+        // timestamps, so it throws on a date-only string — which would abort the
+        // entire pull (expenses, payments, splits, settlements) after trips have
+        // already synced. Decode it as a plain string and parse it ourselves; the
+        // remaining timestamptz fields stay on the client's default strategy.
+        let rawExpenseDate = try c.decode(String.self, forKey: .expenseDate)
+        expenseDate = try Self.parseExpenseDate(rawExpenseDate, container: c)
+        receiptStoragePath = try c.decodeIfPresent(String.self, forKey: .receiptStoragePath)
+        paymentMethod = try c.decode(String.self, forKey: .paymentMethod)
+        createdBy = try c.decode(UUID.self, forKey: .createdBy)
+        lastEditedBy = try c.decodeIfPresent(UUID.self, forKey: .lastEditedBy)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
+        writeID = try c.decode(UUID.self, forKey: .writeID)
+    }
+
+    private static func parseExpenseDate(
+        _ raw: String,
+        container: KeyedDecodingContainer<CodingKeys>
+    ) throws -> Date {
+        if let date = dateOnlyFormatter.date(from: raw) { return date }
+        // Defensive fallback: tolerate a full ISO-8601 timestamp if the column shape ever changes.
+        if let date = try? Date(raw, strategy: .iso8601) { return date }
+        throw DecodingError.dataCorruptedError(
+            forKey: .expenseDate,
+            in: container,
+            debugDescription: "Unrecognized expense_date format: \(raw)"
+        )
+    }
+
+    /// Matches the UTC `yyyy-MM-dd` shape produced by `SyncService` on push, so the
+    /// `expense_date` round-trips to the same calendar day it was stored under.
+    static let dateOnlyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .iso8601)
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
 }
 
 struct ExpenseInsertDTO: Codable, Sendable {
