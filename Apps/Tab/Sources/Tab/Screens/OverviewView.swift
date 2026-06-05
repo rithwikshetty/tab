@@ -74,41 +74,65 @@ struct OverviewView: View {
     // MARK: summary
 
     private func summaryCard(_ page: OverviewPage) -> some View {
-        let shareFraction = page.people.first(where: \.isYou)?.shareFraction ?? 0
-        return Card {
-            HStack(spacing: 16) {
-                ZStack {
-                    Chart {
-                        SectorMark(angle: .value("Share", shareFraction), innerRadius: .ratio(0.66), angularInset: 1)
-                            .foregroundStyle(Sage.accentStrong)
-                        SectorMark(angle: .value("Rest", max(0, 1 - shareFraction)), innerRadius: .ratio(0.66), angularInset: 1)
-                            .foregroundStyle(Sage.accentSoft)
-                    }
-                    .frame(width: 104, height: 104)
-                    VStack(spacing: 1) {
-                        Text("Total").font(.system(size: 9, weight: .semibold)).foregroundStyle(Sage.textSecondary)
-                        Text(page.totalSpent).font(.system(size: 13, weight: .semibold)).monospaced().foregroundStyle(Sage.text)
-                            .lineLimit(1).minimumScaleFactor(0.6)
-                    }
-                    .frame(width: 70)
+        Card {
+            // Donut beside the stats when the amounts are short; donut stacked
+            // above them when the amounts run long (e.g. large JPY totals), so a
+            // big number never crushes the chart. ViewThatFits picks whatever fits,
+            // and only falls back to shrinking text inside a layout as a last resort.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 20) {
+                    donut(page)
+                    summaryStats(page)
+                    Spacer(minLength: 0)
                 }
-                VStack(alignment: .leading, spacing: 10) {
-                    statLine("You paid", page.youPaid, color: Sage.text)
-                    statLine("Your share", page.yourShare, color: Sage.accentStrong)
-                    if let pct = page.yourSharePercent {
-                        Text(pct).font(.system(size: 10)).monospaced().foregroundStyle(Sage.textSecondary)
-                    }
+                .padding(18)
+
+                VStack(alignment: .leading, spacing: 18) {
+                    donut(page).frame(maxWidth: .infinity, alignment: .center)
+                    summaryStats(page).frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Spacer(minLength: 0)
+                .padding(18)
             }
-            .padding(18)
+        }
+    }
+
+    private func donut(_ page: OverviewPage) -> some View {
+        let shareFraction = page.people.first(where: \.isYou)?.shareFraction ?? 0
+        return ZStack {
+            Chart {
+                SectorMark(angle: .value("Your share", shareFraction), innerRadius: .ratio(0.68), angularInset: 1.2)
+                    .foregroundStyle(Sage.accentStrong)
+                SectorMark(angle: .value("Rest", max(0.0001, 1 - shareFraction)), innerRadius: .ratio(0.68), angularInset: 1.2)
+                    .foregroundStyle(Sage.accentSoft)
+            }
+            .frame(width: 112, height: 112)
+            VStack(spacing: 2) {
+                Text("TOTAL").font(.system(size: 8.5, weight: .semibold)).tracking(0.8).foregroundStyle(Sage.textSecondary)
+                Text(page.totalSpent).font(.system(size: 12.5, weight: .semibold)).monospaced().foregroundStyle(Sage.text)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+            }
+            .frame(width: 80)
+        }
+        .frame(width: 112, height: 112)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "Total spend \(page.totalSpent)"
+                + (page.yourSharePercent.map { ", your share is \($0)" } ?? "")
+        )
+    }
+
+    private func summaryStats(_ page: OverviewPage) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            statLine("You paid", page.youPaid, color: Sage.text)
+            statLine("Your share", page.yourShare, color: Sage.accentStrong)
         }
     }
 
     private func statLine(_ label: String, _ value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(label.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.6).foregroundStyle(Sage.textSecondary)
-            Text(value).font(.system(size: 18, weight: .semibold)).monospaced().foregroundStyle(color)
+            Text(value).font(.system(size: 19, weight: .semibold)).monospaced().foregroundStyle(color)
+                .lineLimit(1).minimumScaleFactor(0.55)
         }
     }
 

@@ -265,14 +265,13 @@ h1 {
         <div class="ccy-row"><span class="ccy-pill">EUR <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1 1l4 4 4-4"/></svg></span></div>
 
         <div class="card">
-          <div class="donut-wrap">
+          <div class="donut-wrap" style="gap:20px">
             <div class="donut" style="background:conic-gradient(var(--accentStrong) 0 93deg, var(--accentSoft) 93deg 360deg)">
               <div class="donut-center"><div class="c-lbl">Total</div><div class="c-val">€2,480</div></div>
             </div>
-            <div class="donut-legend">
+            <div class="donut-legend" style="gap:14px">
               <div class="stat" style="text-align:left"><div class="lbl">You paid</div><div class="val"><span class="ccy">€</span>1,200.00</div></div>
-              <div class="stat accent" style="text-align:left; border:0; margin-top:4px"><div class="lbl">Your share</div><div class="val"><span class="ccy">€</span>640.00</div></div>
-              <div style="font-family:var(--mono); font-size:10px; color:var(--textSec); margin-top:4px">26% of trip spend</div>
+              <div class="stat accent" style="text-align:left; border:0"><div class="lbl">Your share</div><div class="val"><span class="ccy">€</span>640.00</div></div>
             </div>
           </div>
         </div>
@@ -512,6 +511,48 @@ h1 {
       </div>
     </div>
     <div class="cell-desc">No expenses &rarr; a single calm empty state instead of zeroed-out charts. Mirrors the Balances tab's existing empty card.</div>
+  </div>
+
+</div>
+
+<div class="section-rule" id="responsive-demo">Summary card &mdash; responsive (the cramming fix)</div>
+<p class="subtitle" style="margin-bottom:32px">The donut sits <b>beside</b> the figures while they're short, and drops <b>below</b> them when a total runs long (large JPY/INR), so a big number never squeezes the chart. The "% of trip spend" line is gone. In the app this is <code>ViewThatFits</code> &mdash; it auto-picks whichever layout fits, and only shrinks text inside a layout as a last resort.</p>
+<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(300px, 360px))">
+
+  <div class="cell">
+    <div class="cell-label">Short numbers &mdash; <b>donut beside</b></div>
+    <div style="width:360px; background:var(--bg); border-radius:24px; padding:20px 16px;">
+      <div class="card" style="margin:0">
+        <div class="donut-wrap" style="gap:20px; padding:18px">
+          <div class="donut" style="background:conic-gradient(var(--accentStrong) 0 93deg, var(--accentSoft) 93deg 360deg)">
+            <div class="donut-center"><div class="c-lbl">Total</div><div class="c-val">€2,480</div></div>
+          </div>
+          <div class="donut-legend" style="gap:14px">
+            <div class="stat" style="text-align:left"><div class="lbl">You paid</div><div class="val"><span class="ccy">€</span>1,200.00</div></div>
+            <div class="stat accent" style="text-align:left; border:0"><div class="lbl">Your share</div><div class="val"><span class="ccy">€</span>640.00</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cell-desc">EUR/GBP-sized amounts fit comfortably on one line, so the donut keeps its place on the left.</div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">Long numbers &mdash; <b>donut above</b></div>
+    <div style="width:360px; background:var(--bg); border-radius:24px; padding:20px 16px;">
+      <div class="card" style="margin:0">
+        <div style="display:flex; flex-direction:column; align-items:stretch; gap:18px; padding:18px">
+          <div class="donut" style="align-self:center; background:conic-gradient(var(--accentStrong) 0 84deg, var(--accentSoft) 84deg 360deg)">
+            <div class="donut-center"><div class="c-lbl">Total</div><div class="c-val" style="font-size:12px">&yen;1,284,000</div></div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:14px">
+            <div class="stat" style="text-align:left"><div class="lbl">You paid</div><div class="val"><span class="ccy">&yen;</span>620,000</div></div>
+            <div class="stat accent" style="text-align:left; border:0"><div class="lbl">Your share</div><div class="val"><span class="ccy">&yen;</span>301,000</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cell-desc">A six-figure JPY total would crush a side-by-side layout, so the donut moves up top and the figures get the full width below.</div>
   </div>
 
 </div>

@@ -42,4 +42,19 @@ Goal: per-trip spend Overview as a third segment alongside Expenses and Balances
   purple / Food terracotta), and a stacked daily bar. Empty state ("Nothing to break down yet")
   confirmed before any expense.
 
-Branch: `feat/trip-overview`. Not yet committed.
+Branch: `feat/trip-overview`. Committed `9d54a10` and pushed.
+
+## 2026-06-05 — summary card UI revision (responsive)
+
+User feedback: the summary card felt crammed (donut + three text rows), and large
+currency totals (JPY/INR) would crush a fixed side-by-side layout.
+
+- Removed the "33% of trip spend" line from the card. `OverviewPage.yourSharePercent`
+  is still computed and tested; it now feeds the donut's VoiceOver label instead of an
+  on-screen row (Total + your-share % read aloud), so it isn't dead data.
+- Made the summary layout responsive with `ViewThatFits(in: .horizontal)`: donut **beside**
+  the You paid / Your share stats when amounts are short, donut **stacked above** them when
+  amounts run long. Text only shrinks (minimumScaleFactor) as a last resort within a layout.
+- Updated `design/overview/v1.html` Direction A to match and added a "responsive (the
+  cramming fix)" comparison (EUR beside vs large JPY stacked).
+- App build green; presenter/analytics tests unchanged.
