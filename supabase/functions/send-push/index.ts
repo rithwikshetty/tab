@@ -55,7 +55,15 @@ Deno.serve(async (req) => {
     return new Response("unauthorized", { status: 401 });
   }
 
-  const event = (await req.json()) as ActivityEvent;
+  let event: ActivityEvent;
+  try {
+    event = (await req.json()) as ActivityEvent;
+  } catch {
+    return new Response(JSON.stringify({ error: "invalid_json" }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   if (!apnsConfigured()) {
     // Push not configured (no .p8 / keys). Acknowledge so the webhook doesn't error.
@@ -90,8 +98,13 @@ Deno.serve(async (req) => {
       entity_id: event.entity_id,
     };
     const result = await sendPush(target.apns_token, payload, { collapseId: event.entity_id });
-    if (result.ok) sent++;
-    else if (result.tokenDead) deadDeviceIds.push(target.push_device_id);
+    if (result.ok) {
+      sent++;
+    } else if (result.tokenDead) {
+      deadDeviceIds.push(target.push_device_id);
+    } else {
+      console.error(`apns send failed status=${result.status} reason=${result.reason} device=${target.push_device_id}`);
+    }
   }
 
   if (deadDeviceIds.length > 0) {

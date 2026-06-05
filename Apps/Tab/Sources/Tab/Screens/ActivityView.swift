@@ -78,12 +78,13 @@ struct ActivityView: View {
         .scrollIndicators(.hidden)
         .background(Sage.bg.ignoresSafeArea())
         .refreshable { await sync.pullAll() }
+        .onAppear {
+            // Snapshot the cursor for THIS visit (so newly-arrived events stay
+            // highlighted), then advance the persisted cursor to clear the badge.
+            displaySince = profiles.first { $0.id == currentUserID }?.activityLastSeenAt
+            Task { await sync.markActivitySeen() }
+        }
         .task(id: currentUserID) {
-            // Snapshot the cursor for this visit, then mark seen + refresh.
-            if displaySince == nil {
-                displaySince = profiles.first { $0.id == currentUserID }?.activityLastSeenAt
-            }
-            await sync.markActivitySeen()
             await sync.pullAll()
         }
     }

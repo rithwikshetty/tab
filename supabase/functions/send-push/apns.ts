@@ -1,5 +1,5 @@
 // Direct APNs over HTTP/2 using token-based auth (.p8 key) — no third-party SDK.
-// WebCrypto ES256 returns a raw r‖s (JOSE) signature directly: NO DER conversion.
+// WebCrypto ES256 returns a raw r||s (JOSE) signature directly: NO DER conversion.
 // Deno's native fetch negotiates HTTP/2 to APNs automatically.
 
 const TEAM_ID = Deno.env.get("APNS_TEAM_ID") ?? "";   // 10 chars -> iss
@@ -32,13 +32,19 @@ let cachedJwt: { token: string; iat: number } | null = null;
 
 async function getKey(): Promise<CryptoKey> {
   if (cachedKey) return cachedKey;
-  cachedKey = await crypto.subtle.importKey(
-    "pkcs8",
-    pemToDer(P8_PEM),
-    { name: "ECDSA", namedCurve: "P-256" },
-    false,
-    ["sign"],
-  );
+  try {
+    cachedKey = await crypto.subtle.importKey(
+      "pkcs8",
+      pemToDer(P8_PEM),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["sign"],
+    );
+  } catch (e) {
+    throw new Error(
+      `Invalid APNS_P8_KEY (expected a PKCS#8 .p8 PEM): ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
   return cachedKey;
 }
 

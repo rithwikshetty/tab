@@ -94,3 +94,17 @@ Environment:
 - Left wired (app_config set, WEBHOOK_SECRET=8f59...; APNS_ENV=sandbox) so push goes live the moment the .p8 +
   APNS_TEAM_ID/KEY_ID/BUNDLE_ID are added. Test activity row cleaned. Baseline rebuilt; assembly holds.
 - ADR-0002 updated to match implementation (column-comparison idempotency; cursor as profiles column).
+
+### 2026-06-06 — Adversarial review + fixes + final verification
+- Ran multi-agent review workflow (4 dimensions x reviewers + per-finding verification): 23 raw -> 4 confirmed
+  (19 filtered as false positives, incl. a lastTap "isolation" flag that's actually safe via MainActor.run).
+- Fixed: (medium) pushMutes now snapshots writeID before the await so a rapid mute re-toggle isn't clobbered
+  (LWW convergence); (low x3) edge fn hardening — clear error on malformed APNS_P8_KEY, 400 on bad JSON,
+  console.error on failed APNs sends. Redeployed send-push (v3).
+- Polish: ActivityView snapshots the highlight-cursor on every appear (badge clears each visit, new items stay
+  highlighted); RootView pulls on scenePhase .active and on push-tap (feed/badge stay fresh); *.p8 gitignored.
+- Final checks: app builds clean (Swift 6 strict concurrency, 0 warnings); TabCore 85/85 tests pass;
+  pgTAP 08 15/15; SQL assembly holds; existing UI test untouched by the tab refactor.
+
+## STATUS: COMPLETE (in-app system live + verified). Push pipe wired + verified end-to-end except the APNs
+## network send, which needs the Apple .p8 (APNS_TEAM_ID/KEY_ID/BUNDLE_ID/P8_KEY) + a real device.

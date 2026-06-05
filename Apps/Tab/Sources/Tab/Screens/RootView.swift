@@ -16,6 +16,7 @@ enum Route: Hashable {
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(AuthService.self) private var auth
     @Environment(SyncService.self) private var sync
     @Environment(PushService.self) private var push
@@ -104,6 +105,9 @@ struct RootView: View {
         .onChange(of: unreadCount) { _, count in
             Task { await push.setBadgeCount(count) }
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await sync.pullAll() } }
+        }
         .onAppear {
             Task { await push.setBadgeCount(unreadCount) }
         }
@@ -180,6 +184,7 @@ struct RootView: View {
         }
         selectedTab = .trips
         tripsPath = stack
+        Task { await sync.pullAll() }
     }
 
     private func expenseIsOpenable(_ id: UUID) -> Bool {

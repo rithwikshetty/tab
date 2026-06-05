@@ -67,6 +67,7 @@ Apps/Tab/Config/Secrets.xcconfig
 *.p12
 *.cer
 *.key
+*.p8
 *.mobileprovision
 *.provisionprofile
 

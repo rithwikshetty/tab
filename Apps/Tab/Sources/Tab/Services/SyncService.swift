@@ -1040,19 +1040,23 @@ final class SyncService {
         let dirty = try ctx.fetch(FetchDescriptor<TripMuteEntity>()).filter { $0.pushedWriteID != $0.writeID }
         guard !dirty.isEmpty else { return }
         for mute in dirty {
+            // Snapshot the write we are pushing. If the user re-toggles during the
+            // network call, writeID changes and we leave the row dirty so the next
+            // pushMutes resolves the newer state (LWW convergence).
+            let target = mute.writeID
             do {
                 if mute.isMuted {
                     try await client.from("trip_mute_prefs")
                         .upsert(TripMuteInsertDTO(tripID: mute.tripID, userID: userID), onConflict: "trip_id,user_id")
                         .execute()
-                    mute.pushedWriteID = mute.writeID
+                    if mute.writeID == target { mute.pushedWriteID = target }
                 } else {
                     try await client.from("trip_mute_prefs")
                         .delete()
                         .eq("trip_id", value: mute.tripID.uuidString)
                         .eq("user_id", value: userID.uuidString)
                         .execute()
-                    ctx.delete(mute)  // unmute tombstone resolved
+                    if mute.writeID == target { ctx.delete(mute) }  // unmute tombstone resolved
                 }
             } catch {
                 syncLog.error("mute push failed: \(error.localizedDescription, privacy: .public)")
