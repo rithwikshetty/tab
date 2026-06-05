@@ -14,7 +14,7 @@ tab is an iOS-first expense tracker for group trips. It is a small Splitwise-sty
 The repository does not include live Supabase credentials or project defaults.
 
 1. Copy `Apps/Tab/Config/Secrets.xcconfig.example` to `Apps/Tab/Config/Secrets.xcconfig`.
-2. Set `TAB_BUNDLE_ID`, `TAB_AUTH_CALLBACK_SCHEME`, `TAB_SUPABASE_URL`, and `TAB_SUPABASE_PUBLISHABLE_KEY`.
+2. Set `TAB_BUNDLE_ID`, `TAB_AUTH_CALLBACK_SCHEME`, `TAB_SUPABASE_URL`, and `TAB_SUPABASE_PUBLISHABLE_KEY`. For on-device builds, also set `TAB_DEVELOPMENT_TEAM` to your Apple Developer team ID (leave it blank for simulator-only work).
 3. Copy `.env.example` to `.env.local` if you need the Supabase scripts, then fill only the variables needed for your workflow.
 
 `Secrets.xcconfig` and `.env.local` are ignored by git.
@@ -28,6 +28,8 @@ For simulator testing, use mock auth because Apple Sign-In is unavailable in the
 ```bash
 SIMCTL_CHILD_TAB_MOCK_AUTH=1 xcrun simctl launch <SIMULATOR_UDID> <BUNDLE_ID>
 ```
+
+For on-device builds, use a unique `TAB_BUNDLE_ID` you can register and set `TAB_DEVELOPMENT_TEAM`; signing is automatic. Sign In with Apple needs a paid Apple Developer Program membership — the simulator's mock auth needs neither.
 
 ## Tests
 

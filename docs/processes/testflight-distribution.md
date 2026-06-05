@@ -24,7 +24,7 @@ Builds themselves expire ninety days after upload. That's the only hard ceiling.
 Before any of the per-build steps make sense, three things have to be true:
 
 1. You are enrolled in the **Apple Developer Program** at developer.apple.com. It costs ninety-nine US dollars a year and identity verification can take a day or two the first time. Without this, nothing else in this document works.
-2. You have **signed into Xcode** with the same Apple ID, under Xcode → Settings → Accounts. This is what lets Xcode generate signing certificates and provisioning profiles for you on the fly — modern Xcode handles this automatically as long as you leave "Automatically manage signing" on in the project's Signing & Capabilities tab.
+2. You have **signed into Xcode** with the same Apple ID, under Xcode → Settings → Accounts. This is what lets Xcode generate signing certificates and provisioning profiles for you on the fly — modern Xcode handles this automatically as long as you leave "Automatically manage signing" on in the project's Signing & Capabilities tab. Set `TAB_DEVELOPMENT_TEAM` in `Apps/Tab/Config/Secrets.xcconfig` to your team ID so the generated project picks the right team (otherwise pick it manually in Signing & Capabilities).
 3. You have **registered the app in App Store Connect** at appstoreconnect.apple.com, under My Apps. You pick a name (display only — can change later), a unique bundle identifier that matches `TAB_BUNDLE_ID` in `Apps/Tab/Config/Secrets.xcconfig`, and an SKU. The SKU is purely an internal label for your own records — Apple never shows it to anyone — and any short string is fine.
 
 After that's all done you don't think about it again unless your Apple Developer membership lapses or you start a brand-new app.

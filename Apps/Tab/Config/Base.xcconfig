@@ -6,4 +6,8 @@ TAB_AUTH_CALLBACK_SCHEME = $(TAB_BUNDLE_ID)
 TAB_SUPABASE_URL = https:/$()/example.supabase.co
 TAB_SUPABASE_PUBLISHABLE_KEY = replace-with-supabase-publishable-key
 
+// Apple Developer team for device signing. Empty by default (simulator needs none);
+// set in Secrets.xcconfig for on-device builds.
+TAB_DEVELOPMENT_TEAM =
+
 #include? "Secrets.xcconfig"
