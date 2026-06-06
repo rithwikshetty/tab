@@ -13,6 +13,7 @@ final class PaidByFlowUITests: XCTestCase {
     func testExactPaidByLedgerSurvivesReturningFromPaidByEditor() throws {
         let app = XCUIApplication()
         app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
+        app.launchEnvironment["TAB_SKIP_PUSH_PROMPT"] = "1"
         app.launchEnvironment["TAB_UI_TEST_SEED_PEOPLE"] = "1"
         app.launchArguments.append("-ApplePersistenceIgnoreState")
         app.launchArguments.append("YES")
@@ -30,7 +31,7 @@ final class PaidByFlowUITests: XCTestCase {
             app.textFields["newTrip.nameField"],
             app.textFields["Lisbon weekend"],
         ])
-        replaceText(in: tripNameField, with: tripName, app: app)
+        replaceText(in: tripNameField, with: tripName)
         app.buttons["newTrip.createButton"].tap()
 
         let tripRow = app.staticTexts[tripName].firstMatch
@@ -41,8 +42,8 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertTrue(addExpenseButton.waitForExistence(timeout: 5))
         addExpenseButton.tap()
 
-        replaceText(in: app.textFields["expense.amountField"], with: "100", app: app)
-        replaceText(in: app.textFields["expense.descriptionField"], with: "Dinner", app: app)
+        replaceText(in: app.textFields["expense.amountField"], with: "100")
+        replaceText(in: app.textFields["expense.descriptionField"], with: "Dinner")
         app.buttons["expense.paidByRow"].tap()
 
         XCTAssertTrue(app.navigationBars["Payment & Split"].waitForExistence(timeout: 5))
@@ -54,11 +55,11 @@ final class PaidByFlowUITests: XCTestCase {
         let currentUserAmount = app.textFields["paidBy.exactAmount.\(currentUserID)"]
         let alexAmount = app.textFields["paidBy.exactAmount.\(alexID)"]
         let samAmount = app.textFields["paidBy.exactAmount.\(samID)"]
-        replaceText(in: currentUserAmount, with: "60", app: app)
+        replaceText(in: currentUserAmount, with: "60")
         XCTAssertEqual(fieldValue(currentUserAmount), "60")
-        replaceText(in: alexAmount, with: "30", app: app)
+        replaceText(in: alexAmount, with: "30")
         XCTAssertEqual(fieldValue(alexAmount), "30")
-        replaceText(in: samAmount, with: "10", app: app)
+        replaceText(in: samAmount, with: "10")
         XCTAssertEqual(fieldValue(samAmount), "10")
         XCTAssertEqual(fieldValue(currentUserAmount), "60")
         XCTAssertEqual(fieldValue(alexAmount), "30")
@@ -79,6 +80,7 @@ final class PaidByFlowUITests: XCTestCase {
     func testMockAuthTripSeedsPeopleAndExactAmountTapSelectsExistingValue() throws {
         let app = XCUIApplication()
         app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
+        app.launchEnvironment["TAB_SKIP_PUSH_PROMPT"] = "1"
         app.launchArguments.append("-ApplePersistenceIgnoreState")
         app.launchArguments.append("YES")
         app.launch()
@@ -91,7 +93,7 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertTrue(waitUntilHittable(addTripButton))
         addTripButton.tap()
 
-        replaceText(in: app.textFields["newTrip.nameField"], with: tripName, app: app)
+        replaceText(in: app.textFields["newTrip.nameField"], with: tripName)
         app.buttons["newTrip.createButton"].tap()
 
         let tripRow = app.staticTexts[tripName].firstMatch
@@ -102,8 +104,8 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertTrue(addExpenseButton.waitForExistence(timeout: 5))
         addExpenseButton.tap()
 
-        replaceText(in: app.textFields["expense.amountField"], with: "100", app: app)
-        replaceText(in: app.textFields["expense.descriptionField"], with: "Dinner", app: app)
+        replaceText(in: app.textFields["expense.amountField"], with: "100")
+        replaceText(in: app.textFields["expense.descriptionField"], with: "Dinner")
         app.buttons["expense.paidByRow"].tap()
 
         XCTAssertTrue(app.navigationBars["Payment & Split"].waitForExistence(timeout: 5))
@@ -124,6 +126,7 @@ final class PaidByFlowUITests: XCTestCase {
     func testEditExpenseFromDetailOpensEditForm() throws {
         let app = XCUIApplication()
         app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
+        app.launchEnvironment["TAB_SKIP_PUSH_PROMPT"] = "1"
         app.launchEnvironment["TAB_UI_TEST_SEED_PEOPLE"] = "1"
         app.launchArguments.append("-ApplePersistenceIgnoreState")
         app.launchArguments.append("YES")
@@ -137,7 +140,7 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertTrue(waitUntilHittable(addTripButton))
         addTripButton.tap()
 
-        replaceText(in: app.textFields["newTrip.nameField"], with: tripName, app: app)
+        replaceText(in: app.textFields["newTrip.nameField"], with: tripName)
         app.buttons["newTrip.createButton"].tap()
 
         let tripRow = app.staticTexts[tripName].firstMatch
@@ -148,8 +151,8 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertTrue(addExpenseButton.waitForExistence(timeout: 5))
         addExpenseButton.tap()
 
-        replaceText(in: app.textFields["expense.amountField"], with: "24.50", app: app)
-        replaceText(in: app.textFields["expense.descriptionField"], with: "Lunch", app: app)
+        replaceText(in: app.textFields["expense.amountField"], with: "24.50")
+        replaceText(in: app.textFields["expense.descriptionField"], with: "Lunch")
         app.navigationBars["New expense"].buttons["Save"].tap()
 
         let expenseRow = app.staticTexts["Lunch"].firstMatch
@@ -171,6 +174,7 @@ final class PaidByFlowUITests: XCTestCase {
     func testPaymentMethodDropdownSelectionPersistsToDetail() throws {
         let app = XCUIApplication()
         app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
+        app.launchEnvironment["TAB_SKIP_PUSH_PROMPT"] = "1"
         app.launchEnvironment["TAB_UI_TEST_SEED_PEOPLE"] = "1"
         app.launchArguments.append("-ApplePersistenceIgnoreState")
         app.launchArguments.append("YES")
@@ -184,7 +188,7 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertTrue(waitUntilHittable(addTripButton))
         addTripButton.tap()
 
-        replaceText(in: app.textFields["newTrip.nameField"], with: tripName, app: app)
+        replaceText(in: app.textFields["newTrip.nameField"], with: tripName)
         app.buttons["newTrip.createButton"].tap()
 
         let tripRow = app.staticTexts[tripName].firstMatch
@@ -195,8 +199,8 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertTrue(addExpenseButton.waitForExistence(timeout: 5))
         addExpenseButton.tap()
 
-        replaceText(in: app.textFields["expense.amountField"], with: "18.25", app: app)
-        replaceText(in: app.textFields["expense.descriptionField"], with: "Coffee", app: app)
+        replaceText(in: app.textFields["expense.amountField"], with: "18.25")
+        replaceText(in: app.textFields["expense.descriptionField"], with: "Coffee")
 
         let paymentMethodMenu = app.buttons["expense.paymentMethodMenu"]
         XCTAssertTrue(paymentMethodMenu.waitForExistence(timeout: 5))
@@ -215,24 +219,13 @@ final class PaidByFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Cash"].waitForExistence(timeout: 5))
     }
 
-    private func replaceText(in element: XCUIElement, with text: String, app: XCUIApplication) {
+    private func replaceText(in element: XCUIElement, with text: String) {
         XCTAssertTrue(element.waitForExistence(timeout: 5))
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
 
         let current = fieldValue(element)
         if !current.isEmpty {
-            if let deleteKey = firstExistingIfPresent([
-                app.keys["delete"],
-                app.keys["Delete"],
-                app.buttons["delete"],
-                app.buttons["Delete"],
-            ], timeout: 1) {
-                for _ in current {
-                    deleteKey.tap()
-                }
-            } else {
-                element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
-            }
+            element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
         }
         element.typeText(text)
     }
@@ -251,20 +244,6 @@ final class PaidByFlowUITests: XCTestCase {
         }
         XCTFail("No matching element appeared")
         return elements[0]
-    }
-
-    private func firstExistingIfPresent(
-        _ elements: [XCUIElement],
-        timeout: TimeInterval
-    ) -> XCUIElement? {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let element = elements.first(where: { $0.exists }) {
-                return element
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        }
-        return elements.first(where: { $0.exists })
     }
 
     private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval = 5) -> Bool {

@@ -152,6 +152,8 @@ final class SyncService {
         let expensePaymentKeys = await attempt("expense_payments") { try await self.pullExpensePayments() }
         let expenseSplitKeys   = await attempt("expense_splits") { try await self.pullExpenseSplits() }
         let settlementIDs      = await attempt("settlements") { try await self.pullSettlements() }
+        let muteTripIDs        = await attempt("trip_mute_prefs") { try await self.pullMutes() }
+        _                      = await attempt("activity_log") { try await self.pullActivity() }
 
         do {
             try reconcileLocalRows(
@@ -162,7 +164,8 @@ final class SyncService {
                 remoteExpenseIDs: expenseIDs,
                 remoteExpensePaymentKeys: expensePaymentKeys,
                 remoteExpenseSplitKeys: expenseSplitKeys,
-                remoteSettlementIDs: settlementIDs
+                remoteSettlementIDs: settlementIDs,
+                remoteMuteTripIDs: muteTripIDs
             )
         } catch {
             syncLog.error("reconcile failed: \(error.localizedDescription, privacy: .public)")
@@ -297,6 +300,87 @@ final class SyncService {
         return Set(rows.map(\.id))
     }
 
+    /// Rolling window for the Activity feed mirror (bounds local growth).
+    private static let activityWindowSeconds: TimeInterval = 90 * 24 * 60 * 60
+
+    private func pullActivity() async throws -> Set<UUID> {
+        let cutoffDate = Date().addingTimeInterval(-Self.activityWindowSeconds)
+        let cutoff = ISO8601DateFormatter().string(from: cutoffDate)
+        let rows: [ActivityDTO] = try await client
+            .from("activity_log")
+            .select()
+            .gte("timestamp", value: cutoff)
+            .order("timestamp", ascending: false)
+            .limit(300)
+            .execute()
+            .value
+
+        let ctx = container.mainContext
+        for dto in rows {
+            let id = dto.id
+            let exists = try ctx.fetch(FetchDescriptor<ActivityEntity>(
+                predicate: #Predicate { $0.id == id }
+            )).first != nil
+            if exists { continue }  // activity_log is append-only / immutable
+            let snapshotData = dto.snapshot.flatMap { try? JSONEncoder().encode($0) }
+            ctx.insert(ActivityEntity(
+                id: dto.id,
+                tripID: dto.tripID,
+                actorID: dto.actorID,
+                action: dto.action,
+                entityType: dto.entityType,
+                entityID: dto.entityID,
+                timestamp: dto.timestamp,
+                snapshotData: snapshotData
+            ))
+        }
+
+        // Prune rows past the window so the local mirror stays bounded.
+        for stale in try ctx.fetch(FetchDescriptor<ActivityEntity>(
+            predicate: #Predicate { $0.timestamp < cutoffDate }
+        )) {
+            ctx.delete(stale)
+        }
+        try ctx.save()
+        return Set(rows.map(\.id))
+    }
+
+    private func pullMutes() async throws -> Set<UUID> {
+        let rows: [TripMuteDTO] = try await client
+            .from("trip_mute_prefs")
+            .select()
+            .execute()
+            .value
+
+        let ctx = container.mainContext
+        for dto in rows {
+            let tripID = dto.tripID
+            let existing = try ctx.fetch(FetchDescriptor<TripMuteEntity>(
+                predicate: #Predicate { $0.tripID == tripID }
+            )).first
+            if let entity = existing {
+                if entity.pushedWriteID != entity.writeID { continue }  // local change pending push
+                if entity.writeID == dto.writeID { continue }
+                entity.isMuted = true
+                entity.mutedAt = dto.mutedAt
+                entity.updatedAt = dto.updatedAt
+                entity.writeID = dto.writeID
+                entity.pushedWriteID = dto.writeID
+            } else {
+                ctx.insert(TripMuteEntity(
+                    tripID: dto.tripID,
+                    isMuted: true,
+                    mutedAt: dto.mutedAt,
+                    updatedAt: dto.updatedAt,
+                    writeID: dto.writeID,
+                    pushedWriteID: dto.writeID
+                ))
+            }
+        }
+        try ctx.save()
+        return Set(rows.map(\.tripID))
+    }
+
     /// Deletes local rows that the server no longer has. Each remote set is
     /// optional: `nil` means that table's pull failed this cycle, so its remote
     /// state is unknown and we skip its deletions entirely rather than risk
@@ -311,7 +395,8 @@ final class SyncService {
         remoteExpenseIDs: Set<UUID>?,
         remoteExpensePaymentKeys: Set<ExpensePaymentRemoteKey>?,
         remoteExpenseSplitKeys: Set<ExpenseSplitRemoteKey>?,
-        remoteSettlementIDs: Set<UUID>?
+        remoteSettlementIDs: Set<UUID>?,
+        remoteMuteTripIDs: Set<UUID>?
     ) throws {
         let ctx = container.mainContext
 
@@ -385,6 +470,28 @@ final class SyncService {
             }
         }
 
+        // Mute prefs: a clean (pushed) local mute whose trip the server no longer
+        // returns was unmuted on another device — drop it. Locally-dirty rows
+        // (a pending unmute) are left for pushMutes to resolve.
+        if let remoteMuteTripIDs {
+            for mute in try ctx.fetch(FetchDescriptor<TripMuteEntity>()) {
+                guard mute.pushedWriteID == mute.writeID, mute.isMuted else { continue }
+                if !remoteMuteTripIDs.contains(mute.tripID) {
+                    ctx.delete(mute)
+                }
+            }
+        }
+
+        // Activity rows for trips we can no longer see (left/deleted) are dropped
+        // so the feed only shows accessible trips.
+        if let remoteTripIDs {
+            for activity in try ctx.fetch(FetchDescriptor<ActivityEntity>()) {
+                if !remoteTripIDs.contains(activity.tripID) {
+                    ctx.delete(activity)
+                }
+            }
+        }
+
         try ctx.save()
     }
 
@@ -400,6 +507,7 @@ final class SyncService {
             if entity.writeID == dto.writeID { return }
             entity.displayName = dto.displayName
             entity.avatarURL = dto.avatarURL
+            entity.activityLastSeenAt = dto.activityLastSeenAt
             entity.updatedAt = dto.updatedAt
             entity.writeID = dto.writeID
             entity.pushedWriteID = dto.writeID
@@ -408,6 +516,7 @@ final class SyncService {
                 id: dto.id,
                 displayName: dto.displayName,
                 avatarURL: dto.avatarURL,
+                activityLastSeenAt: dto.activityLastSeenAt,
                 updatedAt: dto.updatedAt,
                 writeID: dto.writeID,
                 pushedWriteID: dto.writeID
@@ -678,6 +787,7 @@ final class SyncService {
             try await pushSettlements()
             await pushPendingReceiptUploads()
             try await pushExpensesAndSplits()
+            try await pushMutes()
             phase = .idle
         } catch {
             syncLog.error("push failed: \(error.localizedDescription, privacy: .public)")
@@ -922,6 +1032,95 @@ final class SyncService {
             }
         }
         try ctx.save()
+    }
+
+    private func pushMutes() async throws {
+        let ctx = container.mainContext
+        guard let userID = auth?.currentUser?.id else { return }
+        let dirty = try ctx.fetch(FetchDescriptor<TripMuteEntity>()).filter { $0.pushedWriteID != $0.writeID }
+        guard !dirty.isEmpty else { return }
+        for mute in dirty {
+            // Snapshot the write we are pushing. If the user re-toggles during the
+            // network call, writeID changes and we leave the row dirty so the next
+            // pushMutes resolves the newer state (LWW convergence).
+            let target = mute.writeID
+            do {
+                if mute.isMuted {
+                    try await client.from("trip_mute_prefs")
+                        .upsert(TripMuteInsertDTO(tripID: mute.tripID, userID: userID), onConflict: "trip_id,user_id")
+                        .execute()
+                    if mute.writeID == target { mute.pushedWriteID = target }
+                } else {
+                    try await client.from("trip_mute_prefs")
+                        .delete()
+                        .eq("trip_id", value: mute.tripID.uuidString)
+                        .eq("user_id", value: userID.uuidString)
+                        .execute()
+                    if mute.writeID == target { ctx.delete(mute) }  // unmute tombstone resolved
+                }
+            } catch {
+                syncLog.error("mute push failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        try ctx.save()
+    }
+
+    // MARK: - Notifications
+
+    /// Advances the local read cursor immediately (clears the badge), then persists
+    /// it server-side. The optimistic local write also covers mock auth (no session).
+    func markActivitySeen() async {
+        let ctx = container.mainContext
+        guard let userID = auth?.currentUser?.id else { return }
+        let profile = (try? ctx.fetch(FetchDescriptor<ProfileEntity>(
+            predicate: #Predicate { $0.id == userID }
+        )))?.first
+        profile?.activityLastSeenAt = .now
+        try? ctx.save()
+
+        guard hasRealSession else { return }
+        do {
+            let serverSeenAt: Date = try await client.rpc("mark_activity_seen").execute().value
+            profile?.activityLastSeenAt = serverSeenAt
+            try? ctx.save()
+        } catch {
+            syncLog.error("mark_activity_seen failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Registers (or refreshes) this device's APNs token. Idempotent on (user, token);
+    /// called on every launch so reinstalls and token rotation self-heal.
+    func registerPushDevice(token: String, deviceName: String?) async {
+        guard hasRealSession, let userID = auth?.currentUser?.id else { return }
+        do {
+            try await client.from("push_devices")
+                .upsert(
+                    PushDeviceInsertDTO(userID: userID, apnsToken: token, deviceName: deviceName),
+                    onConflict: "user_id,apns_token"
+                )
+                .execute()
+        } catch {
+            syncLog.error("push device register failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Toggles per-trip mute locally (offline-first) and pushes the change.
+    func setTripMuted(tripID: UUID, muted: Bool) {
+        let ctx = container.mainContext
+        let existing = (try? ctx.fetch(FetchDescriptor<TripMuteEntity>(
+            predicate: #Predicate { $0.tripID == tripID }
+        )))?.first
+        if let entity = existing {
+            entity.isMuted = muted
+            entity.updatedAt = .now
+            entity.writeID = UUID()
+        } else if muted {
+            ctx.insert(TripMuteEntity(tripID: tripID, isMuted: true))
+        } else {
+            return
+        }
+        try? ctx.save()
+        Task { try? await pushMutes() }
     }
 
     private static let dateOnlyFormatter: DateFormatter = {

@@ -173,10 +173,14 @@ create table public.profiles (
     char_length(trim(display_name)) > 0 and char_length(display_name) <= 60
   ),
   avatar_url   text check (avatar_url is null or char_length(avatar_url) <= 2048),
+  activity_last_seen_at timestamptz,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   write_id     uuid not null default gen_random_uuid()
 );
+
+comment on column public.profiles.activity_last_seen_at is
+  'Per-user read cursor for the Activity feed. Unread = activity_log rows newer than this. Advanced by mark_activity_seen().';
 
 comment on table public.profiles is
   'Per-user public profile data. One row per auth.users row, created automatically on signup.';
@@ -254,6 +258,35 @@ begin
   return v_profile;
 end;
 $$;
+
+-- Advances the caller's Activity read cursor. Monotonic (never moves backwards)
+-- so a stale write from another device can't resurrect already-seen unread state.
+-- Bumps write_id (via set_sync_fields) so the next pull carries the new cursor.
+create or replace function public.mark_activity_seen()
+returns timestamptz
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_seen timestamptz;
+begin
+  if v_actor is null then
+    raise exception 'Authentication required' using errcode = '42501';
+  end if;
+
+  update public.profiles
+  set activity_last_seen_at = greatest(coalesce(activity_last_seen_at, '-infinity'::timestamptz), clock_timestamp())
+  where id = v_actor
+  returning activity_last_seen_at into v_seen;
+
+  return v_seen;
+end;
+$$;
+
+comment on function public.mark_activity_seen() is
+  'Advances profiles.activity_last_seen_at to now for the caller. Called when the Activity tab is opened.';
 
 
 -- ============================================================================
@@ -878,6 +911,210 @@ comment on table public.activity_log is
 create index activity_log_trip_id_timestamp_idx on public.activity_log(trip_id, timestamp desc);
 create index activity_log_actor_id_idx          on public.activity_log(actor_id);
 create index activity_log_entity_idx            on public.activity_log(entity_type, entity_id);
+
+
+-- ----------------------------------------------------------------------------
+-- Event sourcing: AFTER triggers populate activity_log as the authenticated
+-- actor. One row per meaningful event, feeding both the in-app Activity feed
+-- and the push channel. See docs/adr/0002-notification-architecture.md.
+--
+-- Idempotent against offline re-syncs: UPDATE events fire only when a
+-- user-visible column actually changes (IS DISTINCT FROM), so a no-op re-upsert
+-- never produces a duplicate notification. Service-role/system writes have a
+-- null auth.uid() and are skipped (no actor = nothing to notify).
+-- ----------------------------------------------------------------------------
+
+create or replace function private.profile_display_name(p_id uuid)
+returns text language sql security definer stable set search_path = public, private as $$
+  select coalesce(nullif(trim(display_name), ''), 'Someone') from public.profiles where id = p_id;
+$$;
+
+create or replace function private.trip_name(p_id uuid)
+returns text language sql security definer stable set search_path = public, private as $$
+  select name from public.trips where id = p_id;
+$$;
+
+create or replace function private.person_display_name(p_id uuid)
+returns text language sql security definer stable set search_path = public, private as $$
+  select coalesce(nullif(trim(display_name), ''), 'Someone') from public.trip_people where id = p_id;
+$$;
+
+-- Compact money string for snapshot rendering/push text (client reformats via MoneyFormatter).
+create or replace function private.money_text(p_amount numeric)
+returns text language sql immutable set search_path = public, private as $$
+  select trim(to_char(p_amount, 'FM999999999990.00'));
+$$;
+
+create or replace function public.log_expense_activity()
+returns trigger language plpgsql security definer set search_path = public, private as $$
+declare
+  v_actor uuid := auth.uid();
+  v_action text;
+begin
+  if v_actor is null then return coalesce(new, old); end if;
+
+  if tg_op = 'INSERT' then
+    v_action := 'expense_created';
+  else
+    if old.deleted_at is null and new.deleted_at is not null then
+      v_action := 'expense_deleted';
+    elsif old.deleted_at is not null and new.deleted_at is null then
+      v_action := 'expense_created';
+    elsif new.deleted_at is null and (
+         old.amount         is distinct from new.amount
+      or old.currency       is distinct from new.currency
+      or old.category_id    is distinct from new.category_id
+      or old.description    is distinct from new.description
+      or old.expense_date   is distinct from new.expense_date
+      or old.payment_method is distinct from new.payment_method
+    ) then
+      v_action := 'expense_updated';
+    else
+      return new;
+    end if;
+  end if;
+
+  insert into public.activity_log (trip_id, actor_id, action, entity_type, entity_id, snapshot_json)
+  values (
+    new.trip_id, v_actor, v_action, 'expense', new.id,
+    jsonb_build_object(
+      'actor_name',  private.profile_display_name(v_actor),
+      'trip_name',   private.trip_name(new.trip_id),
+      'description', new.description,
+      'amount',      private.money_text(new.amount),
+      'currency',    new.currency
+    )
+  );
+  return new;
+end;
+$$;
+
+create or replace function public.log_settlement_activity()
+returns trigger language plpgsql security definer set search_path = public, private as $$
+declare
+  v_actor uuid := auth.uid();
+  v_action text;
+begin
+  if v_actor is null then return coalesce(new, old); end if;
+
+  if tg_op = 'INSERT' then
+    v_action := 'settlement_created';
+  else
+    if old.deleted_at is null and new.deleted_at is not null then
+      v_action := 'settlement_deleted';
+    elsif old.deleted_at is not null and new.deleted_at is null then
+      v_action := 'settlement_created';
+    elsif new.deleted_at is null and (
+         old.amount         is distinct from new.amount
+      or old.currency       is distinct from new.currency
+      or old.from_person_id is distinct from new.from_person_id
+      or old.to_person_id   is distinct from new.to_person_id
+      or old.note           is distinct from new.note
+      or old.settled_at     is distinct from new.settled_at
+    ) then
+      v_action := 'settlement_updated';
+    else
+      return new;
+    end if;
+  end if;
+
+  insert into public.activity_log (trip_id, actor_id, action, entity_type, entity_id, snapshot_json)
+  values (
+    new.trip_id, v_actor, v_action, 'settlement', new.id,
+    jsonb_build_object(
+      'actor_name', private.profile_display_name(v_actor),
+      'trip_name',  private.trip_name(new.trip_id),
+      'from_name',  private.person_display_name(new.from_person_id),
+      'to_name',    private.person_display_name(new.to_person_id),
+      'amount',     private.money_text(new.amount),
+      'currency',   new.currency
+    )
+  );
+  return new;
+end;
+$$;
+
+create or replace function public.log_membership_activity()
+returns trigger language plpgsql security definer set search_path = public, private as $$
+declare
+  v_actor uuid := auth.uid();
+begin
+  if v_actor is null then return coalesce(new, old); end if;
+
+  if tg_op = 'INSERT' then
+    -- Skip the creator adding themselves at trip creation (invited_by = user_id):
+    -- it notifies no one and only clutters the audit trail.
+    if new.invited_by is not null and new.invited_by is not distinct from new.user_id then
+      return new;
+    end if;
+    insert into public.activity_log (trip_id, actor_id, action, entity_type, entity_id, snapshot_json)
+    values (
+      new.trip_id, v_actor, 'member_joined', 'member', new.id,
+      jsonb_build_object(
+        'actor_name',  private.profile_display_name(v_actor),
+        'trip_name',   private.trip_name(new.trip_id),
+        'member_name', new.display_name
+      )
+    );
+    return new;
+  else
+    insert into public.activity_log (trip_id, actor_id, action, entity_type, entity_id, snapshot_json)
+    values (
+      old.trip_id, v_actor, 'member_left', 'member', old.id,
+      jsonb_build_object(
+        'actor_name',  private.profile_display_name(v_actor),
+        'trip_name',   private.trip_name(old.trip_id),
+        'member_name', old.display_name
+      )
+    );
+    return old;
+  end if;
+end;
+$$;
+
+create or replace function public.log_trip_activity()
+returns trigger language plpgsql security definer set search_path = public, private as $$
+declare
+  v_actor uuid := auth.uid();
+  v_action text;
+begin
+  if v_actor is null then return coalesce(new, old); end if;
+
+  if tg_op = 'INSERT' then
+    v_action := 'trip_created';
+  elsif old.name is distinct from new.name and new.deleted_at is null then
+    v_action := 'trip_updated';
+  else
+    return new;
+  end if;
+
+  insert into public.activity_log (trip_id, actor_id, action, entity_type, entity_id, snapshot_json)
+  values (
+    new.id, v_actor, v_action, 'trip', new.id,
+    jsonb_build_object(
+      'actor_name', private.profile_display_name(v_actor),
+      'trip_name',  new.name
+    )
+  );
+  return new;
+end;
+$$;
+
+create trigger trg_expenses_activity
+  after insert or update on public.expenses
+  for each row execute function public.log_expense_activity();
+
+create trigger trg_settlements_activity
+  after insert or update on public.settlements
+  for each row execute function public.log_settlement_activity();
+
+create trigger trg_trip_people_activity
+  after insert or delete on public.trip_people
+  for each row execute function public.log_membership_activity();
+
+create trigger trg_trips_activity
+  after insert or update on public.trips
+  for each row execute function public.log_trip_activity();
 
 
 -- ============================================================================
@@ -1753,6 +1990,14 @@ revoke execute on function public.validate_expense_payment_total_from_payment_tr
 revoke execute on function public.validate_settlement_row() from public, anon, authenticated;
 revoke execute on function public.validate_trip_mute_pref_row() from public, anon, authenticated;
 revoke execute on function public.purge_soft_deleted_records(timestamptz) from public, anon, authenticated;
+revoke execute on function public.log_expense_activity()    from public, anon, authenticated;
+revoke execute on function public.log_settlement_activity() from public, anon, authenticated;
+revoke execute on function public.log_membership_activity() from public, anon, authenticated;
+revoke execute on function public.log_trip_activity()       from public, anon, authenticated;
+revoke execute on function private.profile_display_name(uuid) from public, anon, authenticated;
+revoke execute on function private.trip_name(uuid)            from public, anon, authenticated;
+revoke execute on function private.person_display_name(uuid)  from public, anon, authenticated;
+revoke execute on function private.money_text(numeric)        from public, anon, authenticated;
 
 revoke execute on function public.ensure_current_profile(text, text) from public, anon;
 grant  execute on function public.ensure_current_profile(text, text) to authenticated;
@@ -1766,6 +2011,8 @@ revoke execute on function public.suggest_trip_people(text, int) from public, an
 grant  execute on function public.suggest_trip_people(text, int) to authenticated;
 revoke execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) from public, anon;
 grant  execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) to authenticated;
+revoke execute on function public.mark_activity_seen() from public, anon;
+grant  execute on function public.mark_activity_seen() to authenticated;
 
 -- private helpers are not PostgREST-exposed, but authenticated sessions need
 -- EXECUTE for policy evaluation.
@@ -1783,3 +2030,141 @@ revoke execute on function private.receipt_object_trip_id(text) from public, ano
 grant  execute on function private.receipt_object_trip_id(text) to authenticated;
 
 -- <<< END 17_privileges.sql
+
+-- >>> BEGIN 18_notifications_push.sql
+
+-- 14. Push notification fan-out (activity_log -> edge function -> APNs)
+-- ============================================================================
+-- The in-app Activity feed works without any of this (it reads activity_log via
+-- sync). This file wires the *push* channel: an AFTER INSERT trigger on
+-- activity_log hands the new event to the `send-push` edge function over pg_net,
+-- which resolves recipients (members - actor - muters), looks up their APNs
+-- tokens, and sends. See docs/adr/0002-notification-architecture.md.
+--
+-- Config (function URL + shared secret) lives in private.app_config, seeded
+-- out-of-band and NEVER committed. If unset, the trigger no-ops, so the app
+-- still works fully without push configured.
+
+create extension if not exists pg_net;
+
+create table if not exists private.app_config (
+  key   text primary key,
+  value text not null
+);
+
+comment on table private.app_config is
+  'Out-of-band runtime config (e.g. push webhook url + secret). Not exposed via PostgREST. Seed values manually; never commit them.';
+
+create or replace function private.config(p_key text)
+returns text
+language sql
+security definer
+stable
+set search_path = private
+as $$
+  select value from private.app_config where key = p_key;
+$$;
+
+-- Unread Activity count for one user: events on their joined trips, not their
+-- own, newer than their read cursor, excluding muted trips. Used by the edge
+-- function to stamp aps.badge so the app-icon badge is correct with the app closed.
+create or replace function public.unread_activity_count(p_user uuid)
+returns integer
+language sql
+security definer
+stable
+set search_path = public, private
+as $$
+  select count(*)::int
+  from public.activity_log a
+  join public.profiles p on p.id = p_user
+  where a.actor_id <> p_user
+    and a.timestamp > coalesce(p.activity_last_seen_at, '-infinity'::timestamptz)
+    and exists (
+      select 1 from public.trip_people tp
+      where tp.trip_id = a.trip_id and tp.user_id = p_user and tp.joined_at is not null
+    )
+    and not exists (
+      select 1 from public.trip_mute_prefs m
+      where m.trip_id = a.trip_id and m.user_id = p_user
+    );
+$$;
+
+comment on function public.unread_activity_count(uuid) is
+  'Count of unread Activity events for a user (excludes own actions and muted trips). For the push badge.';
+
+-- One round-trip for the edge function: every device that should receive a push
+-- for an activity (members - actor - muters), with that recipient's badge count.
+create or replace function public.push_targets_for_activity(p_activity_id uuid)
+returns table (user_id uuid, apns_token text, push_device_id uuid, badge integer)
+language sql
+security definer
+stable
+set search_path = public, private
+as $$
+  select pd.user_id, pd.apns_token, pd.id, public.unread_activity_count(pd.user_id)
+  from public.activity_log a
+  join public.trip_people tp
+    on tp.trip_id = a.trip_id
+   and tp.user_id is not null
+   and tp.user_id <> a.actor_id
+   and tp.joined_at is not null
+  join public.push_devices pd on pd.user_id = tp.user_id
+  where a.id = p_activity_id
+    and not exists (
+      select 1 from public.trip_mute_prefs m
+      where m.trip_id = a.trip_id and m.user_id = tp.user_id
+    );
+$$;
+
+comment on function public.push_targets_for_activity(uuid) is
+  'Recipient devices + badge for an activity event. Called by the send-push edge function (service role).';
+
+create or replace function public.notify_activity_push()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, private
+as $$
+declare
+  v_url    text := private.config('push_webhook_url');
+  v_secret text := private.config('push_webhook_secret');
+begin
+  if v_url is null then
+    return new;  -- push not configured; in-app Activity still works
+  end if;
+
+  perform net.http_post(
+    url     := v_url,
+    headers := jsonb_build_object(
+      'Content-Type',    'application/json',
+      'x-webhook-secret', coalesce(v_secret, '')
+    ),
+    body    := jsonb_build_object(
+      'activity_id', new.id,
+      'trip_id',     new.trip_id,
+      'actor_id',    new.actor_id,
+      'action',      new.action,
+      'entity_type', new.entity_type,
+      'entity_id',   new.entity_id,
+      'snapshot',    new.snapshot_json
+    )
+  );
+  return new;
+end;
+$$;
+
+create trigger trg_activity_notify_push
+  after insert on public.activity_log
+  for each row execute function public.notify_activity_push();
+
+-- Lock down: these are internal. The edge function calls
+-- push_targets_for_activity with the service-role key, which still needs
+-- explicit EXECUTE even though it bypasses RLS.
+revoke execute on function private.config(text)              from public, anon, authenticated;
+revoke execute on function public.notify_activity_push()     from public, anon, authenticated;
+revoke execute on function public.unread_activity_count(uuid) from public, anon, authenticated;
+revoke execute on function public.push_targets_for_activity(uuid) from public, anon, authenticated;
+grant execute on function public.push_targets_for_activity(uuid) to service_role;
+
+-- <<< END 18_notifications_push.sql

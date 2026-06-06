@@ -6,6 +6,7 @@ struct ProfileDTO: Codable, Sendable {
     let id: UUID
     let displayName: String
     let avatarURL: String?
+    let activityLastSeenAt: Date?
     let createdAt: Date
     let updatedAt: Date
     let writeID: UUID
@@ -14,6 +15,7 @@ struct ProfileDTO: Codable, Sendable {
         case id
         case displayName = "display_name"
         case avatarURL = "avatar_url"
+        case activityLastSeenAt = "activity_last_seen_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case writeID = "write_id"
@@ -402,5 +404,71 @@ struct SettlementDeleteUpdateDTO: Codable, Sendable {
         case deletedAt = "deleted_at"
         case updatedAt = "updated_at"
         case writeID = "write_id"
+    }
+}
+
+// MARK: - Activity
+
+struct ActivityDTO: Codable, Sendable {
+    let id: UUID
+    let tripID: UUID
+    let actorID: UUID
+    let action: String
+    let entityType: String
+    let entityID: UUID
+    let timestamp: Date
+    let snapshot: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case tripID = "trip_id"
+        case actorID = "actor_id"
+        case action
+        case entityType = "entity_type"
+        case entityID = "entity_id"
+        case timestamp
+        case snapshot = "snapshot_json"
+    }
+}
+
+// MARK: - Trip mute preference
+
+struct TripMuteDTO: Codable, Sendable {
+    let tripID: UUID
+    let userID: UUID
+    let mutedAt: Date
+    let updatedAt: Date
+    let writeID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case tripID = "trip_id"
+        case userID = "user_id"
+        case mutedAt = "muted_at"
+        case updatedAt = "updated_at"
+        case writeID = "write_id"
+    }
+}
+
+struct TripMuteInsertDTO: Codable, Sendable {
+    let tripID: UUID
+    let userID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case tripID = "trip_id"
+        case userID = "user_id"
+    }
+}
+
+// MARK: - Push device
+
+struct PushDeviceInsertDTO: Codable, Sendable {
+    let userID: UUID
+    let apnsToken: String
+    let deviceName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case userID = "user_id"
+        case apnsToken = "apns_token"
+        case deviceName = "device_name"
     }
 }

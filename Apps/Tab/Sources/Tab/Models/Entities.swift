@@ -10,6 +10,8 @@ final class ProfileEntity {
     var id: UUID
     var displayName: String
     var avatarURL: String?
+    /// Read cursor for the Activity feed. Unread = activity newer than this.
+    var activityLastSeenAt: Date?
     var updatedAt: Date
     var writeID: UUID
     var pushedWriteID: UUID?
@@ -18,6 +20,7 @@ final class ProfileEntity {
         id: UUID,
         displayName: String,
         avatarURL: String? = nil,
+        activityLastSeenAt: Date? = nil,
         updatedAt: Date = .now,
         writeID: UUID = UUID(),
         pushedWriteID: UUID? = nil
@@ -25,6 +28,7 @@ final class ProfileEntity {
         self.id = id
         self.displayName = displayName
         self.avatarURL = avatarURL
+        self.activityLastSeenAt = activityLastSeenAt
         self.updatedAt = updatedAt
         self.writeID = writeID
         self.pushedWriteID = pushedWriteID
@@ -297,6 +301,84 @@ final class ExpenseSplitEntity {
         self.amountOwed = amountOwed
         self.splitTypeRaw = splitTypeRaw
         self.expense = expense
+        self.updatedAt = updatedAt
+        self.writeID = writeID
+        self.pushedWriteID = pushedWriteID
+    }
+}
+
+// MARK: - Activity (notification feed)
+
+/// One row per trip event, mirrored from the server-side `activity_log`.
+/// Append-only and immutable: the client only ever inserts new rows on pull.
+@Model
+final class ActivityEntity {
+    #Unique<ActivityEntity>([\.id])
+
+    var id: UUID
+    var tripID: UUID
+    var actorID: UUID
+    var action: String
+    var entityType: String
+    var entityID: UUID
+    var timestamp: Date
+    /// JSON-encoded `[String: String]` snapshot for offline rendering + push text.
+    var snapshotData: Data?
+
+    init(
+        id: UUID,
+        tripID: UUID,
+        actorID: UUID,
+        action: String,
+        entityType: String,
+        entityID: UUID,
+        timestamp: Date,
+        snapshotData: Data? = nil
+    ) {
+        self.id = id
+        self.tripID = tripID
+        self.actorID = actorID
+        self.action = action
+        self.entityType = entityType
+        self.entityID = entityID
+        self.timestamp = timestamp
+        self.snapshotData = snapshotData
+    }
+
+    var snapshot: [String: String] {
+        guard let snapshotData,
+              let dict = try? JSONDecoder().decode([String: String].self, from: snapshotData)
+        else { return [:] }
+        return dict
+    }
+}
+
+// MARK: - Trip mute preference
+
+/// Per-trip mute for the current user, mirroring `trip_mute_prefs`.
+/// `isMuted == false` is a local tombstone awaiting an unmute push.
+@Model
+final class TripMuteEntity {
+    #Unique<TripMuteEntity>([\.tripID])
+
+    var tripID: UUID
+    var isMuted: Bool
+    var mutedAt: Date
+    var updatedAt: Date
+    var writeID: UUID
+    var pushedWriteID: UUID?
+
+    init(
+        tripID: UUID,
+        isMuted: Bool = true,
+        mutedAt: Date = .now,
+        updatedAt: Date = .now,
+        writeID: UUID = UUID(),
+        pushedWriteID: UUID? = nil
+    ) {
+        self.tripID = tripID
+        self.isMuted = isMuted
+        self.mutedAt = mutedAt
         self.updatedAt = updatedAt
         self.writeID = writeID
         self.pushedWriteID = pushedWriteID

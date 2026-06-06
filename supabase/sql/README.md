@@ -24,6 +24,7 @@ The editable Supabase contract lives here. Files are numbered because order matt
 | `15_rpc_trip_people.sql` | Email add, claim, and suggestion RPCs. |
 | `16_rpc_expenses.sql` | Transactional expense create/edit RPC. |
 | `17_privileges.sql` | Function execute grants/revokes. |
+| `18_notifications_push.sql` | Push fan-out: pg_net webhook trigger on activity_log, config table, badge count. |
 
 ## Editing workflow
 

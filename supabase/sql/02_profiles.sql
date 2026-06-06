@@ -7,10 +7,14 @@ create table public.profiles (
     char_length(trim(display_name)) > 0 and char_length(display_name) <= 60
   ),
   avatar_url   text check (avatar_url is null or char_length(avatar_url) <= 2048),
+  activity_last_seen_at timestamptz,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   write_id     uuid not null default gen_random_uuid()
 );
+
+comment on column public.profiles.activity_last_seen_at is
+  'Per-user read cursor for the Activity feed. Unread = activity_log rows newer than this. Advanced by mark_activity_seen().';
 
 comment on table public.profiles is
   'Per-user public profile data. One row per auth.users row, created automatically on signup.';
@@ -88,6 +92,35 @@ begin
   return v_profile;
 end;
 $$;
+
+-- Advances the caller's Activity read cursor. Monotonic (never moves backwards)
+-- so a stale write from another device can't resurrect already-seen unread state.
+-- Bumps write_id (via set_sync_fields) so the next pull carries the new cursor.
+create or replace function public.mark_activity_seen()
+returns timestamptz
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_seen timestamptz;
+begin
+  if v_actor is null then
+    raise exception 'Authentication required' using errcode = '42501';
+  end if;
+
+  update public.profiles
+  set activity_last_seen_at = greatest(coalesce(activity_last_seen_at, '-infinity'::timestamptz), clock_timestamp())
+  where id = v_actor
+  returning activity_last_seen_at into v_seen;
+
+  return v_seen;
+end;
+$$;
+
+comment on function public.mark_activity_seen() is
+  'Advances profiles.activity_last_seen_at to now for the caller. Called when the Activity tab is opened.';
 
 
 -- ============================================================================

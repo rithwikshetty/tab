@@ -102,16 +102,26 @@ Both are shown so neither sense of "who spent the most" is hidden. Total trip sp
 The visible trip activity stream, grouped by date, containing active expenses and active settlements in reverse chronological order.
 
 ### Activity log
-An append-only table for trip actions such as expense changes, settlement changes, membership events, and trip changes. This is separate from the visible Timeline.
+An append-only table for trip actions such as expense changes, settlement changes, membership events, and trip changes. This is separate from the visible [[Timeline]].
+
+It is the **single shared event stream** behind notifications: one row per event (not one per recipient), readable by all trip members. Both notification channels render from it — the in-app [[Activity]] feed and the [[Push notification]] channel. Targeting ("is this for me"), self-exclusion, and read/unread are derived per user at read time, never duplicated into per-recipient rows.
+
+### Activity
+The user-facing rendering of the [[Activity log]]: an **app-level (global)** feed surfaced as a bottom tab (Trips · Activity · Settings), shown on the tab roots and on trip detail, hidden on deeper/entry screens. It shows events across *all* the current user's trips, newest first (date-grouped), **excluding the user's own actions** (you are never notified of what you did). It is the only surface that can announce a trip the user has not yet opened — e.g. being added to a brand-new trip. Distinct from the per-trip [[Timeline]] (a single trip's expenses + settlements) and from the [[Overview]] (spend summary).
+
+Read state is a **single per-user `last_seen_at` cursor** (synced, multi-device). Unread = events newer than the cursor, with `actor != me`, on non-muted trips (see [[Trip mute preference]]). Opening the Activity tab advances the cursor to now and clears the badge; opening an individual trip does not. The same count drives the tab badge and the app-icon badge.
+
+### Push notification
+The APNs channel: an OS-level banner delivered to a member's [[Push device]]s when a trip event occurs, even with the app closed. Same source and same targeting rules as the [[Activity]] feed (members of the trip, minus the actor, minus those who set a [[Trip mute preference]]). Recipient device tokens are selected server-side at send time; no per-recipient row is stored. Current policy: **every** [[Activity log]] action type fires a push (tunable later in the sender, no schema change). Banners are rich (actor + amount + description; trip name as title); lock-screen privacy is left to iOS's native "Show Previews" setting. Pushes are grouped natively by trip via APNs `thread-id`; rapid re-edits of one entity collapse via `apns-collapse-id`. The send payload also carries the recipient's current unread count as `aps.badge` so the app-icon badge stays correct with the app closed.
 
 ### Soft delete
 Mutable user-visible records are deleted by setting `deleted_at`, not by immediate hard delete. Active domain calculations ignore soft-deleted expenses and settlements. The server-side purge window is 30 days.
 
 ### Trip mute preference
-A per-user, per-trip notification preference. Row presence means the trip is muted for that user; absence means unmuted.
+A per-user, per-trip notification preference. Row presence means the trip is muted for that user; absence means unmuted. Semantics are **silence, don't hide**: a muted trip stops sending [[Push notification]]s and stops contributing to the unread badge, but its events still appear in the [[Activity]] feed so the user can catch up deliberately.
 
 ### Push device
-A user's registered APNs device token. Push devices are account-scoped, not trip-scoped; trip notification behavior is controlled by [[Trip mute preference]].
+A user's registered APNs device token. Push devices are account-scoped, not trip-scoped; trip notification behavior is controlled by [[Trip mute preference]]. Permission is requested on first launch after sign-in; the token is re-registered and upserted on **every** launch so reinstalls and token rotation self-heal. Dead tokens (APNs `410 Unregistered`) are deleted server-side by the sender. APNs never replays missed banners on reinstall — the [[Activity]] feed carries the missed history instead.
 
 ### Trip export
 A spreadsheet-style export for a trip. It includes active expenses, payment rows, split rows, settlements, totals by currency, per-person paid/owed summaries, and pair balances.
@@ -121,3 +131,4 @@ A spreadsheet-style export for a trip. It includes active expenses, payment rows
 Significant decisions live as ADRs under `docs/adr/`. Current set:
 
 - `0001-multi-payer-in-v1.md` — multi-payer expenses adopted into the initial design.
+- `0002-notification-architecture.md` — shared-row event sourcing via DB triggers; DB webhook → edge function → direct APNs; per-user read model. Feeds the [[Activity]] feed and [[Push notification]] channel.

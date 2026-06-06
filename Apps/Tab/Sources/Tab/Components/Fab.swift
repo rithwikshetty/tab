@@ -1,5 +1,11 @@
 import SwiftUI
 
+enum FloatingActionLayout {
+    static let trailingPadding: CGFloat = 18
+    static let bottomPadding: CGFloat = 56
+    static let scrollBottomClearance: CGFloat = 152
+}
+
 struct Fab: View {
     var label: String? = nil
     var systemImage: String = "plus"
@@ -31,6 +37,13 @@ struct Fab: View {
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityIdentifier(accessibilityIdentifier ?? "")
+    }
+}
+
+extension View {
+    func floatingActionPlacement() -> some View {
+        padding(.trailing, FloatingActionLayout.trailingPadding)
+            .padding(.bottom, FloatingActionLayout.bottomPadding)
     }
 }
 
