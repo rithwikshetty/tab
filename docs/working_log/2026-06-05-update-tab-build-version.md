@@ -16,6 +16,6 @@ Started a destructive database recreate with `./supabase/scripts/recreate_db.sh`
 
 ## 2026-06-05 21:08:13 BST
 
-Supabase MCP became available. Confirmed project `gaseuxsieddlksxtdliq` (`tab-it`) was active, applied the destructive teardown, then recreated the schema in ordered batches from `supabase/sql/*.sql`. Verified all 11 public tables exist with RLS enabled and the six default categories seeded. Security advisor warnings are the expected authenticated `SECURITY DEFINER` RPCs plus leaked-password protection being disabled.
+Supabase MCP became available. Confirmed project `<project-ref>` (`tab-it`) was active, applied the destructive teardown, then recreated the schema in ordered batches from `supabase/sql/*.sql`. Verified all 11 public tables exist with RLS enabled and the six default categories seeded. Security advisor warnings are the expected authenticated `SECURITY DEFINER` RPCs plus leaked-password protection being disabled.
 
 Updated ignored `.env.local` with `TAB_SUPABASE_URL` and `TAB_SUPABASE_PUBLISHABLE_KEY` aliases derived from the existing Supabase values, then confirmed `.env.local` is ignored by `.gitignore`.

@@ -10,7 +10,7 @@ Use the repo reset flow: build the generated schema from `supabase/sql/*.sql`, a
 
 ## 2026-06-06 08:40 BST - CLI fallback unavailable
 
-Ran `./supabase/scripts/recreate_db.sh`. It built the generated schema but failed to apply SQL because this checkout is not linked for Supabase CLI (`Cannot find project ref. Have you run supabase link?`). Switching to Supabase MCP against project `gaseuxsieddlksxtdliq` (`tab-it`) to apply the teardown and generated schema remotely.
+Ran `./supabase/scripts/recreate_db.sh`. It built the generated schema but failed to apply SQL because this checkout is not linked for Supabase CLI (`Cannot find project ref. Have you run supabase link?`). Switching to Supabase MCP against project `<project-ref>` (`tab-it`) to apply the teardown and generated schema remotely.
 
 ## 2026-06-06 08:43 BST - Remote recreate applied
 

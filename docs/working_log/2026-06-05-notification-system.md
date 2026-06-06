@@ -10,7 +10,7 @@ Simulator or without the Apple Push .p8 key. Everything else is built + tested i
 *receipt/display/tap* tested via `xcrun simctl push`. Sender built to current APNs spec + documented.
 
 Environment:
-- Supabase REMOTE only (project gaseuxsieddlksxtdliq / tab-it, PG 17.6). DB work via Supabase MCP apply_migration.
+- Supabase REMOTE only (project <project-ref> / tab-it, PG 17.6). DB work via Supabase MCP apply_migration.
 - App: XcodeGen (project.yml) + supabase-swift 2.46, Swift 6 strict concurrency, iOS 18, mock auth via TAB_MOCK_AUTH=1.
 - Branch: feat/notifications (off main).
 
