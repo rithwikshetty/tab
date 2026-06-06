@@ -4,7 +4,7 @@
 begin;
 set search_path = extensions, public, pg_temp;
 
-select plan(15);
+select plan(16);
 create temp table _r (line text);
 grant insert, select on _r to authenticated;
 
@@ -12,6 +12,9 @@ grant insert, select on _r to authenticated;
 insert into _r select has_column('public', 'profiles', 'activity_last_seen_at', 'profiles.activity_last_seen_at exists');
 insert into _r select has_function('public', 'mark_activity_seen', array[]::text[], 'mark_activity_seen() exists');
 insert into _r select has_function('public', 'unread_activity_count', array['uuid'], 'unread_activity_count(uuid) exists');
+insert into _r select ok(
+  has_function_privilege('service_role', 'public.push_targets_for_activity(uuid)', 'execute'),
+  'service_role can execute push_targets_for_activity for edge fan-out');
 
 -- Fixtures: alice + bob (profiles auto-created by handle_new_user)
 insert into auth.users (id, email, instance_id, aud, role, raw_user_meta_data)

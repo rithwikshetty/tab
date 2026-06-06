@@ -123,9 +123,11 @@ create trigger trg_activity_notify_push
   after insert on public.activity_log
   for each row execute function public.notify_activity_push();
 
--- Lock down: these are internal. The edge function calls unread_activity_count
--- with the service role, which bypasses these grants.
+-- Lock down: these are internal. The edge function calls
+-- push_targets_for_activity with the service-role key, which still needs
+-- explicit EXECUTE even though it bypasses RLS.
 revoke execute on function private.config(text)              from public, anon, authenticated;
 revoke execute on function public.notify_activity_push()     from public, anon, authenticated;
 revoke execute on function public.unread_activity_count(uuid) from public, anon, authenticated;
 revoke execute on function public.push_targets_for_activity(uuid) from public, anon, authenticated;
+grant execute on function public.push_targets_for_activity(uuid) to service_role;

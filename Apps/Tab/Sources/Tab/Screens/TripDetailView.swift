@@ -176,7 +176,7 @@ struct TripDetailView: View {
                 }
                 .animation(.snappy(duration: 0.18), value: segment)
 
-                Spacer(minLength: 160)
+                Spacer(minLength: FloatingActionLayout.scrollBottomClearance)
             }
             .scrollIndicators(.hidden)
             .refreshable { await sync.pullAll() }
@@ -187,8 +187,7 @@ struct TripDetailView: View {
                 accessibilityIdentifier: "trip.addExpenseButton",
                 action: onAddExpense
             )
-                .padding(.trailing, 18)
-                .padding(.bottom, 24)
+                .floatingActionPlacement()
         }
         .sheet(isPresented: $showingPeople) {
             TripPeopleSheet(tripID: trip.id, tripName: trip.name)

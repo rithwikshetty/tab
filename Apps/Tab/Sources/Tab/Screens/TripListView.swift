@@ -55,14 +55,14 @@ struct TripListView: View {
                     }
                 }
 
-                Spacer(minLength: 120)
+                Spacer(minLength: FloatingActionLayout.scrollBottomClearance)
             }
             .scrollIndicators(.hidden)
+            .background(Sage.bg.ignoresSafeArea())
             .refreshable { await sync.pullAll() }
 
             Fab(systemImage: "plus", accessibilityIdentifier: "trips.addButton") { showingNewTrip = true }
-                .padding(.trailing, 18)
-                .padding(.bottom, 100)
+                .floatingActionPlacement()
         }
         .sheet(isPresented: $showingNewTrip) {
             NewTripSheet()

@@ -63,6 +63,9 @@ struct RootView: View {
             }
         }
         .tint(Sage.accent)
+        .background(Sage.bg.ignoresSafeArea())
+        .toolbarBackground(Sage.tabBarBg, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
         .task(id: auth.currentUser) {
             removeLegacyMockSeedIfNeeded()
             bootstrapProfile()
