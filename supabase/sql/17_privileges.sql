@@ -22,6 +22,7 @@ revoke execute on function public.log_expense_activity()    from public, anon, a
 revoke execute on function public.log_settlement_activity() from public, anon, authenticated;
 revoke execute on function public.log_membership_activity() from public, anon, authenticated;
 revoke execute on function public.log_trip_activity()       from public, anon, authenticated;
+revoke execute on function public.guard_trip_kind()         from public, anon, authenticated;
 revoke execute on function private.profile_display_name(uuid) from public, anon, authenticated;
 revoke execute on function private.trip_name(uuid)            from public, anon, authenticated;
 revoke execute on function private.person_display_name(uuid)  from public, anon, authenticated;
@@ -39,6 +40,8 @@ revoke execute on function public.suggest_trip_people(text, int) from public, an
 grant  execute on function public.suggest_trip_people(text, int) to authenticated;
 revoke execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) from public, anon;
 grant  execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) to authenticated;
+revoke execute on function public.resolve_or_create_non_group_container(jsonb) from public, anon;
+grant  execute on function public.resolve_or_create_non_group_container(jsonb) to authenticated;
 revoke execute on function public.mark_activity_seen() from public, anon;
 grant  execute on function public.mark_activity_seen() to authenticated;
 

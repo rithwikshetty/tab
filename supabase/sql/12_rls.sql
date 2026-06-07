@@ -30,13 +30,16 @@ create policy profiles_delete_self on public.profiles
 -- trips: only members can read/update/delete; you can create trips for yourself.
 create policy trips_select_member on public.trips
   for select to authenticated using (private.is_trip_member(id));
+-- Clients may only create real trips (kind='trip'). Hidden non-group containers are
+-- created exclusively by resolve_or_create_non_group_container (SECURITY DEFINER).
 create policy trips_insert_self_created on public.trips
-  for insert to authenticated with check (created_by = (select auth.uid()));
+  for insert to authenticated with check (created_by = (select auth.uid()) and kind = 'trip');
 create policy trips_update_member on public.trips
   for update to authenticated
-  using (private.is_trip_member(id)) with check (private.is_trip_member(id));
+  using (private.is_trip_member(id) and kind = 'trip')
+  with check (private.is_trip_member(id) and kind = 'trip');
 create policy trips_delete_member on public.trips
-  for delete to authenticated using (private.is_trip_member(id));
+  for delete to authenticated using (private.is_trip_member(id) and kind = 'trip');
 
 -- trip_people: members can read the people in their trips. Inserts/claims go
 -- through SECURITY DEFINER RPCs so email matching stays server-side.

@@ -3,13 +3,14 @@ import SwiftData
 
 struct TripListView: View {
     var onSelect: (UUID) -> Void = { _ in }
+    var onAddExpense: () -> Void = {}
 
     @Environment(\.modelContext) private var context
     @Environment(AuthService.self) private var auth
     @Environment(SyncService.self) private var sync
 
     @Query(
-        filter: #Predicate<TripEntity> { $0.deletedAt == nil },
+        filter: #Predicate<TripEntity> { $0.deletedAt == nil && $0.kind == "trip" },
         sort: \TripEntity.lastActivityAt,
         order: .reverse
     )
@@ -40,7 +41,7 @@ struct TripListView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
-                LargeTitle(title: "Trips")
+                header
 
                 if trips.isEmpty {
                     EmptyTripsView()
@@ -61,8 +62,10 @@ struct TripListView: View {
             .background(Sage.bg.ignoresSafeArea())
             .refreshable { await sync.pullAll() }
 
-            Fab(systemImage: "plus", accessibilityIdentifier: "trips.addButton") { showingNewTrip = true }
-                .floatingActionPlacement()
+            Fab(label: "Add expense", systemImage: "plus", accessibilityIdentifier: "trips.addExpenseButton") {
+                onAddExpense()
+            }
+            .floatingActionPlacement()
         }
         .sheet(isPresented: $showingNewTrip) {
             NewTripSheet()
@@ -80,6 +83,32 @@ struct TripListView: View {
         } message: { trip in
             Text("\"\(trip.name)\" will be removed for everyone. You can recover it for 30 days.")
         }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text("Trips")
+                .font(.largeTitle30)
+                .tracking(-0.75)
+                .foregroundStyle(Sage.text)
+
+            Spacer(minLength: 8)
+
+            Button {
+                showingNewTrip = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Sage.accent)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(PressableButtonStyle(scale: 0.88))
+            .accessibilityIdentifier("trips.addButton")
+            .accessibilityLabel("New trip")
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
     }
 
     @ViewBuilder

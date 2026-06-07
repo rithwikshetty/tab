@@ -3,26 +3,55 @@
 
 create table public.trips (
   id               uuid primary key default gen_random_uuid(),
-  name             text not null check (
-    char_length(trim(name)) > 0 and char_length(name) <= 100
-  ),
+  name             text not null,
+  kind             text not null default 'trip' check (kind in ('trip', 'non_group')),
+  member_signature text,
   created_by       uuid not null references public.profiles(id) on delete restrict,
   last_activity_at timestamptz not null default now(),
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   deleted_at       timestamptz,
-  write_id         uuid not null default gen_random_uuid()
+  write_id         uuid not null default gen_random_uuid(),
+  -- A user-facing trip needs a name; a hidden non-group container does not.
+  constraint trips_name_valid check (
+    kind = 'non_group'
+    or (char_length(trim(name)) > 0 and char_length(name) <= 100)
+  ),
+  -- A non-group container is identified by its participant-set signature; trips have none.
+  constraint trips_signature_matches_kind check (
+    (kind = 'non_group') = (member_signature is not null)
+  )
 );
 
 comment on table public.trips is
-  'Top-level expense container. last_activity_at bumped by triggers on expense/settlement writes.';
+  'Top-level expense container. last_activity_at bumped by triggers on expense/settlement writes. kind=''non_group'' rows are hidden shadow groups backing non-group expenses, deduplicated per participant set via member_signature.';
 
 create index trips_created_by_idx on public.trips(created_by);
-create index trips_active_idx     on public.trips(last_activity_at desc) where deleted_at is null;
+create index trips_active_idx     on public.trips(last_activity_at desc) where deleted_at is null and kind = 'trip';
+-- One shadow group per participant set, globally (so {A,B} is shared regardless of creator).
+create unique index trips_non_group_signature_uniq on public.trips(member_signature)
+  where kind = 'non_group' and deleted_at is null;
 
 create trigger trg_trips_sync_fields
   before insert or update on public.trips
   for each row execute function public.set_sync_fields();
+
+-- kind is immutable: a trip can never become a non-group container or vice versa.
+create or replace function public.guard_trip_kind()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.kind is distinct from old.kind then
+    raise exception 'trips.kind is immutable' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_trips_guard_kind
+  before update on public.trips
+  for each row execute function public.guard_trip_kind();
 
 create table public.trip_people (
   id           uuid primary key default gen_random_uuid(),

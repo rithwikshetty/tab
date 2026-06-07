@@ -43,7 +43,9 @@ $$;
 
 create or replace function private.trip_name(p_id uuid)
 returns text language sql security definer stable set search_path = public, private as $$
-  select name from public.trips where id = p_id;
+  select case when kind = 'non_group' then 'Non-group' else name end
+  from public.trips
+  where id = p_id;
 $$;
 
 create or replace function private.person_display_name(p_id uuid)
@@ -150,8 +152,12 @@ create or replace function public.log_membership_activity()
 returns trigger language plpgsql security definer set search_path = public, private as $$
 declare
   v_actor uuid := auth.uid();
+  v_trip_id uuid := coalesce(new.trip_id, old.trip_id);
 begin
   if v_actor is null then return coalesce(new, old); end if;
+  if exists (select 1 from public.trips t where t.id = v_trip_id and t.kind = 'non_group') then
+    return coalesce(new, old);
+  end if;
 
   if tg_op = 'INSERT' then
     -- Skip the creator adding themselves at trip creation (invited_by = user_id):
@@ -191,6 +197,7 @@ declare
   v_action text;
 begin
   if v_actor is null then return coalesce(new, old); end if;
+  if new.kind = 'non_group' then return new; end if;
 
   if tg_op = 'INSERT' then
     v_action := 'trip_created';

@@ -2,11 +2,13 @@ import SwiftUI
 import SwiftData
 import UIKit
 
-enum RootTab: Hashable { case trips, activity, settings }
+enum RootTab: Hashable { case friends, trips, activity, settings }
 
 enum Route: Hashable {
     case trip(UUID)
+    case friend(FriendIdentity)
     case newExpense(UUID)
+    case newNonGroupExpense
     case editExpense(tripID: UUID, expenseID: UUID)
     case expense(UUID)
     case settleUp(tripID: UUID)
@@ -22,6 +24,7 @@ struct RootView: View {
     @Environment(PushService.self) private var push
 
     @State private var selectedTab: RootTab = .trips
+    @State private var friendsPath: [Route] = []
     @State private var tripsPath: [Route] = []
     @State private var activityPath: [Route] = []
 
@@ -43,9 +46,22 @@ struct RootView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
+            Tab("Friends", systemImage: "person.2", value: RootTab.friends) {
+                NavigationStack(path: $friendsPath) {
+                    FriendsView(
+                        onOpenFriend: { friendsPath.append(.friend($0)) },
+                        onAddExpense: { friendsPath.append(.newNonGroupExpense) }
+                    )
+                    .navigationDestination(for: Route.self) { destination($0, path: $friendsPath) }
+                }
+            }
+
             Tab("Trips", systemImage: "suitcase", value: RootTab.trips) {
                 NavigationStack(path: $tripsPath) {
-                    TripListView { tripID in tripsPath.append(.trip(tripID)) }
+                    TripListView(
+                        onSelect: { tripID in tripsPath.append(.trip(tripID)) },
+                        onAddExpense: { tripsPath.append(.newNonGroupExpense) }
+                    )
                         .navigationDestination(for: Route.self) { destination($0, path: $tripsPath) }
                 }
             }
@@ -71,6 +87,7 @@ struct RootView: View {
             bootstrapProfile()
             bootstrapDefaultCategories()
             #if DEBUG
+            DebugFriendsSeed.seedIfRequested(in: context, currentUserID: currentUserID)
             DebugActivitySeed.seedIfRequested(in: context, currentUserID: currentUserID)
             #endif
             await sync.pushPending()
@@ -90,6 +107,7 @@ struct RootView: View {
         .onAppear {
             #if DEBUG
             switch ProcessInfo.processInfo.environment["TAB_START_TAB"] {
+            case "friends": selectedTab = .friends
             case "activity": selectedTab = .activity
             case "settings": selectedTab = .settings
             default: break
@@ -129,9 +147,22 @@ struct RootView: View {
                 onSettleUp: { path.wrappedValue.append(.settleUp(tripID: id)) },
                 onOpenSettlement: { settlementID in path.wrappedValue.append(.settlement(settlementID)) }
             )
+        case .friend(let identity):
+            FriendDetailView(
+                friend: identity,
+                onSettleSource: { containerID in path.wrappedValue.append(.settleUp(tripID: containerID)) },
+                onOpenExpense: { expenseID in path.wrappedValue.append(.expense(expenseID)) },
+                onOpenSettlement: { settlementID in path.wrappedValue.append(.settlement(settlementID)) }
+            )
         case .newExpense(let tripID):
             ExpenseEntryView(tripID: tripID)
                 .toolbar(.hidden, for: .tabBar)
+        case .newNonGroupExpense:
+            NonGroupExpenseFlowView(
+                // Swap the picker for the expense form so saving returns to the tab root.
+                onResolved: { containerID in path.wrappedValue = [.newExpense(containerID)] }
+            )
+            .toolbar(.hidden, for: .tabBar)
         case .editExpense(let tripID, let expenseID):
             ExpenseEntryView(tripID: tripID, editingExpenseID: expenseID)
                 .toolbar(.hidden, for: .tabBar)

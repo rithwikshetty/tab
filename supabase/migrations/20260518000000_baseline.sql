@@ -300,26 +300,55 @@ comment on function public.mark_activity_seen() is
 
 create table public.trips (
   id               uuid primary key default gen_random_uuid(),
-  name             text not null check (
-    char_length(trim(name)) > 0 and char_length(name) <= 100
-  ),
+  name             text not null,
+  kind             text not null default 'trip' check (kind in ('trip', 'non_group')),
+  member_signature text,
   created_by       uuid not null references public.profiles(id) on delete restrict,
   last_activity_at timestamptz not null default now(),
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   deleted_at       timestamptz,
-  write_id         uuid not null default gen_random_uuid()
+  write_id         uuid not null default gen_random_uuid(),
+  -- A user-facing trip needs a name; a hidden non-group container does not.
+  constraint trips_name_valid check (
+    kind = 'non_group'
+    or (char_length(trim(name)) > 0 and char_length(name) <= 100)
+  ),
+  -- A non-group container is identified by its participant-set signature; trips have none.
+  constraint trips_signature_matches_kind check (
+    (kind = 'non_group') = (member_signature is not null)
+  )
 );
 
 comment on table public.trips is
-  'Top-level expense container. last_activity_at bumped by triggers on expense/settlement writes.';
+  'Top-level expense container. last_activity_at bumped by triggers on expense/settlement writes. kind=''non_group'' rows are hidden shadow groups backing non-group expenses, deduplicated per participant set via member_signature.';
 
 create index trips_created_by_idx on public.trips(created_by);
-create index trips_active_idx     on public.trips(last_activity_at desc) where deleted_at is null;
+create index trips_active_idx     on public.trips(last_activity_at desc) where deleted_at is null and kind = 'trip';
+-- One shadow group per participant set, globally (so {A,B} is shared regardless of creator).
+create unique index trips_non_group_signature_uniq on public.trips(member_signature)
+  where kind = 'non_group' and deleted_at is null;
 
 create trigger trg_trips_sync_fields
   before insert or update on public.trips
   for each row execute function public.set_sync_fields();
+
+-- kind is immutable: a trip can never become a non-group container or vice versa.
+create or replace function public.guard_trip_kind()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.kind is distinct from old.kind then
+    raise exception 'trips.kind is immutable' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_trips_guard_kind
+  before update on public.trips
+  for each row execute function public.guard_trip_kind();
 
 create table public.trip_people (
   id           uuid primary key default gen_random_uuid(),
@@ -931,7 +960,9 @@ $$;
 
 create or replace function private.trip_name(p_id uuid)
 returns text language sql security definer stable set search_path = public, private as $$
-  select name from public.trips where id = p_id;
+  select case when kind = 'non_group' then 'Non-group' else name end
+  from public.trips
+  where id = p_id;
 $$;
 
 create or replace function private.person_display_name(p_id uuid)
@@ -1038,8 +1069,12 @@ create or replace function public.log_membership_activity()
 returns trigger language plpgsql security definer set search_path = public, private as $$
 declare
   v_actor uuid := auth.uid();
+  v_trip_id uuid := coalesce(new.trip_id, old.trip_id);
 begin
   if v_actor is null then return coalesce(new, old); end if;
+  if exists (select 1 from public.trips t where t.id = v_trip_id and t.kind = 'non_group') then
+    return coalesce(new, old);
+  end if;
 
   if tg_op = 'INSERT' then
     -- Skip the creator adding themselves at trip creation (invited_by = user_id):
@@ -1079,6 +1114,7 @@ declare
   v_action text;
 begin
   if v_actor is null then return coalesce(new, old); end if;
+  if new.kind = 'non_group' then return new; end if;
 
   if tg_op = 'INSERT' then
     v_action := 'trip_created';
@@ -1324,13 +1360,16 @@ create policy profiles_delete_self on public.profiles
 -- trips: only members can read/update/delete; you can create trips for yourself.
 create policy trips_select_member on public.trips
   for select to authenticated using (private.is_trip_member(id));
+-- Clients may only create real trips (kind='trip'). Hidden non-group containers are
+-- created exclusively by resolve_or_create_non_group_container (SECURITY DEFINER).
 create policy trips_insert_self_created on public.trips
-  for insert to authenticated with check (created_by = (select auth.uid()));
+  for insert to authenticated with check (created_by = (select auth.uid()) and kind = 'trip');
 create policy trips_update_member on public.trips
   for update to authenticated
-  using (private.is_trip_member(id)) with check (private.is_trip_member(id));
+  using (private.is_trip_member(id) and kind = 'trip')
+  with check (private.is_trip_member(id) and kind = 'trip');
 create policy trips_delete_member on public.trips
-  for delete to authenticated using (private.is_trip_member(id));
+  for delete to authenticated using (private.is_trip_member(id) and kind = 'trip');
 
 -- trip_people: members can read the people in their trips. Inserts/claims go
 -- through SECURITY DEFINER RPCs so email matching stays server-side.
@@ -1994,6 +2033,7 @@ revoke execute on function public.log_expense_activity()    from public, anon, a
 revoke execute on function public.log_settlement_activity() from public, anon, authenticated;
 revoke execute on function public.log_membership_activity() from public, anon, authenticated;
 revoke execute on function public.log_trip_activity()       from public, anon, authenticated;
+revoke execute on function public.guard_trip_kind()         from public, anon, authenticated;
 revoke execute on function private.profile_display_name(uuid) from public, anon, authenticated;
 revoke execute on function private.trip_name(uuid)            from public, anon, authenticated;
 revoke execute on function private.person_display_name(uuid)  from public, anon, authenticated;
@@ -2011,6 +2051,8 @@ revoke execute on function public.suggest_trip_people(text, int) from public, an
 grant  execute on function public.suggest_trip_people(text, int) to authenticated;
 revoke execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) from public, anon;
 grant  execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) to authenticated;
+revoke execute on function public.resolve_or_create_non_group_container(jsonb) from public, anon;
+grant  execute on function public.resolve_or_create_non_group_container(jsonb) to authenticated;
 revoke execute on function public.mark_activity_seen() from public, anon;
 grant  execute on function public.mark_activity_seen() to authenticated;
 
@@ -2168,3 +2210,149 @@ revoke execute on function public.push_targets_for_activity(uuid) from public, a
 grant execute on function public.push_targets_for_activity(uuid) to service_role;
 
 -- <<< END 18_notifications_push.sql
+
+-- >>> BEGIN 19_rpc_non_group.sql
+
+-- 19. Client RPC: non-group containers
+-- ============================================================================
+-- A non-group expense is backed by a hidden trips row (kind='non_group') shared
+-- by the exact set of participants. The container is deduplicated by
+-- member_signature (the canonical sort of participants' normalised emails), so
+-- the same set of people always resolves to one shared container regardless of
+-- who creates the expense, and the signature is stable across sign-in/claim
+-- (email never changes when a pending row is claimed).
+
+create or replace function public.resolve_or_create_non_group_container(
+  p_participants jsonb
+)
+returns setof public.trip_people
+language plpgsql
+security definer
+set search_path = public, private
+as $$
+declare
+  v_actor     uuid := auth.uid();
+  v_email     text := private.current_auth_email();
+  v_self_name text;
+  v_emails    text[];
+  v_signature text;
+  v_container uuid;
+  v_row       jsonb;
+  v_p_email   text;
+  v_p_name    text;
+  v_user_id   uuid;
+begin
+  if v_actor is null then
+    raise exception 'Authentication required' using errcode = '28000';
+  end if;
+
+  if v_email is null or v_email = '' or v_email not like '%@%' then
+    raise exception 'A verified email is required to add non-group expenses' using errcode = '22023';
+  end if;
+
+  if p_participants is null or jsonb_typeof(p_participants) <> 'array' then
+    raise exception 'participants must be a JSON array' using errcode = '22023';
+  end if;
+
+  -- Collect the deduped set of normalised emails (caller + the other participants).
+  v_emails := array[v_email];
+  for v_row in select * from jsonb_array_elements(p_participants) loop
+    v_p_email := private.normalized_email(v_row->>'email');
+    if v_p_email is null or v_p_email = '' or v_p_email not like '%@%' or char_length(v_p_email) > 320 then
+      raise exception 'A valid participant email is required' using errcode = '22023';
+    end if;
+    if not (v_p_email = any (v_emails)) then
+      v_emails := array_append(v_emails, v_p_email);
+    end if;
+  end loop;
+
+  if array_length(v_emails, 1) < 2 then
+    raise exception 'A non-group expense needs at least two people' using errcode = '22023';
+  end if;
+
+  -- Canonical participant-set signature: sorted emails joined by '|'.
+  select string_agg(e, '|' order by e) into v_signature
+  from unnest(v_emails) as e;
+
+  -- Find the existing shared container, or create it.
+  select id into v_container
+  from public.trips
+  where kind = 'non_group' and member_signature = v_signature and deleted_at is null
+  limit 1;
+
+  if v_container is null then
+    v_container := gen_random_uuid();
+    begin
+      insert into public.trips (id, name, kind, member_signature, created_by)
+      values (v_container, '', 'non_group', v_signature, v_actor);
+    exception when unique_violation then
+      -- Another transaction created the same participant-set container concurrently.
+      select id into v_container
+      from public.trips
+      where kind = 'non_group' and member_signature = v_signature and deleted_at is null
+      limit 1;
+    end;
+  end if;
+
+  -- Caller's display name (ensure their profile exists).
+  insert into public.profiles (id, display_name)
+  values (v_actor, left(split_part(v_email, '@', 1), 60))
+  on conflict (id) do nothing;
+
+  select left(coalesce(nullif(trim(display_name), ''), split_part(v_email, '@', 1)), 60)
+  into v_self_name
+  from public.profiles where id = v_actor;
+
+  -- The caller must be a joined member so create_expense_with_payments_and_splits
+  -- (which requires is_profile_trip_member) accepts their write.
+  insert into public.trip_people (id, trip_id, user_id, email, display_name, invited_by, joined_at)
+  values (gen_random_uuid(), v_container, v_actor, v_email, v_self_name, v_actor, clock_timestamp())
+  on conflict on constraint trip_people_email_unique do update
+    set user_id   = v_actor,
+        joined_at = coalesce(public.trip_people.joined_at, clock_timestamp());
+
+  -- Ensure each other participant: claimed if their email already has an account,
+  -- otherwise pending until they sign in (claim_trip_people_for_current_email).
+  for v_row in select * from jsonb_array_elements(p_participants) loop
+    v_p_email := private.normalized_email(v_row->>'email');
+    if v_p_email = v_email then
+      continue;
+    end if;
+
+    v_user_id := null;
+    select u.id into v_user_id
+    from auth.users u
+    where private.normalized_email(u.email) = v_p_email
+    limit 1;
+
+    v_p_name := left(coalesce(nullif(trim(v_row->>'display_name'), ''), split_part(v_p_email, '@', 1)), 60);
+
+    if v_user_id is not null then
+      insert into public.profiles (id, display_name)
+      values (v_user_id, v_p_name)
+      on conflict (id) do nothing;
+    end if;
+
+    insert into public.trip_people (id, trip_id, user_id, email, display_name, invited_by, joined_at)
+    values (
+      gen_random_uuid(), v_container, v_user_id, v_p_email, v_p_name, v_actor,
+      case when v_user_id is null then null else clock_timestamp() end
+    )
+    on conflict on constraint trip_people_email_unique do update
+      set user_id   = coalesce(public.trip_people.user_id, excluded.user_id),
+          joined_at = case
+            when public.trip_people.joined_at is not null then public.trip_people.joined_at
+            when excluded.user_id is not null then clock_timestamp()
+            else null
+          end;
+  end loop;
+
+  return query
+  select tp.* from public.trip_people tp where tp.trip_id = v_container;
+end;
+$$;
+
+comment on function public.resolve_or_create_non_group_container(jsonb) is
+  'Finds or creates the hidden non-group container for the canonical set of participant emails (caller + p_participants [{email, display_name}]), ensuring a trip_people row for each. Idempotent by member_signature. Returns the container''s trip_people rows; the caller derives container_id from trip_id.';
+
+-- <<< END 19_rpc_non_group.sql

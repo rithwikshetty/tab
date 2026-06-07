@@ -27,6 +27,8 @@ struct ProfileDTO: Codable, Sendable {
 struct TripDTO: Codable, Sendable {
     let id: UUID
     let name: String
+    let kind: String
+    let memberSignature: String?
     let createdBy: UUID
     let lastActivityAt: Date
     let createdAt: Date
@@ -35,7 +37,8 @@ struct TripDTO: Codable, Sendable {
     let writeID: UUID
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id, name, kind
+        case memberSignature = "member_signature"
         case createdBy = "created_by"
         case lastActivityAt = "last_activity_at"
         case createdAt = "created_at"

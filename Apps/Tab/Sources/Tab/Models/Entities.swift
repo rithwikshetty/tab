@@ -43,6 +43,11 @@ final class TripEntity {
 
     var id: UUID
     var name: String
+    /// "trip" (a real, user-facing trip) or "non_group" (a hidden shadow group
+    /// backing non-group expenses; never shown in the Trips list, server-managed).
+    var kind: String = "trip"
+    /// Canonical participant-set signature for non-group containers; nil for trips.
+    var memberSignature: String?
     var createdByID: UUID
     var lastActivityAt: Date
     var createdAt: Date
@@ -60,9 +65,13 @@ final class TripEntity {
     @Relationship(deleteRule: .cascade, inverse: \SettlementEntity.trip)
     var settlements: [SettlementEntity] = []
 
+    var isNonGroup: Bool { kind == "non_group" }
+
     init(
         id: UUID = UUID(),
         name: String,
+        kind: String = "trip",
+        memberSignature: String? = nil,
         createdByID: UUID,
         lastActivityAt: Date = .now,
         createdAt: Date = .now,
@@ -73,6 +82,8 @@ final class TripEntity {
     ) {
         self.id = id
         self.name = name
+        self.kind = kind
+        self.memberSignature = memberSignature
         self.createdByID = createdByID
         self.lastActivityAt = lastActivityAt
         self.createdAt = createdAt

@@ -80,6 +80,8 @@ struct DropdownPill: View {
             Text(title)
                 .font(.pill)
                 .tracking(-0.07)
+                .lineLimit(1)
+                .truncationMode(.tail)
             Image(systemName: "chevron.down")
                 .font(.system(size: 9, weight: .semibold))
                 .opacity(0.55)

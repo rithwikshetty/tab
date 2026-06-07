@@ -29,12 +29,14 @@ final class SyncService {
         case signInRequired
         case localTripMissing
         case deletedTrip
+        case nonGroupResolveFailed
 
         var errorDescription: String? {
             switch self {
             case .signInRequired: "Sign in to sync this trip."
             case .localTripMissing: "Trip not found on this device."
             case .deletedTrip: "This trip has been deleted."
+            case .nonGroupResolveFailed: "Couldn't set up this non-group expense. Check your connection and try again."
             }
         }
     }
@@ -120,6 +122,124 @@ final class SyncService {
             ])
             .execute()
             .value
+    }
+
+    /// Finds or creates the hidden non-group container shared by the current user
+    /// and `participants` (the other people, by email). Persists the container +
+    /// its trip_people locally (server-managed; never pushed) and returns the
+    /// container id so a non-group expense can be written against it.
+    func resolveNonGroupContainer(participants: [(email: String, displayName: String)]) async throws -> UUID {
+        guard let user = auth?.currentUser else { throw SyncError.signInRequired }
+
+        let selfEmail = user.email.map(Self.normalizedEmail) ?? "\(user.id.uuidString.lowercased())@users.tab"
+        // Normalize and dedupe inside so callers cannot create one-person or duplicate
+        // local containers, and so the payload matches the RPC's server-side normalization.
+        var seenEmails: Set<String> = []
+        let normalized = participants.compactMap { participant -> (email: String, displayName: String)? in
+            let email = Self.normalizedEmail(participant.email)
+            guard email != selfEmail, seenEmails.insert(email).inserted else { return nil }
+            return (email: email, displayName: participant.displayName)
+        }
+        guard !normalized.isEmpty else { throw SyncError.nonGroupResolveFailed }
+
+        // Canonical participant-set signature (caller + others), stable across claim.
+        var emails = Set(normalized.map { $0.email })
+        emails.insert(selfEmail)
+        let signature = emails.sorted().joined(separator: "|")
+
+        // Mock auth: there is no server, so create the container locally (the rest of
+        // the app works the same way under mock auth). This is mock-ONLY — a real user
+        // whose session is merely expired must re-authenticate rather than create an
+        // orphaned local container the server never learns about.
+        var isMockAuth = false
+        #if DEBUG
+        isMockAuth = auth?.isUsingMockAuth == true
+        #endif
+        if isMockAuth {
+            return try resolveNonGroupContainerLocally(
+                signature: signature, selfEmail: selfEmail, user: user, participants: normalized
+            )
+        }
+        guard hasRealSession else { throw SyncError.signInRequired }
+
+        let payload = normalized.map { p in
+            AnyJSON.object([
+                "email": .string(p.email),
+                "display_name": .string(p.displayName),
+            ])
+        }
+        let rows: [TripPersonDTO] = try await client
+            .rpc("resolve_or_create_non_group_container", params: [
+                "p_participants": AnyJSON.array(payload)
+            ])
+            .execute()
+            .value
+
+        guard let containerID = rows.first?.tripID else {
+            throw SyncError.nonGroupResolveFailed
+        }
+
+        let ctx = container.mainContext
+        if try ctx.fetch(FetchDescriptor<TripEntity>(
+            predicate: #Predicate { $0.id == containerID }
+        )).first == nil {
+            // Placeholder; a subsequent pull fills authoritative fields. Marked
+            // clean (pushedWriteID == writeID) so pushTrips never tries to push it.
+            let write = UUID()
+            ctx.insert(TripEntity(
+                id: containerID,
+                name: "",
+                kind: "non_group",
+                memberSignature: signature,
+                createdByID: user.id,
+                writeID: write,
+                pushedWriteID: write
+            ))
+        }
+        for dto in rows {
+            try upsertTripPerson(dto, in: ctx)
+        }
+        try ctx.save()
+        return containerID
+    }
+
+    private func resolveNonGroupContainerLocally(
+        signature: String,
+        selfEmail: String,
+        user: CurrentUser,
+        participants: [(email: String, displayName: String)]
+    ) throws -> UUID {
+        let ctx = container.mainContext
+        if let existing = try ctx.fetch(FetchDescriptor<TripEntity>(
+            predicate: #Predicate { $0.kind == "non_group" && $0.memberSignature == signature && $0.deletedAt == nil }
+        )).first {
+            return existing.id
+        }
+
+        let write = UUID()
+        let containerID = UUID()
+        let trip = TripEntity(
+            id: containerID, name: "", kind: "non_group", memberSignature: signature,
+            createdByID: user.id, writeID: write, pushedWriteID: write
+        )
+        ctx.insert(trip)
+
+        let selfWrite = UUID()
+        ctx.insert(TripPersonEntity(
+            id: UUID(), userID: user.id, email: selfEmail, displayName: user.displayName,
+            invitedByID: user.id, trip: trip, joinedAt: .now, writeID: selfWrite, pushedWriteID: selfWrite
+        ))
+        for p in participants {
+            let email = Self.normalizedEmail(p.email)
+            if email == selfEmail { continue }
+            let w = UUID()
+            ctx.insert(TripPersonEntity(
+                id: UUID(), userID: nil, email: email, displayName: p.displayName,
+                invitedByID: user.id, trip: trip, joinedAt: nil, writeID: w, pushedWriteID: w
+            ))
+        }
+        try ctx.save()
+        return containerID
     }
 
     // MARK: - Pull
@@ -533,6 +653,8 @@ final class SyncService {
         if let entity = existing {
             if entity.writeID == dto.writeID { return }
             entity.name = dto.name
+            entity.kind = dto.kind
+            entity.memberSignature = dto.memberSignature
             entity.createdByID = dto.createdBy
             entity.lastActivityAt = dto.lastActivityAt
             entity.updatedAt = dto.updatedAt
@@ -543,6 +665,8 @@ final class SyncService {
             ctx.insert(TripEntity(
                 id: dto.id,
                 name: dto.name,
+                kind: dto.kind,
+                memberSignature: dto.memberSignature,
                 createdByID: dto.createdBy,
                 lastActivityAt: dto.lastActivityAt,
                 createdAt: dto.createdAt,
@@ -652,6 +776,7 @@ final class SyncService {
             entity.deletedAt = dto.deletedAt
             entity.writeID = dto.writeID
             entity.pushedWriteID = dto.writeID
+            entity.trip = trip
         } else {
             ctx.insert(ExpenseEntity(
                 id: dto.id,
@@ -756,6 +881,7 @@ final class SyncService {
             entity.deletedAt = dto.deletedAt
             entity.writeID = dto.writeID
             entity.pushedWriteID = dto.writeID
+            entity.trip = trip
         } else {
             ctx.insert(SettlementEntity(
                 id: dto.id,
@@ -833,7 +959,10 @@ final class SyncService {
 
     private func pushTrips() async throws {
         let ctx = container.mainContext
-        let dirty = try ctx.fetch(FetchDescriptor<TripEntity>()).filter { $0.pushedWriteID != $0.writeID }
+        // Non-group containers are created and mutated server-side only (via
+        // resolve_or_create_non_group_container) and pulled read-only — never pushed.
+        let dirty = try ctx.fetch(FetchDescriptor<TripEntity>())
+            .filter { !$0.isNonGroup && $0.pushedWriteID != $0.writeID }
         guard !dirty.isEmpty else { return }
         for trip in dirty {
             do {
