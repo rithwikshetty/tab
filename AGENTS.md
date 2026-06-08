@@ -128,4 +128,4 @@ session_set_defaults with env: {"TAB_MOCK_AUTH": "1"}
 
 - **Design tokens** → `design/mockups/v1.html` (Sage palette is locked)
 - **Supabase project ref** → set locally with `SUPABASE_PROJECT_REF`; no public default is checked in
-- **MCP config** → `.mcp.json`
+- **MCP config** → `.mcp.json` (Claude Code), `.codex/config.toml` (Codex), `.pi/mcp.json` (Pi)
