@@ -217,6 +217,7 @@ final class AuthService {
     }
 
     func handleAuthCallback(_ url: URL) {
+        guard Self.isExpectedAuthCallbackURL(url) else { return }
         client.auth.handle(url)
     }
 
@@ -322,6 +323,12 @@ final class AuthService {
         let digits = code.filter(\.isNumber)
         guard digits.count == Self.emailVerificationCodeLength else { return nil }
         return String(digits)
+    }
+
+    nonisolated static func isExpectedAuthCallbackURL(_ url: URL) -> Bool {
+        guard url.scheme == SupabaseConfig.authCallbackScheme else { return false }
+        guard url.host == SupabaseConfig.authCallbackURL.host else { return false }
+        return url.path.isEmpty || url.path == "/"
     }
 
     private nonisolated static func looksLikeEmail(_ email: String) -> Bool {

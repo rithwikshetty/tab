@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Tab
 
@@ -38,5 +39,16 @@ struct AuthServiceTests {
         #expect(AuthService.normalizedVerificationCode("abc12345678") == "12345678")
         #expect(AuthService.normalizedVerificationCode("1234567") == nil)
         #expect(AuthService.normalizedVerificationCode("123456789") == nil)
+    }
+
+    @Test("auth callbacks only accept the configured local URL")
+    func authCallbacksRequireConfiguredLocalURL() throws {
+        let scheme = SupabaseConfig.authCallbackScheme
+
+        #expect(AuthService.isExpectedAuthCallbackURL(try #require(URL(string: "\(scheme)://auth-callback?code=abc"))))
+        #expect(AuthService.isExpectedAuthCallbackURL(try #require(URL(string: "\(scheme)://auth-callback/#access_token=abc"))))
+        #expect(!AuthService.isExpectedAuthCallbackURL(try #require(URL(string: "\(scheme)://not-auth-callback?code=abc"))))
+        #expect(!AuthService.isExpectedAuthCallbackURL(try #require(URL(string: "https://auth-callback?code=abc"))))
+        #expect(!AuthService.isExpectedAuthCallbackURL(try #require(URL(string: "\(scheme)://auth-callback/extra?code=abc"))))
     }
 }

@@ -38,6 +38,16 @@ security definer
 set search_path = public, private
 as $$
 begin
+  if tg_op = 'UPDATE' then
+    if new.trip_id is distinct from old.trip_id then
+      raise exception 'settlements.trip_id is immutable' using errcode = '42501';
+    end if;
+
+    if new.created_by is distinct from old.created_by then
+      raise exception 'settlements.created_by is immutable' using errcode = '42501';
+    end if;
+  end if;
+
   if not exists (select 1 from public.trips where id = new.trip_id and deleted_at is null) then
     raise exception 'Settlement trip must exist and be active' using errcode = '23514';
   end if;

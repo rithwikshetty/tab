@@ -4,7 +4,7 @@
 begin;
 set search_path = extensions, public, pg_temp;
 
-select plan(16);
+select plan(17);
 create temp table _r (line text);
 grant insert, select on _r to authenticated;
 
@@ -36,6 +36,11 @@ insert into _r select is(
 insert into _r select is(
   (select count(*)::int from public.activity_log where action = 'member_joined' and snapshot_json->>'member_name' = 'Bob'),
   1, 'member_joined emitted for added member');
+
+-- Bob claims the pending invite so unread counts and mute prefs treat him as a member.
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated"}';
+select public.claim_trip_people_for_current_email();
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}';
 
 -- Expense lifecycle
 select public.create_expense_with_payments_and_splits(
@@ -77,6 +82,13 @@ insert into _r select is(
   (select count(*)::int from public.activity_log where action='settlement_created' and entity_id='bbbbbbbb-0000-0000-0000-000000000001'),
   1, 'settlement_created emitted');
 
+-- Clients must not be able to forge activity rows directly: activity_log is
+-- written by domain triggers, and every insert fans out to Activity/push.
+insert into _r select throws_ok(
+  $$insert into public.activity_log (trip_id, actor_id, action, entity_type, entity_id, snapshot_json)
+      values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 'trip_updated', 'trip', '11111111-1111-1111-1111-111111111111', '{"trip_name":"Forged"}')$$,
+  '42501', null, 'direct client activity_log insert denied');
+
 -- Badge counts (run as owner: execute revoked from authenticated)
 reset role;
 -- alice authored everything -> 0 unread; bob authored nothing -> all 5 (trip_created,member_joined,exp_created,exp_updated,exp_deleted,settlement = 6)
@@ -100,16 +112,17 @@ values ('bbbbbbbb-0000-0000-0000-000000000002','11111111-1111-1111-1111-11111111
 reset role;
 insert into _r select is(public.unread_activity_count('00000000-0000-0000-0000-000000000002'), 0, 'muted trip events excluded from unread badge');
 
--- member_left on hard delete of a reference-free trip person
--- (people referenced by expenses/settlements are on delete restrict and cannot be removed)
+-- Client hard deletion of trip people is denied; member removals must be
+-- server-owned so one member cannot remove another member or pending invite.
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}';
 select public.add_trip_person_by_email('11111111-1111-1111-1111-111111111111', 'temp@test.tab', 'Temp', '10000000-0000-0000-0000-000000000003');
 delete from public.trip_people where id = '10000000-0000-0000-0000-000000000003';
 reset role;
-insert into _r select is(
-  (select count(*)::int from public.activity_log where action='member_left'),
-  1, 'member_left emitted on trip person removal');
+insert into _r select ok(
+  (select count(*)::int from public.trip_people where id = '10000000-0000-0000-0000-000000000003') = 1
+  and (select count(*)::int from public.activity_log where action='member_left') = 0,
+  'direct client trip_people hard delete has no effect and emits no member_left event');
 
 insert into _r select * from finish();
 select line from _r;

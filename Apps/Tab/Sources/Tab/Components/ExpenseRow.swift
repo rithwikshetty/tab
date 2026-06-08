@@ -23,12 +23,25 @@ struct ExpenseRow: View {
                     .tracking(-0.07)
                     .foregroundStyle(Sage.text)
                     .lineLimit(1)
-                Text("Paid by \(item.payerName) · your share \(item.yourShare)")
+                if let sourceName = item.sourceName {
+                    HStack(spacing: 6) {
+                        Text(sourceName)
+                        Text("·")
+                        Text("Paid by \(item.payerName) · your share \(item.yourShare)")
+                    }
                     .font(.expenseMeta)
                     .tracking(-0.07)
                     .foregroundStyle(Sage.textSecondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
+                } else {
+                    Text("Paid by \(item.payerName) · your share \(item.yourShare)")
+                        .font(.expenseMeta)
+                        .tracking(-0.07)
+                        .foregroundStyle(Sage.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
             }
             Spacer(minLength: 8)
             Text(item.totalAmount)

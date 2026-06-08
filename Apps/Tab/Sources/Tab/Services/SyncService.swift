@@ -302,7 +302,7 @@ final class SyncService {
 
     private func pullProfiles() async throws -> Set<UUID> {
         let rows: [ProfileDTO] = try await client
-            .from("profiles")
+            .from("visible_profiles")
             .select()
             .execute()
             .value
@@ -911,8 +911,8 @@ final class SyncService {
             try await pushProfiles()
             try await pushTrips()
             try await pushSettlements()
-            await pushPendingReceiptUploads()
             try await pushExpensesAndSplits()
+            await pushPendingReceiptUploads()
             try await pushMutes()
             phase = .idle
         } catch {

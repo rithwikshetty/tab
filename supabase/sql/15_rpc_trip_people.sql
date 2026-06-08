@@ -17,7 +17,6 @@ declare
   v_actor uuid := auth.uid();
   v_email text := private.normalized_email(p_email);
   v_display_name text := nullif(trim(p_display_name), '');
-  v_user_id uuid;
   v_person public.trip_people;
 begin
   if v_actor is null then
@@ -28,7 +27,11 @@ begin
     raise exception 'A valid email is required' using errcode = '22023';
   end if;
 
-  if not exists (select 1 from public.trips t where t.id = p_trip_id and t.deleted_at is null) then
+  if exists (select 1 from public.trips t where t.id = p_trip_id and t.kind <> 'trip') then
+    raise exception 'Group-trip RPC cannot target non-group containers' using errcode = '42501';
+  end if;
+
+  if not exists (select 1 from public.trips t where t.id = p_trip_id and t.kind = 'trip' and t.deleted_at is null) then
     raise exception 'Trip not found or deleted' using errcode = 'P0002';
   end if;
 
@@ -36,38 +39,7 @@ begin
     raise exception 'Only trip members can add people' using errcode = '42501';
   end if;
 
-  select u.id, coalesce(p.display_name, split_part(v_email, '@', 1))
-  into v_user_id, v_display_name
-  from auth.users u
-  left join public.profiles p on p.id = u.id
-  where private.normalized_email(u.email) = v_email
-  limit 1;
-
-  v_display_name := left(coalesce(nullif(trim(p_display_name), ''), nullif(trim(v_display_name), ''), split_part(v_email, '@', 1)), 60);
-
-  if v_user_id is not null then
-    insert into public.profiles (id, display_name)
-    values (v_user_id, v_display_name)
-    on conflict (id) do nothing;
-  end if;
-
-  if v_user_id is not null then
-    select tp.* into v_person
-    from public.trip_people tp
-    where tp.trip_id = p_trip_id
-      and tp.user_id = v_user_id;
-
-    if found then
-      update public.trip_people
-      set email = v_email,
-          display_name = v_display_name,
-          joined_at = coalesce(public.trip_people.joined_at, clock_timestamp())
-      where public.trip_people.id = v_person.id
-      returning public.trip_people.* into v_person;
-
-      return v_person;
-    end if;
-  end if;
+  v_display_name := left(coalesce(v_display_name, split_part(v_email, '@', 1)), 60);
 
   insert into public.trip_people (
     id, trip_id, user_id, email, display_name, invited_by, joined_at
@@ -75,20 +47,14 @@ begin
   values (
     coalesce(p_person_id, gen_random_uuid()),
     p_trip_id,
-    v_user_id,
+    null,
     v_email,
     v_display_name,
     v_actor,
-    case when v_user_id is null then null else clock_timestamp() end
+    null
   )
   on conflict on constraint trip_people_email_unique do update
-    set user_id = coalesce(public.trip_people.user_id, excluded.user_id),
-        display_name = excluded.display_name,
-        joined_at = case
-          when public.trip_people.joined_at is not null then public.trip_people.joined_at
-          when excluded.user_id is not null then clock_timestamp()
-          else null
-        end
+    set display_name = excluded.display_name
   returning public.trip_people.* into v_person;
 
   return v_person;
@@ -96,7 +62,7 @@ end;
 $$;
 
 comment on function public.add_trip_person_by_email(uuid, text, text, uuid) is
-  'Adds a pending trip person by email, or immediately links the person if an auth account with that email already exists.';
+  'Adds or updates a pending trip person by email. Existing auth accounts are not linked until that user signs in and claims the email.';
 
 create or replace function public.claim_trip_people_for_current_email()
 returns setof public.trip_people

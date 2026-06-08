@@ -1,5 +1,11 @@
--- 13. Function privilege locking
+-- 13. Privilege locking
 -- ============================================================================
+-- Raw profile rows are shared for display lookup, but activity_last_seen_at is
+-- a private read cursor. Expose only non-sensitive profile columns to clients.
+revoke select on public.profiles from authenticated;
+grant select (id, display_name, avatar_url, created_at, updated_at, write_id)
+  on public.profiles to authenticated;
+
 -- Trigger functions exist only to be invoked by their triggers — they should
 -- never be callable via /rest/v1/rpc. Revoke EXECUTE from public/anon/auth.
 revoke execute on function public.handle_new_user()            from public, anon, authenticated;
@@ -59,3 +65,9 @@ revoke execute on function private.current_auth_email() from public, anon;
 grant  execute on function private.current_auth_email() to authenticated;
 revoke execute on function private.receipt_object_trip_id(text) from public, anon;
 grant  execute on function private.receipt_object_trip_id(text) to authenticated;
+revoke execute on function private.receipt_object_expense_id(text) from public, anon;
+grant  execute on function private.receipt_object_expense_id(text) to authenticated;
+revoke execute on function private.can_read_receipt_object(text) from public, anon;
+grant  execute on function private.can_read_receipt_object(text) to authenticated;
+revoke execute on function private.can_write_receipt_object(text) from public, anon;
+grant  execute on function private.can_write_receipt_object(text) to authenticated;

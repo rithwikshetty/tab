@@ -3,7 +3,7 @@
 begin;
 set search_path = extensions, public, pg_temp;
 
-select plan(25);
+select plan(32);
 create temp table _r (line text);
 grant insert, select on _r to authenticated;
 
@@ -35,6 +35,13 @@ insert into _r select is(
   (select count(*)::int from public.resolve_or_create_non_group_container('[{"email":"bob@test.tab"}]'::jsonb)),
   2, 'container has Alice and Bob (resolve returns both people)');
 
+insert into _r select ok(
+  (select user_id is null and joined_at is null
+   from public.trip_people
+   where email = 'bob@test.tab'
+     and trip_id = (select id from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab')),
+  'existing registered non-group participant remains pending until they claim');
+
 insert into _r select is(
   (select count(*)::int from public.trips where kind = 'non_group'),
   1, 'resolving the same set again is idempotent — still one container');
@@ -46,13 +53,14 @@ insert into _r select is(
      and action in ('trip_created', 'member_joined')),
   0, 'hidden non-group container/member scaffolding does not create Activity rows');
 
+with attempted as (
+  update public.trips
+  set name = 'visible bucket'
+  where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab'
+  returning 1
+)
 insert into _r select is(
-  (with attempted as (
-    update public.trips
-    set name = 'visible bucket'
-    where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab'
-    returning 1
-  ) select count(*)::int from attempted),
+  (select count(*)::int from attempted),
   0, 'clients cannot directly update hidden non-group trip rows');
 
 insert into _r select lives_ok(
@@ -68,7 +76,7 @@ insert into _r select lives_ok(
     (select id from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab'),
     (select id from public.trip_people where user_id = '00000000-0000-0000-0000-000000000001' and trip_id = (select id from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab')),
     (select id from public.trip_people where user_id = '00000000-0000-0000-0000-000000000001' and trip_id = (select id from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab')),
-    (select id from public.trip_people where user_id = '00000000-0000-0000-0000-000000000002' and trip_id = (select id from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab'))
+    (select id from public.trip_people where email = 'bob@test.tab' and trip_id = (select id from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab'))
   ),
   'Alice writes a non-group expense (split with Bob) through the expense RPC');
 
@@ -107,6 +115,31 @@ insert into _r select throws_ok(
     values ('sneaky', 'non_group', 'x|y', '00000000-0000-0000-0000-000000000001')$$,
   '42501', null, 'a client cannot directly insert a non-group container');
 
+insert into _r select throws_ok(
+  format(
+    $f$select public.add_trip_person_by_email(%L, 'mallory@test.tab', 'Mallory', '99999999-0000-0000-0000-000000000001')$f$,
+    (select id from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab')
+  ),
+  '42501', null, 'group-trip add-person RPC cannot mutate hidden non-group containers');
+
+delete from public.trip_people
+where trip_id = (select id from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab')
+  and email = 'mallory@test.tab';
+
+insert into _r select throws_ok(
+  format(
+    $f$select public.create_trip_with_self(%L, '99999999-0000-0000-0000-000000000002', 'Visible bucket')$f$,
+    (select id from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab')
+  ),
+  '42501', null, 'group-trip creation RPC cannot rewrite hidden non-group containers');
+
+reset role;
+update public.trips
+set name = ''
+where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab';
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}';
+
 reset role;
 insert into _r select throws_ok(
   $$update public.trips set kind = 'trip'
@@ -122,7 +155,15 @@ set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-000000000002","
 
 insert into _r select is(
   (select count(*)::int from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab'),
-  1, 'Bob sees the {Alice,Bob} container');
+  0, 'Bob does not see the {Alice,Bob} container before claiming the pending row');
+
+insert into _r select lives_ok(
+  $$select * from public.claim_trip_people_for_current_email()$$,
+  'Bob claims his pending non-group rows on sign-in');
+
+insert into _r select is(
+  (select count(*)::int from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|bob@test.tab'),
+  1, 'Bob sees the {Alice,Bob} container after claim');
 
 insert into _r select is(
   (select count(*)::int from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|carol@test.tab'),
@@ -143,7 +184,15 @@ insert into _r select is(
 
 insert into _r select is(
   (select count(*)::int from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|carol@test.tab'),
-  1, 'Carol sees the {Alice,Carol} container');
+  0, 'Carol does not see the {Alice,Carol} container before claiming the pending row');
+
+insert into _r select lives_ok(
+  $$select * from public.claim_trip_people_for_current_email()$$,
+  'Carol claims her pending non-group rows on sign-in');
+
+insert into _r select is(
+  (select count(*)::int from public.trips where kind = 'non_group' and member_signature = 'alice@test.tab|carol@test.tab'),
+  1, 'Carol sees the {Alice,Carol} container after claim');
 
 -- ============================================================================
 -- Uniqueness: one container per participant set (enforced by the partial index)

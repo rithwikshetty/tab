@@ -996,9 +996,6 @@ struct ExpenseEntryView: View {
         dismiss()
 
         Task {
-            if let receiptPath {
-                try? await ReceiptStorage.uploadPendingReceipt(path: receiptPath)
-            }
             await sync.pushPending()
         }
     }
@@ -1069,9 +1066,6 @@ struct ExpenseEntryView: View {
         dismiss()
 
         Task {
-            if let path = expense.receiptStoragePath, receiptJPEG != nil {
-                try? await ReceiptStorage.uploadPendingReceipt(path: path)
-            }
             await sync.pushPending()
         }
     }

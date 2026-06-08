@@ -12,32 +12,32 @@ create policy receipts_select_member on storage.objects
   for select to authenticated
   using (
     bucket_id = 'receipts'
-    and private.is_trip_member(private.receipt_object_trip_id(name))
+    and private.can_read_receipt_object(name)
   );
 
 create policy receipts_insert_member on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'receipts'
-    and private.is_trip_member(private.receipt_object_trip_id(name))
+    and private.can_write_receipt_object(name)
   );
 
 create policy receipts_update_member on storage.objects
   for update to authenticated
   using (
     bucket_id = 'receipts'
-    and private.is_trip_member(private.receipt_object_trip_id(name))
+    and private.can_write_receipt_object(name)
   )
   with check (
     bucket_id = 'receipts'
-    and private.is_trip_member(private.receipt_object_trip_id(name))
+    and private.can_write_receipt_object(name)
   );
 
 create policy receipts_delete_member on storage.objects
   for delete to authenticated
   using (
     bucket_id = 'receipts'
-    and private.is_trip_member(private.receipt_object_trip_id(name))
+    and private.can_write_receipt_object(name)
   );
 
 

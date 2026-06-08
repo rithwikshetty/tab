@@ -35,6 +35,10 @@ begin
     raise exception 'Trip name is required' using errcode = '22023';
   end if;
 
+  if exists (select 1 from public.trips t where t.id = p_trip_id and t.kind <> 'trip') then
+    raise exception 'Group-trip RPC cannot target non-group containers' using errcode = '42501';
+  end if;
+
   select display_name into v_display_name
   from public.profiles
   where id = v_actor;
@@ -55,10 +59,13 @@ begin
   values (p_trip_id, trim(p_name), v_actor)
   on conflict (id) do update
     set name = excluded.name
-    where public.trips.created_by = v_actor
-       or private.is_profile_trip_member(public.trips.id, v_actor);
+    where public.trips.kind = 'trip'
+      and (
+        public.trips.created_by = v_actor
+        or private.is_profile_trip_member(public.trips.id, v_actor)
+      );
 
-  if not exists (select 1 from public.trips t where t.id = p_trip_id) then
+  if not exists (select 1 from public.trips t where t.id = p_trip_id and t.kind = 'trip') then
     raise exception 'Trip could not be created' using errcode = '42501';
   end if;
 

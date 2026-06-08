@@ -18,7 +18,7 @@ create table public.activity_log (
 );
 
 comment on table public.activity_log is
-  'Append-only audit trail. No UPDATE/DELETE allowed via RLS.';
+  'Append-only audit trail written by domain triggers. No client INSERT/UPDATE/DELETE allowed via RLS.';
 
 create index activity_log_trip_id_timestamp_idx on public.activity_log(trip_id, timestamp desc);
 create index activity_log_actor_id_idx          on public.activity_log(actor_id);

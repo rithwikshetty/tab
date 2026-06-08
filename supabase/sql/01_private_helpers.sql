@@ -110,5 +110,78 @@ $$;
 comment on function private.receipt_object_trip_id(text) is
   'Extracts a trip UUID from receipt object paths. Supports both <trip_id>/<expense_id>.jpg and receipts/<trip_id>/<expense_id>.jpg.';
 
+create or replace function private.receipt_object_expense_id(p_name text)
+returns uuid
+language plpgsql
+security definer
+immutable
+set search_path = public, private
+as $$
+declare
+  first_token text;
+  second_token text;
+  third_token text;
+  candidate text;
+begin
+  first_token := split_part(p_name, '/', 1);
+  second_token := split_part(p_name, '/', 2);
+  third_token := split_part(p_name, '/', 3);
+  candidate := case when first_token = 'receipts' then third_token else second_token end;
+  candidate := regexp_replace(candidate, '\.[^.\/]+$', '');
+
+  if candidate ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    return candidate::uuid;
+  end if;
+
+  return null;
+end;
+$$;
+
+comment on function private.receipt_object_expense_id(text) is
+  'Extracts an expense UUID from receipt object paths. Supports both <trip_id>/<expense_id>.jpg and receipts/<trip_id>/<expense_id>.jpg.';
+
+create or replace function private.can_read_receipt_object(p_name text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public, private
+as $$
+  select exists (
+    select 1
+    from public.expenses e
+    where e.id = private.receipt_object_expense_id(p_name)
+      and e.trip_id = private.receipt_object_trip_id(p_name)
+      and e.deleted_at is null
+      and e.receipt_storage_path = p_name
+      and private.is_trip_member(e.trip_id)
+  );
+$$;
+
+comment on function private.can_read_receipt_object(text) is
+  'True when the receipt object path belongs to a live expense in a trip the current user can read.';
+
+create or replace function private.can_write_receipt_object(p_name text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public, private
+as $$
+  select exists (
+    select 1
+    from public.expenses e
+    where e.id = private.receipt_object_expense_id(p_name)
+      and e.trip_id = private.receipt_object_trip_id(p_name)
+      and e.deleted_at is null
+      and e.receipt_storage_path = p_name
+      and e.created_by = auth.uid()
+      and private.is_trip_member(e.trip_id)
+  );
+$$;
+
+comment on function private.can_write_receipt_object(text) is
+  'True when the receipt object path belongs to a live expense created by the current user.';
+
 
 -- ============================================================================

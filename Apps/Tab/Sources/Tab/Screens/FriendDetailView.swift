@@ -172,17 +172,10 @@ struct FriendDetailView: View {
             Card {
                 ForEach(Array(day.entries.enumerated()), id: \.element.id) { index, entry in
                     Button { open(entry.item) } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            switch entry.item {
-                            case .expense(let row): ExpenseRow(item: row)
-                            case .settlement(let row): SettlementRow(item: row)
-                            }
-                            Text(entry.sourceName)
-                                .font(.system(size: 11))
-                                .foregroundStyle(Sage.textSecondary)
-                                .padding(.leading, 2)
+                        switch entry.item {
+                        case .expense(let row): ExpenseRow(item: row)
+                        case .settlement(let row): SettlementRow(item: row)
                         }
-                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     if index < day.entries.count - 1 { RowDivider() }

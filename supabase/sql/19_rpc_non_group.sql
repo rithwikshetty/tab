@@ -25,7 +25,6 @@ declare
   v_row       jsonb;
   v_p_email   text;
   v_p_name    text;
-  v_user_id   uuid;
 begin
   if v_actor is null then
     raise exception 'Authentication required' using errcode = '28000';
@@ -96,40 +95,23 @@ begin
     set user_id   = v_actor,
         joined_at = coalesce(public.trip_people.joined_at, clock_timestamp());
 
-  -- Ensure each other participant: claimed if their email already has an account,
-  -- otherwise pending until they sign in (claim_trip_people_for_current_email).
+  -- Ensure each other participant stays pending until that email's owner signs
+  -- in and claims it. Do not query auth.users here; that would let callers
+  -- probe whether an arbitrary email already has a Tab account.
   for v_row in select * from jsonb_array_elements(p_participants) loop
     v_p_email := private.normalized_email(v_row->>'email');
     if v_p_email = v_email then
       continue;
     end if;
 
-    v_user_id := null;
-    select u.id into v_user_id
-    from auth.users u
-    where private.normalized_email(u.email) = v_p_email
-    limit 1;
-
     v_p_name := left(coalesce(nullif(trim(v_row->>'display_name'), ''), split_part(v_p_email, '@', 1)), 60);
-
-    if v_user_id is not null then
-      insert into public.profiles (id, display_name)
-      values (v_user_id, v_p_name)
-      on conflict (id) do nothing;
-    end if;
 
     insert into public.trip_people (id, trip_id, user_id, email, display_name, invited_by, joined_at)
     values (
-      gen_random_uuid(), v_container, v_user_id, v_p_email, v_p_name, v_actor,
-      case when v_user_id is null then null else clock_timestamp() end
+      gen_random_uuid(), v_container, null, v_p_email, v_p_name, v_actor, null
     )
     on conflict on constraint trip_people_email_unique do update
-      set user_id   = coalesce(public.trip_people.user_id, excluded.user_id),
-          joined_at = case
-            when public.trip_people.joined_at is not null then public.trip_people.joined_at
-            when excluded.user_id is not null then clock_timestamp()
-            else null
-          end;
+      set display_name = excluded.display_name;
   end loop;
 
   return query
@@ -138,4 +120,4 @@ end;
 $$;
 
 comment on function public.resolve_or_create_non_group_container(jsonb) is
-  'Finds or creates the hidden non-group container for the canonical set of participant emails (caller + p_participants [{email, display_name}]), ensuring a trip_people row for each. Idempotent by member_signature. Returns the container''s trip_people rows; the caller derives container_id from trip_id.';
+  'Finds or creates the hidden non-group container for the canonical set of participant emails (caller + p_participants [{email, display_name}]), ensuring a trip_people row for each without probing auth.users for other participants. Idempotent by member_signature. Returns the container''s trip_people rows; the caller derives container_id from trip_id.';

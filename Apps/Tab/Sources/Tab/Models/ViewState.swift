@@ -38,6 +38,7 @@ struct ExpenseRowItem: Identifiable, Hashable, Sendable {
     let payerIsYou: Bool
     let yourShare: String
     let totalAmount: String
+    var sourceName: String? = nil
 }
 
 struct ExpenseDay: Identifiable, Hashable, Sendable {
@@ -70,6 +71,7 @@ struct SettlementRowItem: Identifiable, Hashable, Sendable {
     let toName: String
     let formattedAmount: String
     let text: String
+    var sourceName: String? = nil
 }
 
 struct SettleUpSuggestion: Hashable, Sendable {

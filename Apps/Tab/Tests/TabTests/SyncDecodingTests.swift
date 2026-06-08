@@ -91,4 +91,25 @@ import Testing
             _ = try supabaseLikeDecoder().decode(Date.self, from: Data("\"2026-05-09\"".utf8))
         }
     }
+
+    @Test func decodesVisibleProfileWithoutActivityCursor() throws {
+        let json = """
+        [
+          {
+            "id": "00000000-0000-0000-0000-000000000002",
+            "display_name": "Bob",
+            "avatar_url": null,
+            "created_at": "2026-06-05T07:40:11.940977+00:00",
+            "updated_at": "2026-06-05T07:40:11.940995+00:00",
+            "write_id": "11111111-2222-3333-4444-555555555555"
+          }
+        ]
+        """
+
+        let rows = try supabaseLikeDecoder().decode([ProfileDTO].self, from: Data(json.utf8))
+
+        let dto = try #require(rows.first)
+        #expect(dto.displayName == "Bob")
+        #expect(dto.activityLastSeenAt == nil)
+    }
 }

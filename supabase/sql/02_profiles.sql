@@ -17,7 +17,7 @@ comment on column public.profiles.activity_last_seen_at is
   'Per-user read cursor for the Activity feed. Unread = activity_log rows newer than this. Advanced by mark_activity_seen().';
 
 comment on table public.profiles is
-  'Per-user public profile data. One row per auth.users row, created automatically on signup.';
+  'Per-user profile data. activity_last_seen_at is a private read cursor protected by column privileges; shared display fields are exposed through visible_profiles.';
 
 create trigger trg_profiles_sync_fields
   before insert or update on public.profiles

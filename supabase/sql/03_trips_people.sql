@@ -36,12 +36,18 @@ create trigger trg_trips_sync_fields
   before insert or update on public.trips
   for each row execute function public.set_sync_fields();
 
--- kind is immutable: a trip can never become a non-group container or vice versa.
+-- Creator/kind are immutable: a trip can never be re-parented to a different
+-- creator or become a non-group container after creation.
 create or replace function public.guard_trip_kind()
 returns trigger
 language plpgsql
+set search_path = public, pg_temp
 as $$
 begin
+  if new.created_by is distinct from old.created_by then
+    raise exception 'trips.created_by is immutable' using errcode = '42501';
+  end if;
+
   if new.kind is distinct from old.kind then
     raise exception 'trips.kind is immutable' using errcode = '42501';
   end if;
@@ -89,6 +95,31 @@ create index trip_people_invited_by_idx on public.trip_people(invited_by) where 
 create trigger trg_trip_people_sync_fields
   before insert or update on public.trip_people
   for each row execute function public.set_sync_fields();
+
+create or replace view public.visible_profiles
+with (security_invoker = true, security_barrier = true)
+as
+select
+  p.id,
+  p.display_name,
+  p.avatar_url,
+  p.created_at,
+  p.updated_at,
+  p.write_id
+from public.profiles p
+where p.id = auth.uid()
+   or exists (
+     select 1
+     from public.trip_people tp
+     where tp.user_id = p.id
+       and tp.joined_at is not null
+       and private.is_trip_member(tp.trip_id)
+   );
+
+comment on view public.visible_profiles is
+  'Profile display fields visible to the current user. Excludes profiles.activity_last_seen_at so shared trip members cannot read another user''s Activity cursor.';
+
+grant select on public.visible_profiles to authenticated;
 
 
 -- ============================================================================

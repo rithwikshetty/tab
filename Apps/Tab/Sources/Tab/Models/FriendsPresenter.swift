@@ -329,7 +329,8 @@ enum FriendsPresenter {
                     id: e.id, categoryID: e.categoryID, icon: "tag", name: e.descriptionText,
                     payerName: payerName, payerIsYou: payerIsYou,
                     yourShare: MoneyFormatter.format(yourShare, currency: e.currency),
-                    totalAmount: MoneyFormatter.format(e.amount, currency: e.currency)
+                    totalAmount: MoneyFormatter.format(e.amount, currency: e.currency),
+                    sourceName: source
                 )
                 all.append(Dated(date: e.expenseDate, created: e.createdAt,
                                  entry: FriendTimelineEntry(id: e.id, sourceName: source, item: .expense(row))))
@@ -343,7 +344,8 @@ enum FriendsPresenter {
                 let row = SettlementRowItem(
                     id: s.id, fromName: fromName, toName: toName,
                     formattedAmount: MoneyFormatter.format(s.amount, currency: s.currency),
-                    text: "\(fromName) settled with \(toName)"
+                    text: "\(fromName) settled with \(toName)",
+                    sourceName: source
                 )
                 all.append(Dated(date: s.settledAt, created: s.createdAt,
                                  entry: FriendTimelineEntry(id: s.id, sourceName: source, item: .settlement(row))))

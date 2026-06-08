@@ -11,11 +11,19 @@ struct SettlementRow: View {
                 .frame(width: 28, height: 28)
                 .background(Sage.Avatar.slate.opacity(0.12), in: Circle())
 
-            Text(item.text)
-                .font(.expenseMeta)
-                .tracking(-0.07)
-                .foregroundStyle(Sage.textSecondary)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.text)
+                    .font(.expenseMeta)
+                    .tracking(-0.07)
+                    .foregroundStyle(Sage.textSecondary)
+                    .lineLimit(1)
+                if let sourceName = item.sourceName {
+                    Text(sourceName)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Sage.textSecondary)
+                        .lineLimit(1)
+                }
+            }
 
             Spacer(minLength: 8)
 

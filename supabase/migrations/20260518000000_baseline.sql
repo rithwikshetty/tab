@@ -157,6 +157,79 @@ $$;
 comment on function private.receipt_object_trip_id(text) is
   'Extracts a trip UUID from receipt object paths. Supports both <trip_id>/<expense_id>.jpg and receipts/<trip_id>/<expense_id>.jpg.';
 
+create or replace function private.receipt_object_expense_id(p_name text)
+returns uuid
+language plpgsql
+security definer
+immutable
+set search_path = public, private
+as $$
+declare
+  first_token text;
+  second_token text;
+  third_token text;
+  candidate text;
+begin
+  first_token := split_part(p_name, '/', 1);
+  second_token := split_part(p_name, '/', 2);
+  third_token := split_part(p_name, '/', 3);
+  candidate := case when first_token = 'receipts' then third_token else second_token end;
+  candidate := regexp_replace(candidate, '\.[^.\/]+$', '');
+
+  if candidate ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    return candidate::uuid;
+  end if;
+
+  return null;
+end;
+$$;
+
+comment on function private.receipt_object_expense_id(text) is
+  'Extracts an expense UUID from receipt object paths. Supports both <trip_id>/<expense_id>.jpg and receipts/<trip_id>/<expense_id>.jpg.';
+
+create or replace function private.can_read_receipt_object(p_name text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public, private
+as $$
+  select exists (
+    select 1
+    from public.expenses e
+    where e.id = private.receipt_object_expense_id(p_name)
+      and e.trip_id = private.receipt_object_trip_id(p_name)
+      and e.deleted_at is null
+      and e.receipt_storage_path = p_name
+      and private.is_trip_member(e.trip_id)
+  );
+$$;
+
+comment on function private.can_read_receipt_object(text) is
+  'True when the receipt object path belongs to a live expense in a trip the current user can read.';
+
+create or replace function private.can_write_receipt_object(p_name text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public, private
+as $$
+  select exists (
+    select 1
+    from public.expenses e
+    where e.id = private.receipt_object_expense_id(p_name)
+      and e.trip_id = private.receipt_object_trip_id(p_name)
+      and e.deleted_at is null
+      and e.receipt_storage_path = p_name
+      and e.created_by = auth.uid()
+      and private.is_trip_member(e.trip_id)
+  );
+$$;
+
+comment on function private.can_write_receipt_object(text) is
+  'True when the receipt object path belongs to a live expense created by the current user.';
+
 
 -- ============================================================================
 
@@ -183,7 +256,7 @@ comment on column public.profiles.activity_last_seen_at is
   'Per-user read cursor for the Activity feed. Unread = activity_log rows newer than this. Advanced by mark_activity_seen().';
 
 comment on table public.profiles is
-  'Per-user public profile data. One row per auth.users row, created automatically on signup.';
+  'Per-user profile data. activity_last_seen_at is a private read cursor protected by column privileges; shared display fields are exposed through visible_profiles.';
 
 create trigger trg_profiles_sync_fields
   before insert or update on public.profiles
@@ -333,12 +406,18 @@ create trigger trg_trips_sync_fields
   before insert or update on public.trips
   for each row execute function public.set_sync_fields();
 
--- kind is immutable: a trip can never become a non-group container or vice versa.
+-- Creator/kind are immutable: a trip can never be re-parented to a different
+-- creator or become a non-group container after creation.
 create or replace function public.guard_trip_kind()
 returns trigger
 language plpgsql
+set search_path = public, pg_temp
 as $$
 begin
+  if new.created_by is distinct from old.created_by then
+    raise exception 'trips.created_by is immutable' using errcode = '42501';
+  end if;
+
   if new.kind is distinct from old.kind then
     raise exception 'trips.kind is immutable' using errcode = '42501';
   end if;
@@ -386,6 +465,31 @@ create index trip_people_invited_by_idx on public.trip_people(invited_by) where 
 create trigger trg_trip_people_sync_fields
   before insert or update on public.trip_people
   for each row execute function public.set_sync_fields();
+
+create or replace view public.visible_profiles
+with (security_invoker = true, security_barrier = true)
+as
+select
+  p.id,
+  p.display_name,
+  p.avatar_url,
+  p.created_at,
+  p.updated_at,
+  p.write_id
+from public.profiles p
+where p.id = auth.uid()
+   or exists (
+     select 1
+     from public.trip_people tp
+     where tp.user_id = p.id
+       and tp.joined_at is not null
+       and private.is_trip_member(tp.trip_id)
+   );
+
+comment on view public.visible_profiles is
+  'Profile display fields visible to the current user. Excludes profiles.activity_last_seen_at so shared trip members cannot read another user''s Activity cursor.';
+
+grant select on public.visible_profiles to authenticated;
 
 
 -- ============================================================================
@@ -498,6 +602,16 @@ security definer
 set search_path = public, private
 as $$
 begin
+  if tg_op = 'UPDATE' then
+    if new.trip_id is distinct from old.trip_id then
+      raise exception 'expenses.trip_id is immutable' using errcode = '42501';
+    end if;
+
+    if new.created_by is distinct from old.created_by then
+      raise exception 'expenses.created_by is immutable' using errcode = '42501';
+    end if;
+  end if;
+
   if not exists (select 1 from public.trips where id = new.trip_id and deleted_at is null) then
     raise exception 'Expense trip must exist and be active' using errcode = '23514';
   end if;
@@ -880,6 +994,16 @@ security definer
 set search_path = public, private
 as $$
 begin
+  if tg_op = 'UPDATE' then
+    if new.trip_id is distinct from old.trip_id then
+      raise exception 'settlements.trip_id is immutable' using errcode = '42501';
+    end if;
+
+    if new.created_by is distinct from old.created_by then
+      raise exception 'settlements.created_by is immutable' using errcode = '42501';
+    end if;
+  end if;
+
   if not exists (select 1 from public.trips where id = new.trip_id and deleted_at is null) then
     raise exception 'Settlement trip must exist and be active' using errcode = '23514';
   end if;
@@ -935,7 +1059,7 @@ create table public.activity_log (
 );
 
 comment on table public.activity_log is
-  'Append-only audit trail. No UPDATE/DELETE allowed via RLS.';
+  'Append-only audit trail written by domain triggers. No client INSERT/UPDATE/DELETE allowed via RLS.';
 
 create index activity_log_trip_id_timestamp_idx on public.activity_log(trip_id, timestamp desc);
 create index activity_log_actor_id_idx          on public.activity_log(actor_id);
@@ -1346,9 +1470,20 @@ alter table public.activity_log    enable row level security;
 alter table public.push_devices    enable row level security;
 alter table public.trip_mute_prefs enable row level security;
 
--- profiles: any authenticated user can read; write only your own.
-create policy profiles_select_authenticated on public.profiles
-  for select to authenticated using (true);
+-- profiles: users can read their own profile and display fields for joined
+-- people in shared trips. Column-level privileges deny shared reads of
+-- activity_last_seen_at, the private Activity read cursor.
+create policy profiles_select_self_or_shared_trip on public.profiles
+  for select to authenticated using (
+    id = (select auth.uid())
+    or exists (
+      select 1
+      from public.trip_people tp
+      where tp.user_id = profiles.id
+        and tp.joined_at is not null
+        and private.is_trip_member(tp.trip_id)
+    )
+  );
 create policy profiles_insert_self on public.profiles
   for insert to authenticated with check (id = (select auth.uid()));
 create policy profiles_update_self on public.profiles
@@ -1368,15 +1503,12 @@ create policy trips_update_member on public.trips
   for update to authenticated
   using (private.is_trip_member(id) and kind = 'trip')
   with check (private.is_trip_member(id) and kind = 'trip');
-create policy trips_delete_member on public.trips
-  for delete to authenticated using (private.is_trip_member(id) and kind = 'trip');
 
--- trip_people: members can read the people in their trips. Inserts/claims go
--- through SECURITY DEFINER RPCs so email matching stays server-side.
+-- trip_people: members can read the people in their trips. Inserts/claims and
+-- removals go through server-owned paths so email matching and membership
+-- changes stay server-side.
 create policy trip_people_select_member on public.trip_people
   for select to authenticated using (private.is_trip_member(trip_id));
-create policy trip_people_delete_member on public.trip_people
-  for delete to authenticated using (private.is_trip_member(trip_id));
 
 -- categories: defaults are globally readable; trip-scoped readable+writable by members.
 create policy categories_select_default_or_member on public.categories
@@ -1389,9 +1521,6 @@ create policy categories_update_member_custom on public.categories
   for update to authenticated
   using  (not is_default and trip_id is not null and private.is_trip_member(trip_id))
   with check (not is_default and trip_id is not null and private.is_trip_member(trip_id));
-create policy categories_delete_member_custom on public.categories
-  for delete to authenticated
-  using (not is_default and trip_id is not null and private.is_trip_member(trip_id));
 
 -- expenses
 create policy expenses_select_member on public.expenses
@@ -1427,8 +1556,6 @@ create policy expenses_update_member on public.expenses
       )
     )
   );
-create policy expenses_delete_member on public.expenses
-  for delete to authenticated using (private.is_trip_member(trip_id));
 
 -- expense_payments: visibility follows parent expense's trip membership.
 create policy expense_payments_select_member on public.expense_payments
@@ -1500,15 +1627,11 @@ create policy settlements_update_member on public.settlements
     and private.is_trip_person(trip_id, to_person_id)
     and private.is_profile_trip_member(trip_id, created_by)
   );
-create policy settlements_delete_member on public.settlements
-  for delete to authenticated using (private.is_trip_member(trip_id));
 
--- activity_log: append-only — only SELECT and INSERT.
+-- activity_log: trigger-owned append-only stream. Clients may read events for
+-- their trips, but may not forge events directly; domain triggers insert rows.
 create policy activity_log_select_member on public.activity_log
   for select to authenticated using (private.is_trip_member(trip_id));
-create policy activity_log_insert_member on public.activity_log
-  for insert to authenticated
-  with check (private.is_trip_member(trip_id) and actor_id = (select auth.uid()));
 
 -- push_devices: self-only.
 create policy push_devices_select_self on public.push_devices
@@ -1555,32 +1678,32 @@ create policy receipts_select_member on storage.objects
   for select to authenticated
   using (
     bucket_id = 'receipts'
-    and private.is_trip_member(private.receipt_object_trip_id(name))
+    and private.can_read_receipt_object(name)
   );
 
 create policy receipts_insert_member on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'receipts'
-    and private.is_trip_member(private.receipt_object_trip_id(name))
+    and private.can_write_receipt_object(name)
   );
 
 create policy receipts_update_member on storage.objects
   for update to authenticated
   using (
     bucket_id = 'receipts'
-    and private.is_trip_member(private.receipt_object_trip_id(name))
+    and private.can_write_receipt_object(name)
   )
   with check (
     bucket_id = 'receipts'
-    and private.is_trip_member(private.receipt_object_trip_id(name))
+    and private.can_write_receipt_object(name)
   );
 
 create policy receipts_delete_member on storage.objects
   for delete to authenticated
   using (
     bucket_id = 'receipts'
-    and private.is_trip_member(private.receipt_object_trip_id(name))
+    and private.can_write_receipt_object(name)
   );
 
 
@@ -1627,6 +1750,10 @@ begin
     raise exception 'Trip name is required' using errcode = '22023';
   end if;
 
+  if exists (select 1 from public.trips t where t.id = p_trip_id and t.kind <> 'trip') then
+    raise exception 'Group-trip RPC cannot target non-group containers' using errcode = '42501';
+  end if;
+
   select display_name into v_display_name
   from public.profiles
   where id = v_actor;
@@ -1647,10 +1774,13 @@ begin
   values (p_trip_id, trim(p_name), v_actor)
   on conflict (id) do update
     set name = excluded.name
-    where public.trips.created_by = v_actor
-       or private.is_profile_trip_member(public.trips.id, v_actor);
+    where public.trips.kind = 'trip'
+      and (
+        public.trips.created_by = v_actor
+        or private.is_profile_trip_member(public.trips.id, v_actor)
+      );
 
-  if not exists (select 1 from public.trips t where t.id = p_trip_id) then
+  if not exists (select 1 from public.trips t where t.id = p_trip_id and t.kind = 'trip') then
     raise exception 'Trip could not be created' using errcode = '42501';
   end if;
 
@@ -1697,7 +1827,6 @@ declare
   v_actor uuid := auth.uid();
   v_email text := private.normalized_email(p_email);
   v_display_name text := nullif(trim(p_display_name), '');
-  v_user_id uuid;
   v_person public.trip_people;
 begin
   if v_actor is null then
@@ -1708,7 +1837,11 @@ begin
     raise exception 'A valid email is required' using errcode = '22023';
   end if;
 
-  if not exists (select 1 from public.trips t where t.id = p_trip_id and t.deleted_at is null) then
+  if exists (select 1 from public.trips t where t.id = p_trip_id and t.kind <> 'trip') then
+    raise exception 'Group-trip RPC cannot target non-group containers' using errcode = '42501';
+  end if;
+
+  if not exists (select 1 from public.trips t where t.id = p_trip_id and t.kind = 'trip' and t.deleted_at is null) then
     raise exception 'Trip not found or deleted' using errcode = 'P0002';
   end if;
 
@@ -1716,38 +1849,7 @@ begin
     raise exception 'Only trip members can add people' using errcode = '42501';
   end if;
 
-  select u.id, coalesce(p.display_name, split_part(v_email, '@', 1))
-  into v_user_id, v_display_name
-  from auth.users u
-  left join public.profiles p on p.id = u.id
-  where private.normalized_email(u.email) = v_email
-  limit 1;
-
-  v_display_name := left(coalesce(nullif(trim(p_display_name), ''), nullif(trim(v_display_name), ''), split_part(v_email, '@', 1)), 60);
-
-  if v_user_id is not null then
-    insert into public.profiles (id, display_name)
-    values (v_user_id, v_display_name)
-    on conflict (id) do nothing;
-  end if;
-
-  if v_user_id is not null then
-    select tp.* into v_person
-    from public.trip_people tp
-    where tp.trip_id = p_trip_id
-      and tp.user_id = v_user_id;
-
-    if found then
-      update public.trip_people
-      set email = v_email,
-          display_name = v_display_name,
-          joined_at = coalesce(public.trip_people.joined_at, clock_timestamp())
-      where public.trip_people.id = v_person.id
-      returning public.trip_people.* into v_person;
-
-      return v_person;
-    end if;
-  end if;
+  v_display_name := left(coalesce(v_display_name, split_part(v_email, '@', 1)), 60);
 
   insert into public.trip_people (
     id, trip_id, user_id, email, display_name, invited_by, joined_at
@@ -1755,20 +1857,14 @@ begin
   values (
     coalesce(p_person_id, gen_random_uuid()),
     p_trip_id,
-    v_user_id,
+    null,
     v_email,
     v_display_name,
     v_actor,
-    case when v_user_id is null then null else clock_timestamp() end
+    null
   )
   on conflict on constraint trip_people_email_unique do update
-    set user_id = coalesce(public.trip_people.user_id, excluded.user_id),
-        display_name = excluded.display_name,
-        joined_at = case
-          when public.trip_people.joined_at is not null then public.trip_people.joined_at
-          when excluded.user_id is not null then clock_timestamp()
-          else null
-        end
+    set display_name = excluded.display_name
   returning public.trip_people.* into v_person;
 
   return v_person;
@@ -1776,7 +1872,7 @@ end;
 $$;
 
 comment on function public.add_trip_person_by_email(uuid, text, text, uuid) is
-  'Adds a pending trip person by email, or immediately links the person if an auth account with that email already exists.';
+  'Adds or updates a pending trip person by email. Existing auth accounts are not linked until that user signs in and claims the email.';
 
 create or replace function public.claim_trip_people_for_current_email()
 returns setof public.trip_people
@@ -2009,8 +2105,14 @@ comment on function public.create_expense_with_payments_and_splits(jsonb, jsonb,
 
 -- >>> BEGIN 17_privileges.sql
 
--- 13. Function privilege locking
+-- 13. Privilege locking
 -- ============================================================================
+-- Raw profile rows are shared for display lookup, but activity_last_seen_at is
+-- a private read cursor. Expose only non-sensitive profile columns to clients.
+revoke select on public.profiles from authenticated;
+grant select (id, display_name, avatar_url, created_at, updated_at, write_id)
+  on public.profiles to authenticated;
+
 -- Trigger functions exist only to be invoked by their triggers — they should
 -- never be callable via /rest/v1/rpc. Revoke EXECUTE from public/anon/auth.
 revoke execute on function public.handle_new_user()            from public, anon, authenticated;
@@ -2070,6 +2172,12 @@ revoke execute on function private.current_auth_email() from public, anon;
 grant  execute on function private.current_auth_email() to authenticated;
 revoke execute on function private.receipt_object_trip_id(text) from public, anon;
 grant  execute on function private.receipt_object_trip_id(text) to authenticated;
+revoke execute on function private.receipt_object_expense_id(text) from public, anon;
+grant  execute on function private.receipt_object_expense_id(text) to authenticated;
+revoke execute on function private.can_read_receipt_object(text) from public, anon;
+grant  execute on function private.can_read_receipt_object(text) to authenticated;
+revoke execute on function private.can_write_receipt_object(text) from public, anon;
+grant  execute on function private.can_write_receipt_object(text) to authenticated;
 
 -- <<< END 17_privileges.sql
 
@@ -2240,7 +2348,6 @@ declare
   v_row       jsonb;
   v_p_email   text;
   v_p_name    text;
-  v_user_id   uuid;
 begin
   if v_actor is null then
     raise exception 'Authentication required' using errcode = '28000';
@@ -2311,40 +2418,23 @@ begin
     set user_id   = v_actor,
         joined_at = coalesce(public.trip_people.joined_at, clock_timestamp());
 
-  -- Ensure each other participant: claimed if their email already has an account,
-  -- otherwise pending until they sign in (claim_trip_people_for_current_email).
+  -- Ensure each other participant stays pending until that email's owner signs
+  -- in and claims it. Do not query auth.users here; that would let callers
+  -- probe whether an arbitrary email already has a Tab account.
   for v_row in select * from jsonb_array_elements(p_participants) loop
     v_p_email := private.normalized_email(v_row->>'email');
     if v_p_email = v_email then
       continue;
     end if;
 
-    v_user_id := null;
-    select u.id into v_user_id
-    from auth.users u
-    where private.normalized_email(u.email) = v_p_email
-    limit 1;
-
     v_p_name := left(coalesce(nullif(trim(v_row->>'display_name'), ''), split_part(v_p_email, '@', 1)), 60);
-
-    if v_user_id is not null then
-      insert into public.profiles (id, display_name)
-      values (v_user_id, v_p_name)
-      on conflict (id) do nothing;
-    end if;
 
     insert into public.trip_people (id, trip_id, user_id, email, display_name, invited_by, joined_at)
     values (
-      gen_random_uuid(), v_container, v_user_id, v_p_email, v_p_name, v_actor,
-      case when v_user_id is null then null else clock_timestamp() end
+      gen_random_uuid(), v_container, null, v_p_email, v_p_name, v_actor, null
     )
     on conflict on constraint trip_people_email_unique do update
-      set user_id   = coalesce(public.trip_people.user_id, excluded.user_id),
-          joined_at = case
-            when public.trip_people.joined_at is not null then public.trip_people.joined_at
-            when excluded.user_id is not null then clock_timestamp()
-            else null
-          end;
+      set display_name = excluded.display_name;
   end loop;
 
   return query
@@ -2353,6 +2443,6 @@ end;
 $$;
 
 comment on function public.resolve_or_create_non_group_container(jsonb) is
-  'Finds or creates the hidden non-group container for the canonical set of participant emails (caller + p_participants [{email, display_name}]), ensuring a trip_people row for each. Idempotent by member_signature. Returns the container''s trip_people rows; the caller derives container_id from trip_id.';
+  'Finds or creates the hidden non-group container for the canonical set of participant emails (caller + p_participants [{email, display_name}]), ensuring a trip_people row for each without probing auth.users for other participants. Idempotent by member_signature. Returns the container''s trip_people rows; the caller derives container_id from trip_id.';
 
 -- <<< END 19_rpc_non_group.sql
