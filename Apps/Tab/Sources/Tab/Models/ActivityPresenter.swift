@@ -27,8 +27,8 @@ struct ActivitySection: Identifiable, Hashable, Sendable {
 }
 
 enum ActivityPresenter {
-    /// Build date-grouped feed sections. Own actions are excluded (you are never
-    /// notified of what you did). Muted trips still appear (silence, not hide) but
+    /// Build date-grouped feed sections. Own actions stay visible as history but
+    /// are never marked unread. Muted trips still appear (silence, not hide) but
     /// are never marked unread.
     static func sections(
         from activities: [ActivityEntity],
@@ -39,16 +39,16 @@ enum ActivityPresenter {
         calendar: Calendar = .current,
         now: Date = .now
     ) -> [ActivitySection] {
-        let visible = activities
-            .filter { $0.actorID != currentUserID }
-            .sorted { $0.timestamp > $1.timestamp }
+        let visible = activities.sorted { $0.timestamp > $1.timestamp }
 
         let since = lastSeenAt ?? .distantPast
         var order: [String] = []
         var grouped: [String: [ActivityRow]] = [:]
 
         for activity in visible {
-            let isUnread = activity.timestamp > since && !mutedTripIDs.contains(activity.tripID)
+            let isUnread = activity.actorID != currentUserID
+                && activity.timestamp > since
+                && !mutedTripIDs.contains(activity.tripID)
             let row = row(for: activity, myTripPersonIDs: myTripPersonIDs, isUnread: isUnread, calendar: calendar)
             let day = calendar.startOfDay(for: activity.timestamp)
             let key = ISO8601DateFormatter.dayKey.string(from: day)

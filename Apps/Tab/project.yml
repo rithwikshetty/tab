@@ -42,7 +42,7 @@ targets:
           - CFBundleURLName: $(TAB_AUTH_CALLBACK_SCHEME).auth
             CFBundleURLSchemes:
               - $(TAB_AUTH_CALLBACK_SCHEME)
-        CFBundleVersion: "7"
+        CFBundleVersion: "10"
         TABSupabaseURL: $(TAB_SUPABASE_URL)
         TABSupabasePublishableKey: $(TAB_SUPABASE_PUBLISHABLE_KEY)
         TABAuthCallbackScheme: $(TAB_AUTH_CALLBACK_SCHEME)

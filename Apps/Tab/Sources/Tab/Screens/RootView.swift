@@ -16,6 +16,23 @@ enum Route: Hashable {
     case settlement(UUID)
 }
 
+enum ActivityNavigation {
+    static func stack(
+        for target: ActivityTarget,
+        expenseIsOpenable: (UUID) -> Bool,
+        settlementIsOpenable: (UUID) -> Bool
+    ) -> [Route] {
+        switch target {
+        case .trip(let id):
+            return [.trip(id)]
+        case .expense(let tripID, let expenseID):
+            return expenseIsOpenable(expenseID) ? [.expense(expenseID)] : [.trip(tripID)]
+        case .settlement(let tripID, let settlementID):
+            return settlementIsOpenable(settlementID) ? [.settlement(settlementID)] : [.trip(tripID)]
+        }
+    }
+}
+
 struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
@@ -193,14 +210,11 @@ struct RootView: View {
 
     /// Deep-link from an Activity feed row (stays within the Activity tab's stack).
     private func open(_ target: ActivityTarget, into path: Binding<[Route]>) {
-        switch target {
-        case .trip(let id):
-            path.wrappedValue = [.trip(id)]
-        case .expense(let tripID, let expenseID):
-            path.wrappedValue = expenseIsOpenable(expenseID) ? [.trip(tripID), .expense(expenseID)] : [.trip(tripID)]
-        case .settlement(let tripID, let settlementID):
-            path.wrappedValue = settlementIsOpenable(settlementID) ? [.trip(tripID), .settlement(settlementID)] : [.trip(tripID)]
-        }
+        path.wrappedValue = ActivityNavigation.stack(
+            for: target,
+            expenseIsOpenable: expenseIsOpenable,
+            settlementIsOpenable: settlementIsOpenable
+        )
     }
 
     /// Deep-link from a tapped push notification (opens in the Trips tab).
