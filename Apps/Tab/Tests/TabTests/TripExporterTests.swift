@@ -1,10 +1,54 @@
 import Foundation
+import SwiftData
 import Testing
 import TabCore
 @testable import Tab
 
+@MainActor
 @Suite("Trip export")
 struct TripExporterTests {
+    @Test("extractData exports the expense's payment method, not the split mode")
+    func extractDataUsesPaymentMethodNotMode() throws {
+        let container = try TabModelContainer.makeInMemory()
+        let ctx = container.mainContext
+
+        let creatorID = UUID()
+        let trip = TripEntity(name: "Tokyo", createdByID: creatorID)
+        ctx.insert(trip)
+        let alice = TripPersonEntity(
+            id: UUID(), userID: creatorID, email: "alice@x.test", displayName: "Alice",
+            invitedByID: creatorID, trip: trip, joinedAt: .now
+        )
+        ctx.insert(alice)
+
+        let expense = ExpenseEntity(
+            amount: 60, currency: "EUR", descriptionText: "Taxi",
+            expenseDate: Date(timeIntervalSince1970: 1_780_000_000),
+            paymentMethodRaw: "cash",          // the payment method
+            createdByID: creatorID, trip: trip
+        )
+        ctx.insert(expense)
+        ctx.insert(PaymentEntity(
+            tripPersonID: alice.id, amountPaid: 60,
+            paymentModeRaw: "equal",            // the split/payment mode
+            expense: expense
+        ))
+        ctx.insert(ExpenseSplitEntity(
+            tripPersonID: alice.id, amountOwed: 60, splitTypeRaw: "equal", expense: expense
+        ))
+        try ctx.save()
+
+        let data = TripExporter.extractData(
+            trip: trip,
+            categories: [:],
+            peopleByID: [alice.id: alice]
+        )
+
+        #expect(data.expenses.first?.paymentMethod == "cash")
+        // The per-payment sheet carries the mode in its own column.
+        #expect(data.expensePayments.first?.paymentMode == "equal")
+    }
+
     @Test("workbook keeps expense overview readable and adds normalized payment and split sheets")
     func workbookHasNormalizedExpensePaymentAndSplitSheets() {
         let expenseID = UUID(uuidString: "00000000-0000-0000-0000-000000000101")!
@@ -25,7 +69,7 @@ struct TripExporterTests {
                     paidByDetail: "Alice: EUR 70.00; Bob: EUR 50.00",
                     splitBetween: "Alice, Bob, Cara",
                     splitDetail: "Alice: EUR 40.00; Bob: EUR 40.00; Cara: EUR 40.00",
-                    paymentMethod: "equal",
+                    paymentMethod: "card",
                     createdBy: "Alice",
                     createdAt: "2026-05-22 20:30",
                     lastEditedBy: "Cara",
@@ -41,7 +85,7 @@ struct TripExporterTests {
                     payerName: "Alice",
                     currency: "EUR",
                     amountPaid: 70,
-                    paymentMethod: "equal"
+                    paymentMode: "equal"
                 ),
                 TripExporter.ExpensePaymentRow(
                     expenseID: expenseID.uuidString,
@@ -51,7 +95,7 @@ struct TripExporterTests {
                     payerName: "Bob",
                     currency: "EUR",
                     amountPaid: 50,
-                    paymentMethod: "equal"
+                    paymentMode: "equal"
                 )
             ],
             expenseSplits: [
@@ -119,7 +163,7 @@ struct TripExporterTests {
         #expect(payments.count == 3)
         #expect(payments[0].strings == [
             "Expense ID", "Date", "Description", "Payer ID", "Payer Name",
-            "Currency", "Amount Paid", "Payment Method"
+            "Currency", "Amount Paid", "Payment Mode"
         ])
         #expect(payments[1].strings[3] == aliceID.uuidString)
         #expect(payments[1].strings[4] == "Alice")

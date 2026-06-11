@@ -2,6 +2,7 @@ import Foundation
 
 public enum PaymentCalculatorError: Error, Equatable, Sendable {
     case emptyPayers
+    case duplicatePayer(UUID)
     case unsupportedPaymentMode(PaymentMode)
     case exactAmountsRequired
     case missingAmountForPayer(UUID)
@@ -79,6 +80,8 @@ public enum PaymentCalculator {
         switch err {
         case .emptyParticipants:
             return .emptyPayers
+        case .duplicateParticipant(let id):
+            return .duplicatePayer(id)
         case .unsupportedSplitType(let type):
             return .unsupportedPaymentMode(type)
         case .exactAmountsRequired:

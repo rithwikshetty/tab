@@ -109,7 +109,7 @@ final class SyncService {
             .value
 
         let ctx = container.mainContext
-        try upsertTripPerson(row, in: ctx)
+        try SyncMerge.apply(row, in: ctx)
         try ctx.save()
     }
 
@@ -197,7 +197,7 @@ final class SyncService {
             ))
         }
         for dto in rows {
-            try upsertTripPerson(dto, in: ctx)
+            try SyncMerge.apply(dto, in: ctx)
         }
         try ctx.save()
         return containerID
@@ -309,7 +309,7 @@ final class SyncService {
 
         let ctx = container.mainContext
         for dto in rows {
-            try upsertProfile(dto, in: ctx)
+            try SyncMerge.apply(dto, in: ctx)
         }
         try ctx.save()
         return Set(rows.map(\.id))
@@ -324,7 +324,7 @@ final class SyncService {
 
         let ctx = container.mainContext
         for dto in rows {
-            try upsertTrip(dto, in: ctx)
+            try SyncMerge.apply(dto, in: ctx)
         }
         try ctx.save()
         return Set(rows.map(\.id))
@@ -339,7 +339,7 @@ final class SyncService {
 
         let ctx = container.mainContext
         for dto in rows {
-            try upsertTripPerson(dto, in: ctx)
+            try SyncMerge.apply(dto, in: ctx)
         }
         try ctx.save()
         return Set(rows.map(\.id))
@@ -354,7 +354,7 @@ final class SyncService {
 
         let ctx = container.mainContext
         for dto in rows {
-            try upsertCategory(dto, in: ctx)
+            try SyncMerge.apply(dto, in: ctx)
         }
         try ctx.save()
         return Set(rows.map(\.id))
@@ -369,7 +369,7 @@ final class SyncService {
 
         let ctx = container.mainContext
         for dto in rows {
-            try upsertExpense(dto, in: ctx)
+            try SyncMerge.apply(dto, in: ctx)
         }
         try ctx.save()
         return Set(rows.map(\.id))
@@ -384,7 +384,7 @@ final class SyncService {
 
         let ctx = container.mainContext
         for dto in rows {
-            try upsertExpensePayment(dto, in: ctx)
+            try SyncMerge.apply(dto, in: ctx)
         }
         try ctx.save()
         return Set(rows.map { ExpensePaymentRemoteKey(expenseID: $0.expenseID, tripPersonID: $0.tripPersonID) })
@@ -399,7 +399,7 @@ final class SyncService {
 
         let ctx = container.mainContext
         for dto in rows {
-            try upsertExpenseSplit(dto, in: ctx)
+            try SyncMerge.apply(dto, in: ctx)
         }
         try ctx.save()
         return Set(rows.map { ExpenseSplitRemoteKey(expenseID: $0.expenseID, tripPersonID: $0.tripPersonID) })
@@ -414,7 +414,7 @@ final class SyncService {
 
         let ctx = container.mainContext
         for dto in rows {
-            try upsertSettlement(dto, in: ctx)
+            try SyncMerge.apply(dto, in: ctx)
         }
         try ctx.save()
         return Set(rows.map(\.id))
@@ -474,28 +474,7 @@ final class SyncService {
 
         let ctx = container.mainContext
         for dto in rows {
-            let tripID = dto.tripID
-            let existing = try ctx.fetch(FetchDescriptor<TripMuteEntity>(
-                predicate: #Predicate { $0.tripID == tripID }
-            )).first
-            if let entity = existing {
-                if entity.pushedWriteID != entity.writeID { continue }  // local change pending push
-                if entity.writeID == dto.writeID { continue }
-                entity.isMuted = true
-                entity.mutedAt = dto.mutedAt
-                entity.updatedAt = dto.updatedAt
-                entity.writeID = dto.writeID
-                entity.pushedWriteID = dto.writeID
-            } else {
-                ctx.insert(TripMuteEntity(
-                    tripID: dto.tripID,
-                    isMuted: true,
-                    mutedAt: dto.mutedAt,
-                    updatedAt: dto.updatedAt,
-                    writeID: dto.writeID,
-                    pushedWriteID: dto.writeID
-                ))
-            }
+            try SyncMerge.apply(dto, in: ctx)
         }
         try ctx.save()
         return Set(rows.map(\.tripID))
@@ -615,298 +594,16 @@ final class SyncService {
         try ctx.save()
     }
 
-    // MARK: - Upserts (server → local)
-
-    private func upsertProfile(_ dto: ProfileDTO, in ctx: ModelContext) throws {
-        let id = dto.id
-        let existing = try ctx.fetch(FetchDescriptor<ProfileEntity>(
-            predicate: #Predicate { $0.id == id }
-        )).first
-
-        if let entity = existing {
-            if entity.writeID == dto.writeID { return }
-            entity.displayName = dto.displayName
-            entity.avatarURL = dto.avatarURL
-            entity.activityLastSeenAt = dto.activityLastSeenAt
-            entity.updatedAt = dto.updatedAt
-            entity.writeID = dto.writeID
-            entity.pushedWriteID = dto.writeID
-        } else {
-            ctx.insert(ProfileEntity(
-                id: dto.id,
-                displayName: dto.displayName,
-                avatarURL: dto.avatarURL,
-                activityLastSeenAt: dto.activityLastSeenAt,
-                updatedAt: dto.updatedAt,
-                writeID: dto.writeID,
-                pushedWriteID: dto.writeID
-            ))
-        }
-    }
-
-    private func upsertTrip(_ dto: TripDTO, in ctx: ModelContext) throws {
-        let id = dto.id
-        let existing = try ctx.fetch(FetchDescriptor<TripEntity>(
-            predicate: #Predicate { $0.id == id }
-        )).first
-
-        if let entity = existing {
-            if entity.writeID == dto.writeID { return }
-            entity.name = dto.name
-            entity.kind = dto.kind
-            entity.memberSignature = dto.memberSignature
-            entity.createdByID = dto.createdBy
-            entity.lastActivityAt = dto.lastActivityAt
-            entity.updatedAt = dto.updatedAt
-            entity.deletedAt = dto.deletedAt
-            entity.writeID = dto.writeID
-            entity.pushedWriteID = dto.writeID
-        } else {
-            ctx.insert(TripEntity(
-                id: dto.id,
-                name: dto.name,
-                kind: dto.kind,
-                memberSignature: dto.memberSignature,
-                createdByID: dto.createdBy,
-                lastActivityAt: dto.lastActivityAt,
-                createdAt: dto.createdAt,
-                updatedAt: dto.updatedAt,
-                deletedAt: dto.deletedAt,
-                writeID: dto.writeID,
-                pushedWriteID: dto.writeID
-            ))
-        }
-    }
-
-    private func upsertTripPerson(_ dto: TripPersonDTO, in ctx: ModelContext) throws {
-        let tripID = dto.tripID
-        let id = dto.id
-
-        let trip = try ctx.fetch(FetchDescriptor<TripEntity>(
-            predicate: #Predicate { $0.id == tripID }
-        )).first
-
-        guard let trip else { return }
-
-        let existing = try ctx.fetch(FetchDescriptor<TripPersonEntity>(
-            predicate: #Predicate { $0.id == id }
-        )).first
-        if let entity = existing {
-            if entity.writeID == dto.writeID { return }
-            entity.userID = dto.userID
-            entity.email = dto.email
-            entity.displayName = dto.displayName
-            entity.invitedByID = dto.invitedBy
-            entity.joinedAt = dto.joinedAt
-            entity.createdAt = dto.createdAt
-            entity.updatedAt = dto.updatedAt
-            entity.writeID = dto.writeID
-            entity.pushedWriteID = dto.writeID
-        } else {
-            ctx.insert(TripPersonEntity(
-                id: dto.id,
-                userID: dto.userID,
-                email: dto.email,
-                displayName: dto.displayName,
-                invitedByID: dto.invitedBy,
-                trip: trip,
-                joinedAt: dto.joinedAt,
-                createdAt: dto.createdAt,
-                updatedAt: dto.updatedAt,
-                writeID: dto.writeID,
-                pushedWriteID: dto.writeID
-            ))
-        }
-    }
-
-    private func upsertCategory(_ dto: CategoryDTO, in ctx: ModelContext) throws {
-        let id = dto.id
-        let existing = try ctx.fetch(FetchDescriptor<CategoryEntity>(
-            predicate: #Predicate { $0.id == id }
-        )).first
-
-        if let entity = existing {
-            if entity.writeID == dto.writeID { return }
-            entity.name = dto.name
-            entity.icon = dto.icon
-            entity.isDefault = dto.isDefault
-            entity.tripID = dto.tripID
-            entity.updatedAt = dto.updatedAt
-            entity.deletedAt = dto.deletedAt
-            entity.writeID = dto.writeID
-            entity.pushedWriteID = dto.writeID
-        } else {
-            ctx.insert(CategoryEntity(
-                id: dto.id,
-                tripID: dto.tripID,
-                name: dto.name,
-                icon: dto.icon,
-                isDefault: dto.isDefault,
-                updatedAt: dto.updatedAt,
-                deletedAt: dto.deletedAt,
-                writeID: dto.writeID,
-                pushedWriteID: dto.writeID
-            ))
-        }
-    }
-
-    private func upsertExpense(_ dto: ExpenseDTO, in ctx: ModelContext) throws {
-        let id = dto.id
-        let tripID = dto.tripID
-        let trip = try ctx.fetch(FetchDescriptor<TripEntity>(
-            predicate: #Predicate { $0.id == tripID }
-        )).first
-
-        let existing = try ctx.fetch(FetchDescriptor<ExpenseEntity>(
-            predicate: #Predicate { $0.id == id }
-        )).first
-
-        if let entity = existing {
-            if entity.writeID == dto.writeID { return }
-            entity.amount = dto.amount
-            entity.currency = dto.currency
-            entity.categoryID = dto.categoryID
-            entity.descriptionText = dto.description
-            entity.expenseDate = dto.expenseDate
-            entity.receiptStoragePath = dto.receiptStoragePath
-            entity.paymentMethodRaw = dto.paymentMethod
-            entity.createdByID = dto.createdBy
-            entity.lastEditedByID = dto.lastEditedBy
-            entity.updatedAt = dto.updatedAt
-            entity.deletedAt = dto.deletedAt
-            entity.writeID = dto.writeID
-            entity.pushedWriteID = dto.writeID
-            entity.trip = trip
-        } else {
-            ctx.insert(ExpenseEntity(
-                id: dto.id,
-                amount: dto.amount,
-                currency: dto.currency,
-                categoryID: dto.categoryID,
-                descriptionText: dto.description,
-                expenseDate: dto.expenseDate,
-                receiptStoragePath: dto.receiptStoragePath,
-                paymentMethodRaw: dto.paymentMethod,
-                createdByID: dto.createdBy,
-                lastEditedByID: dto.lastEditedBy,
-                trip: trip,
-                createdAt: dto.createdAt,
-                updatedAt: dto.updatedAt,
-                deletedAt: dto.deletedAt,
-                writeID: dto.writeID,
-                pushedWriteID: dto.writeID
-            ))
-        }
-    }
-
-    private func upsertExpensePayment(_ dto: ExpensePaymentDTO, in ctx: ModelContext) throws {
-        let expenseID = dto.expenseID
-        let tripPersonID = dto.tripPersonID
-        let expense = try ctx.fetch(FetchDescriptor<ExpenseEntity>(
-            predicate: #Predicate { $0.id == expenseID }
-        )).first
-        guard let expense else { return }
-
-        let existing = expense.payments.first(where: { $0.tripPersonID == tripPersonID })
-        if let entity = existing {
-            if entity.writeID == dto.writeID { return }
-            entity.amountPaid = dto.amountPaid
-            entity.paymentModeRaw = dto.paymentMode
-            entity.updatedAt = dto.updatedAt
-            entity.writeID = dto.writeID
-            entity.pushedWriteID = dto.writeID
-        } else {
-            ctx.insert(PaymentEntity(
-                tripPersonID: dto.tripPersonID,
-                amountPaid: dto.amountPaid,
-                paymentModeRaw: dto.paymentMode,
-                expense: expense,
-                updatedAt: dto.updatedAt,
-                writeID: dto.writeID,
-                pushedWriteID: dto.writeID
-            ))
-        }
-    }
-
-    private func upsertExpenseSplit(_ dto: ExpenseSplitDTO, in ctx: ModelContext) throws {
-        let expenseID = dto.expenseID
-        let tripPersonID = dto.tripPersonID
-        let expense = try ctx.fetch(FetchDescriptor<ExpenseEntity>(
-            predicate: #Predicate { $0.id == expenseID }
-        )).first
-        guard let expense else { return }
-
-        let existing = expense.splits.first(where: { $0.tripPersonID == tripPersonID })
-        if let entity = existing {
-            if entity.writeID == dto.writeID { return }
-            entity.amountOwed = dto.amountOwed
-            entity.splitTypeRaw = dto.splitType
-            entity.updatedAt = dto.updatedAt
-            entity.writeID = dto.writeID
-            entity.pushedWriteID = dto.writeID
-        } else {
-            ctx.insert(ExpenseSplitEntity(
-                tripPersonID: dto.tripPersonID,
-                amountOwed: dto.amountOwed,
-                splitTypeRaw: dto.splitType,
-                expense: expense,
-                updatedAt: dto.updatedAt,
-                writeID: dto.writeID,
-                pushedWriteID: dto.writeID
-            ))
-        }
-    }
-
-    private func upsertSettlement(_ dto: SettlementDTO, in ctx: ModelContext) throws {
-        let id = dto.id
-        let tripID = dto.tripID
-        let trip = try ctx.fetch(FetchDescriptor<TripEntity>(
-            predicate: #Predicate { $0.id == tripID }
-        )).first
-
-        let existing = try ctx.fetch(FetchDescriptor<SettlementEntity>(
-            predicate: #Predicate { $0.id == id }
-        )).first
-
-        if let entity = existing {
-            if entity.writeID == dto.writeID { return }
-            entity.fromPersonID = dto.fromPersonID
-            entity.toPersonID = dto.toPersonID
-            entity.amount = dto.amount
-            entity.currency = dto.currency
-            entity.note = dto.note
-            entity.settledAt = dto.settledAt
-            entity.createdByID = dto.createdBy
-            entity.updatedAt = dto.updatedAt
-            entity.deletedAt = dto.deletedAt
-            entity.writeID = dto.writeID
-            entity.pushedWriteID = dto.writeID
-            entity.trip = trip
-        } else {
-            ctx.insert(SettlementEntity(
-                id: dto.id,
-                fromPersonID: dto.fromPersonID,
-                toPersonID: dto.toPersonID,
-                amount: dto.amount,
-                currency: dto.currency,
-                note: dto.note,
-                settledAt: dto.settledAt,
-                createdByID: dto.createdBy,
-                trip: trip,
-                createdAt: dto.createdAt,
-                updatedAt: dto.updatedAt,
-                deletedAt: dto.deletedAt,
-                writeID: dto.writeID,
-                pushedWriteID: dto.writeID
-            ))
-        }
-    }
-
     // MARK: - Push
+
+    /// Rows whose individual pushes failed this cycle; surfaced via `phase`
+    /// instead of silently reporting a clean sync.
+    private var pushFailures = 0
 
     func pushPending() async {
         guard hasRealSession else { return }
         phase = .pushing
+        pushFailures = 0
         do {
             try await pushProfiles()
             try await pushTrips()
@@ -914,7 +611,11 @@ final class SyncService {
             try await pushExpensesAndSplits()
             await pushPendingReceiptUploads()
             try await pushMutes()
-            phase = .idle
+            if pushFailures > 0 {
+                phase = .error("\(pushFailures) change(s) failed to sync")
+            } else {
+                phase = .idle
+            }
         } catch {
             syncLog.error("push failed: \(error.localizedDescription, privacy: .public)")
             phase = .error(error.localizedDescription)
@@ -932,6 +633,7 @@ final class SyncService {
             do {
                 try await ensureCurrentProfile(profile)
             } catch {
+                pushFailures += 1
                 syncLog.error("profile push failed: \(error.localizedDescription, privacy: .public)")
             }
         }
@@ -957,8 +659,22 @@ final class SyncService {
         profile.pushedWriteID = profile.writeID
     }
 
+    /// A trip created and soft-deleted before its first successful push never
+    /// existed server-side. Pushing it would create a live trip the next pull
+    /// resurrects — hard-delete the local tombstone instead.
+    static func purgeUnpushedTripTombstones(in ctx: ModelContext) throws {
+        let tombstones = try ctx.fetch(FetchDescriptor<TripEntity>())
+            .filter { $0.pushedWriteID == nil && $0.deletedAt != nil }
+        guard !tombstones.isEmpty else { return }
+        for trip in tombstones {
+            ctx.delete(trip)
+        }
+        try ctx.save()
+    }
+
     private func pushTrips() async throws {
         let ctx = container.mainContext
+        try Self.purgeUnpushedTripTombstones(in: ctx)
         // Non-group containers are created and mutated server-side only (via
         // resolve_or_create_non_group_container) and pulled read-only — never pushed.
         let dirty = try ctx.fetch(FetchDescriptor<TripEntity>())
@@ -968,6 +684,7 @@ final class SyncService {
             do {
                 try await pushTrip(trip)
             } catch {
+                pushFailures += 1
                 syncLog.error("trip push failed: \(error.localizedDescription, privacy: .public)")
             }
         }
@@ -998,7 +715,12 @@ final class SyncService {
                 .execute()
             person.pushedWriteID = person.writeID
         } else {
-            let update = TripUpdateDTO(name: trip.name, deletedAt: trip.deletedAt)
+            let update = TripUpdateDTO(
+                name: trip.name,
+                deletedAt: trip.deletedAt,
+                updatedAt: trip.updatedAt,
+                writeID: trip.writeID
+            )
             try await client
                 .from("trips")
                 .update(update)
@@ -1029,26 +751,31 @@ final class SyncService {
                             .execute()
                         settlement.pushedWriteID = settlement.writeID
                     } catch {
+                        pushFailures += 1
                         syncLog.error("settlement delete push failed: \(error.localizedDescription, privacy: .public)")
                     }
                 }
                 continue
             }
+            guard let tripID = settlement.trip?.id else { continue }
             let insert = SettlementInsertDTO(
                 id: settlement.id,
-                tripID: settlement.trip?.id ?? UUID(),
+                tripID: tripID,
                 fromPersonID: settlement.fromPersonID,
                 toPersonID: settlement.toPersonID,
                 amount: settlement.amount,
                 currency: settlement.currency,
                 note: settlement.note,
                 settledAt: settlement.settledAt,
-                createdBy: settlement.createdByID
+                createdBy: settlement.createdByID,
+                updatedAt: settlement.updatedAt,
+                writeID: settlement.writeID
             )
             do {
                 try await client.from("settlements").upsert(insert, onConflict: "id").execute()
                 settlement.pushedWriteID = settlement.writeID
             } catch {
+                pushFailures += 1
                 syncLog.error("settlement push failed: \(error.localizedDescription, privacy: .public)")
             }
         }
@@ -1102,11 +829,16 @@ final class SyncService {
                     do {
                         try await client
                             .from("expenses")
-                            .update(ExpenseDeleteUpdateDTO(deletedAt: expense.deletedAt))
+                            .update(ExpenseDeleteUpdateDTO(
+                                deletedAt: expense.deletedAt,
+                                updatedAt: expense.updatedAt,
+                                writeID: expense.writeID
+                            ))
                             .eq("id", value: expense.id.uuidString)
                             .execute()
                         expense.pushedWriteID = expense.writeID
                     } catch {
+                        pushFailures += 1
                         syncLog.error("expense delete push failed: \(error.localizedDescription, privacy: .public)")
                     }
                 }
@@ -1124,11 +856,13 @@ final class SyncService {
                 "currency": .string(expense.currency),
                 "category_id": expense.categoryID.map { .string($0.uuidString) } ?? .null,
                 "description": .string(expense.descriptionText),
-                "expense_date": .string(Self.dateOnlyFormatter.string(from: expense.expenseDate)),
+                "expense_date": .string(ExpenseDates.serialized(expense.expenseDate)),
                 "receipt_storage_path": expense.receiptStoragePath.map { .string($0) } ?? .null,
                 "payment_method": .string(expense.paymentMethodRaw),
                 "created_by": .string(expense.createdByID.uuidString),
                 "last_edited_by": expense.lastEditedByID.map { .string($0.uuidString) } ?? .null,
+                "updated_at": .string(Self.timestampFormatter.string(from: expense.updatedAt)),
+                "write_id": .string(expense.writeID.uuidString),
             ]
 
             let paymentsPayload: [AnyJSON] = expense.payments.map { payment in
@@ -1136,6 +870,8 @@ final class SyncService {
                     "trip_person_id": .string(payment.tripPersonID.uuidString),
                     "amount_paid": .string(Self.decimalString(payment.amountPaid)),
                     "payment_mode": .string(payment.paymentModeRaw),
+                    "updated_at": .string(Self.timestampFormatter.string(from: payment.updatedAt)),
+                    "write_id": .string(payment.writeID.uuidString),
                 ])
             }
 
@@ -1144,6 +880,8 @@ final class SyncService {
                     "trip_person_id": .string(split.tripPersonID.uuidString),
                     "amount_owed": .string(Self.decimalString(split.amountOwed)),
                     "split_type": .string(split.splitTypeRaw),
+                    "updated_at": .string(Self.timestampFormatter.string(from: split.updatedAt)),
+                    "write_id": .string(split.writeID.uuidString),
                 ])
             }
 
@@ -1157,6 +895,7 @@ final class SyncService {
                 for payment in expense.payments { payment.pushedWriteID = payment.writeID }
                 for split in expense.splits { split.pushedWriteID = split.writeID }
             } catch {
+                pushFailures += 1
                 syncLog.error("expense push failed: \(error.localizedDescription, privacy: .public)")
             }
         }
@@ -1188,6 +927,7 @@ final class SyncService {
                     if mute.writeID == target { ctx.delete(mute) }  // unmute tombstone resolved
                 }
             } catch {
+                pushFailures += 1
                 syncLog.error("mute push failed: \(error.localizedDescription, privacy: .public)")
             }
         }
@@ -1252,11 +992,9 @@ final class SyncService {
         Task { try? await pushMutes() }
     }
 
-    private static let dateOnlyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(identifier: "UTC")
+    private static let timestampFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 

@@ -15,6 +15,11 @@ struct TabApp: App {
         let auth = AuthService()
         let sync = SyncService(container: container, auth: auth)
         let realtime = RealtimeService(sync: sync)
+        // On sign-out, clear all locally-cached data so the next account on this
+        // device never sees the previous user's trips or pending writes.
+        auth.onSignedOut = { [container] in
+            try? LocalStore.wipe(container.mainContext)
+        }
         self.container = container
         _auth = State(initialValue: auth)
         _sync = State(initialValue: sync)

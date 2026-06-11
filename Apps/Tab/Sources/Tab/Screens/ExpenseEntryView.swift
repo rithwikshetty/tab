@@ -45,6 +45,7 @@ struct ExpenseEntryView: View {
     @State private var receiptJPEG: Data?
     @State private var receiptError: String?
     @State private var isPreparingReceipt = false
+    @State private var isSaving = false
     @State private var receiptLoadID = UUID()
 
     @State private var hasPrePopulated = false
@@ -110,6 +111,7 @@ struct ExpenseEntryView: View {
             && computedSplits != nil
             && paymentLedgerValid
             && !isPreparingReceipt
+            && !isSaving
     }
 
     /// Empty ledger = OK (defaults to single-payer at save time).
@@ -361,8 +363,12 @@ struct ExpenseEntryView: View {
     }
 
     private func normalizeAmountTextForCurrency() {
-        amountText = sanitizeAmount(amountText)
-        exactAmountTextByPersonID = exactAmountTextByPersonID.mapValues(sanitizeAmount)
+        // Preserve the entered value at the new currency's precision rather than
+        // re-sanitizing digits (which would turn "123.45" into "12345" for JPY).
+        amountText = MoneyFormatter.convertAmountText(amountText, to: currency)
+        exactAmountTextByPersonID = exactAmountTextByPersonID.mapValues {
+            MoneyFormatter.convertAmountText($0, to: currency)
+        }
         refreshEqualPaymentsForCurrentTotal()
     }
 
@@ -918,6 +924,10 @@ struct ExpenseEntryView: View {
     }
 
     private func save() {
+        // Guard against a second tap landing during the dismiss transition,
+        // which would insert a duplicate expense (each saveNew mints a new UUID).
+        guard !isSaving else { return }
+        isSaving = true
         if isEditing {
             guard let expense = editingExpense, expense.deletedAt == nil else { return }
             saveEdit(expense)
@@ -943,6 +953,7 @@ struct ExpenseEntryView: View {
                 )
             } catch {
                 receiptError = (error as? LocalizedError)?.errorDescription ?? "Couldn't prepare receipt."
+                isSaving = false
                 return
             }
         } else {
@@ -955,7 +966,7 @@ struct ExpenseEntryView: View {
             currency: currency,
             categoryID: selectedCategoryID,
             descriptionText: description.trimmingCharacters(in: .whitespaces),
-            expenseDate: expenseDate,
+            expenseDate: ExpenseDates.utcNoonAnchor(forLocalDay: expenseDate),
             receiptStoragePath: receiptPath,
             paymentMethodRaw: selectedPaymentMethod.rawValue,
             createdByID: user.id,
@@ -986,8 +997,6 @@ struct ExpenseEntryView: View {
             context.insert(entity)
         }
         trip.lastActivityAt = .now
-        trip.updatedAt = .now
-        trip.writeID = UUID()
 
         try? context.save()
         CurrencyDefaults.remember(currency)
@@ -1015,6 +1024,7 @@ struct ExpenseEntryView: View {
                 )
             } catch {
                 receiptError = (error as? LocalizedError)?.errorDescription ?? "Couldn't prepare receipt."
+                isSaving = false
                 return
             }
         } else {
@@ -1025,7 +1035,7 @@ struct ExpenseEntryView: View {
         expense.currency = currency
         expense.categoryID = selectedCategoryID
         expense.descriptionText = description.trimmingCharacters(in: .whitespaces)
-        expense.expenseDate = expenseDate
+        expense.expenseDate = ExpenseDates.utcNoonAnchor(forLocalDay: expenseDate)
         expense.receiptStoragePath = receiptPath
         expense.paymentMethodRaw = selectedPaymentMethod.rawValue
         expense.lastEditedByID = user.id
@@ -1056,8 +1066,6 @@ struct ExpenseEntryView: View {
         }
 
         trip.lastActivityAt = .now
-        trip.updatedAt = .now
-        trip.writeID = UUID()
 
         try? context.save()
         CurrencyDefaults.remember(currency)

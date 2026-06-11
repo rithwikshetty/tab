@@ -180,7 +180,7 @@ struct NonGroupExpenseFlowView: View {
         ForEach(Array(selected.enumerated()), id: \.element.id) { index, person in
             HStack(spacing: 12) {
                 Avatar(initial: AvatarInitial.from(person.displayName),
-                       tone: AvatarTone.deterministic(for: deterministicID(person.email)), size: 34)
+                       tone: AvatarTone.deterministic(forEmail: person.email), size: 34)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(person.displayName).font(.system(size: 15, weight: .medium)).foregroundStyle(Sage.text)
                         .lineLimit(1).truncationMode(.tail)
@@ -220,7 +220,7 @@ struct NonGroupExpenseFlowView: View {
                 } label: {
                     HStack(spacing: 12) {
                         Avatar(initial: AvatarInitial.from(s.displayName),
-                               tone: AvatarTone.deterministic(for: deterministicID(s.email)), size: 34)
+                               tone: AvatarTone.deterministic(forEmail: s.email), size: 34)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(s.displayName).font(.system(size: 15, weight: .medium)).foregroundStyle(Sage.text)
                                 .lineLimit(1).truncationMode(.tail)
@@ -334,26 +334,9 @@ struct NonGroupExpenseFlowView: View {
         String(email.split(separator: "@").first ?? "").capitalized
     }
 
-    private func isValidEmail(_ s: String) -> Bool {
-        let e = normalized(s)
-        guard e.contains("@"), let at = e.firstIndex(of: "@") else { return false }
-        let domain = e[e.index(after: at)...]
-        return !e[..<at].isEmpty && domain.contains(".") && !domain.hasSuffix(".")
-    }
-
     private func canInviteEmail(_ s: String) -> Bool {
         let email = normalized(s)
-        return isValidEmail(email) && email != currentUserEmail
+        return EmailValidator.isValid(email) && email != currentUserEmail
     }
 
-    /// Stable per-email UUID purely for picking a consistent avatar tone in this picker.
-    private func deterministicID(_ email: String) -> UUID {
-        var hasher = Hasher()
-        hasher.combine(email)
-        let h = UInt64(bitPattern: Int64(hasher.finalize()))
-        var bytes = [UInt8](repeating: 0, count: 16)
-        for i in 0..<8 { bytes[i] = UInt8((h >> (UInt64(i) * 8)) & 0xFF) }
-        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-                           bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
-    }
 }

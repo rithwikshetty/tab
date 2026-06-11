@@ -18,6 +18,8 @@ declare
     v_trip_id    uuid;
     v_payment    jsonb;
     v_split      jsonb;
+    v_write_id   uuid        := nullif(p_expense->>'write_id', '')::uuid;
+    v_updated_at timestamptz := nullif(p_expense->>'updated_at', '')::timestamptz;
 begin
     if v_actor is null then
         raise exception 'Authentication required' using errcode = '28000';
@@ -60,7 +62,7 @@ begin
     insert into public.expenses (
         id, trip_id, amount, currency, category_id,
         description, expense_date, receipt_storage_path, payment_method,
-        created_by, last_edited_by
+        created_by, last_edited_by, updated_at, write_id
     )
     values (
         v_expense_id,
@@ -73,7 +75,9 @@ begin
         nullif(p_expense->>'receipt_storage_path', ''),
         coalesce(nullif(p_expense->>'payment_method', ''), 'card'),
         v_actor,
-        case when nullif(p_expense->>'last_edited_by', '') is null then null else v_actor end
+        case when nullif(p_expense->>'last_edited_by', '') is null then null else v_actor end,
+        coalesce(v_updated_at, clock_timestamp()),
+        coalesce(v_write_id, gen_random_uuid())
     )
     on conflict (id) do update set
         amount               = excluded.amount,
@@ -83,7 +87,18 @@ begin
         expense_date         = excluded.expense_date,
         receipt_storage_path = excluded.receipt_storage_path,
         payment_method       = excluded.payment_method,
-        last_edited_by       = v_actor;
+        last_edited_by       = v_actor,
+        updated_at           = excluded.updated_at,
+        write_id             = excluded.write_id;
+
+    -- LWW: when the expense update was skipped as stale (set_sync_fields kept
+    -- the newer row), the ledgers must stay untouched as well.
+    if v_write_id is not null and not exists (
+        select 1 from public.expenses
+        where id = v_expense_id and write_id = v_write_id
+    ) then
+        return v_expense_id;
+    end if;
 
     delete from public.expense_payments where expense_id = v_expense_id;
     delete from public.expense_splits   where expense_id = v_expense_id;
@@ -91,26 +106,30 @@ begin
     for v_payment in select * from jsonb_array_elements(p_payments)
     loop
         insert into public.expense_payments (
-            expense_id, trip_person_id, amount_paid, payment_mode
+            expense_id, trip_person_id, amount_paid, payment_mode, updated_at, write_id
         )
         values (
             v_expense_id,
             (v_payment->>'trip_person_id')::uuid,
             (v_payment->>'amount_paid')::numeric(20, 8),
-            v_payment->>'payment_mode'
+            v_payment->>'payment_mode',
+            coalesce(nullif(v_payment->>'updated_at', '')::timestamptz, clock_timestamp()),
+            coalesce(nullif(v_payment->>'write_id', '')::uuid, gen_random_uuid())
         );
     end loop;
 
     for v_split in select * from jsonb_array_elements(p_splits)
     loop
         insert into public.expense_splits (
-            expense_id, trip_person_id, amount_owed, split_type
+            expense_id, trip_person_id, amount_owed, split_type, updated_at, write_id
         )
         values (
             v_expense_id,
             (v_split->>'trip_person_id')::uuid,
             (v_split->>'amount_owed')::numeric(20, 8),
-            v_split->>'split_type'
+            v_split->>'split_type',
+            coalesce(nullif(v_split->>'updated_at', '')::timestamptz, clock_timestamp()),
+            coalesce(nullif(v_split->>'write_id', '')::uuid, gen_random_uuid())
         );
     end loop;
 

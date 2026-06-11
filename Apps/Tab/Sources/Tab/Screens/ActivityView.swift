@@ -79,8 +79,12 @@ struct ActivityView: View {
         .background(Sage.bg.ignoresSafeArea())
         .refreshable { await sync.pullAll() }
         .onAppear {
-            // Snapshot the cursor for THIS visit (so newly-arrived events stay
+            // Snapshot the cursor once per visit (so newly-arrived events stay
             // highlighted), then advance the persisted cursor to clear the badge.
+            // Guarded on nil so popping back from a detail — which also fires
+            // onAppear — doesn't re-snapshot the just-advanced cursor and wipe
+            // the "unread this visit" highlights.
+            guard displaySince == nil else { return }
             displaySince = profiles.first { $0.id == currentUserID }?.activityLastSeenAt
             Task { await sync.markActivitySeen() }
         }

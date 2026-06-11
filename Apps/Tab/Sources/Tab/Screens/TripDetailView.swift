@@ -64,7 +64,10 @@ struct TripDetailView: View {
             await realtime.subscribe(to: tripID)
         }
         .onDisappear {
-            Task { await realtime.unsubscribe() }
+            // Scoped so pushing a child screen (which also fires onDisappear)
+            // can't tear down this trip's live subscription, and a fast switch
+            // to another trip can't have its subscription killed by ours.
+            Task { [tripID] in await realtime.unsubscribe(from: tripID) }
         }
         .alert(
             "Delete this expense?",

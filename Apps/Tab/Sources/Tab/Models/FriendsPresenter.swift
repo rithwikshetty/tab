@@ -291,8 +291,7 @@ enum FriendsPresenter {
         case .user(let id):
             return AvatarTone.deterministic(for: id)
         case .email(let e):
-            let sum = e.utf8.reduce(UInt8(0)) { $0 &+ $1 }
-            return AvatarTone.allCases[Int(sum) % AvatarTone.allCases.count]
+            return AvatarTone.deterministic(forEmail: e)
         }
     }
 

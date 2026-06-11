@@ -18,25 +18,66 @@ grant usage on schema extensions to public;
 
 set check_function_bodies = off;
 
--- Stamps server-owned sync fields. Clients cannot forge them — LWW ordering
--- is determined by server-receive time.
+-- Sync-field stamping + last-write-wins enforcement, shared by every synced
+-- table. Clients send updated_at + write_id with each push; the policy is
+-- LWW with delete-wins and a write_id tiebreaker (mirrors TabCore's
+-- ConflictResolver). Writes that do not touch the metadata (server-side
+-- maintenance, triggers, legacy paths) keep the old stamp-fresh behavior.
+-- deleted_at is read via jsonb because not every synced table has the column.
 create or replace function public.set_sync_fields()
 returns trigger
 language plpgsql
 set search_path = public
 as $$
+declare
+  v_old_deleted timestamptz;
+  v_new_deleted timestamptz;
 begin
   if tg_op = 'INSERT' then
     new.created_at := clock_timestamp();
+    if new.updated_at is null then new.updated_at := clock_timestamp(); end if;
+    if new.write_id   is null then new.write_id   := gen_random_uuid();  end if;
+    return new;
   end if;
-  new.updated_at := clock_timestamp();
-  new.write_id   := gen_random_uuid();
+
+  v_old_deleted := nullif(to_jsonb(old) ->> 'deleted_at', '')::timestamptz;
+  v_new_deleted := nullif(to_jsonb(new) ->> 'deleted_at', '')::timestamptz;
+
+  -- Delete-wins: a tombstoned row is never resurrected by a live update.
+  if v_old_deleted is not null and v_new_deleted is null then
+    return null;
+  end if;
+
+  if new.write_id is not distinct from old.write_id then
+    -- Metadata-less write: stamp fresh server values (previous behavior).
+    new.updated_at := clock_timestamp();
+    new.write_id   := gen_random_uuid();
+    return new;
+  end if;
+
+  -- Client-supplied metadata: last write wins, write_id breaks ties. A write
+  -- whose updated_at equals the row's goes to the tiebreaker — clients always
+  -- send write_id and updated_at together.
+  if new.updated_at is null then
+    new.updated_at := clock_timestamp();
+  end if;
+
+  if v_old_deleted is not null and v_new_deleted is not null then
+    if v_new_deleted < v_old_deleted
+       or (v_new_deleted = v_old_deleted and new.write_id::text < old.write_id::text) then
+      return null;
+    end if;
+  elsif new.updated_at < old.updated_at
+     or (new.updated_at = old.updated_at and new.write_id::text < old.write_id::text) then
+    return null;
+  end if;
+
   return new;
 end;
 $$;
 
 comment on function public.set_sync_fields() is
-  'BEFORE INSERT/UPDATE trigger. Stamps created_at on insert; updated_at + write_id always. Uses clock_timestamp() so consecutive statements within one transaction get ordered timestamps.';
+  'BEFORE INSERT/UPDATE trigger for synced tables. Stamps created_at on insert and fills missing updated_at/write_id; on update enforces last-write-wins with delete-wins + write_id tiebreaker against client-supplied metadata, silently skipping stale writes. Metadata-less updates get fresh server stamps.';
 
 
 -- ============================================================================
@@ -1794,7 +1835,23 @@ begin
     set user_id = v_actor,
         display_name = excluded.display_name,
         joined_at = coalesce(public.trip_people.joined_at, clock_timestamp())
+    -- A claimed row never transfers to another account, and an account that
+    -- already holds a different row in this trip cannot absorb a second one.
+    where public.trip_people.user_id = v_actor
+       or (
+         public.trip_people.user_id is null
+         and not exists (
+           select 1 from public.trip_people other
+           where other.trip_id = excluded.trip_id
+             and other.user_id = v_actor
+         )
+       )
   returning public.trip_people.id into person_id;
+
+  if person_id is null then
+    raise exception 'Person row for % is already claimed by another account', v_email
+      using errcode = '42501';
+  end if;
 
   trip_id := p_trip_id;
   return next;
@@ -1995,6 +2052,8 @@ declare
     v_trip_id    uuid;
     v_payment    jsonb;
     v_split      jsonb;
+    v_write_id   uuid        := nullif(p_expense->>'write_id', '')::uuid;
+    v_updated_at timestamptz := nullif(p_expense->>'updated_at', '')::timestamptz;
 begin
     if v_actor is null then
         raise exception 'Authentication required' using errcode = '28000';
@@ -2037,7 +2096,7 @@ begin
     insert into public.expenses (
         id, trip_id, amount, currency, category_id,
         description, expense_date, receipt_storage_path, payment_method,
-        created_by, last_edited_by
+        created_by, last_edited_by, updated_at, write_id
     )
     values (
         v_expense_id,
@@ -2050,7 +2109,9 @@ begin
         nullif(p_expense->>'receipt_storage_path', ''),
         coalesce(nullif(p_expense->>'payment_method', ''), 'card'),
         v_actor,
-        case when nullif(p_expense->>'last_edited_by', '') is null then null else v_actor end
+        case when nullif(p_expense->>'last_edited_by', '') is null then null else v_actor end,
+        coalesce(v_updated_at, clock_timestamp()),
+        coalesce(v_write_id, gen_random_uuid())
     )
     on conflict (id) do update set
         amount               = excluded.amount,
@@ -2060,7 +2121,18 @@ begin
         expense_date         = excluded.expense_date,
         receipt_storage_path = excluded.receipt_storage_path,
         payment_method       = excluded.payment_method,
-        last_edited_by       = v_actor;
+        last_edited_by       = v_actor,
+        updated_at           = excluded.updated_at,
+        write_id             = excluded.write_id;
+
+    -- LWW: when the expense update was skipped as stale (set_sync_fields kept
+    -- the newer row), the ledgers must stay untouched as well.
+    if v_write_id is not null and not exists (
+        select 1 from public.expenses
+        where id = v_expense_id and write_id = v_write_id
+    ) then
+        return v_expense_id;
+    end if;
 
     delete from public.expense_payments where expense_id = v_expense_id;
     delete from public.expense_splits   where expense_id = v_expense_id;
@@ -2068,26 +2140,30 @@ begin
     for v_payment in select * from jsonb_array_elements(p_payments)
     loop
         insert into public.expense_payments (
-            expense_id, trip_person_id, amount_paid, payment_mode
+            expense_id, trip_person_id, amount_paid, payment_mode, updated_at, write_id
         )
         values (
             v_expense_id,
             (v_payment->>'trip_person_id')::uuid,
             (v_payment->>'amount_paid')::numeric(20, 8),
-            v_payment->>'payment_mode'
+            v_payment->>'payment_mode',
+            coalesce(nullif(v_payment->>'updated_at', '')::timestamptz, clock_timestamp()),
+            coalesce(nullif(v_payment->>'write_id', '')::uuid, gen_random_uuid())
         );
     end loop;
 
     for v_split in select * from jsonb_array_elements(p_splits)
     loop
         insert into public.expense_splits (
-            expense_id, trip_person_id, amount_owed, split_type
+            expense_id, trip_person_id, amount_owed, split_type, updated_at, write_id
         )
         values (
             v_expense_id,
             (v_split->>'trip_person_id')::uuid,
             (v_split->>'amount_owed')::numeric(20, 8),
-            v_split->>'split_type'
+            v_split->>'split_type',
+            coalesce(nullif(v_split->>'updated_at', '')::timestamptz, clock_timestamp()),
+            coalesce(nullif(v_split->>'write_id', '')::uuid, gen_random_uuid())
         );
     end loop;
 
@@ -2153,8 +2229,8 @@ revoke execute on function public.suggest_trip_people(text, int) from public, an
 grant  execute on function public.suggest_trip_people(text, int) to authenticated;
 revoke execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) from public, anon;
 grant  execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) to authenticated;
-revoke execute on function public.resolve_or_create_non_group_container(jsonb) from public, anon;
-grant  execute on function public.resolve_or_create_non_group_container(jsonb) to authenticated;
+-- resolve_or_create_non_group_container privileges live in 19_rpc_non_group.sql:
+-- the function is defined there, and this file sorts before it in the build.
 revoke execute on function public.mark_activity_seen() from public, anon;
 grant  execute on function public.mark_activity_seen() to authenticated;
 
@@ -2365,7 +2441,8 @@ begin
   v_emails := array[v_email];
   for v_row in select * from jsonb_array_elements(p_participants) loop
     v_p_email := private.normalized_email(v_row->>'email');
-    if v_p_email is null or v_p_email = '' or v_p_email not like '%@%' or char_length(v_p_email) > 320 then
+    if v_p_email is null or v_p_email = '' or v_p_email not like '%@%' or char_length(v_p_email) > 320
+       or position('|' in v_p_email) > 0 then
       raise exception 'A valid participant email is required' using errcode = '22023';
     end if;
     if not (v_p_email = any (v_emails)) then
@@ -2416,7 +2493,18 @@ begin
   values (gen_random_uuid(), v_container, v_actor, v_email, v_self_name, v_actor, clock_timestamp())
   on conflict on constraint trip_people_email_unique do update
     set user_id   = v_actor,
-        joined_at = coalesce(public.trip_people.joined_at, clock_timestamp());
+        joined_at = coalesce(public.trip_people.joined_at, clock_timestamp())
+    -- A claimed row never transfers to another account.
+    where public.trip_people.user_id is null
+       or public.trip_people.user_id = v_actor;
+
+  if not exists (
+    select 1 from public.trip_people
+    where trip_id = v_container and email = v_email and user_id = v_actor
+  ) then
+    raise exception 'This email is already claimed by another account in this group'
+      using errcode = '42501';
+  end if;
 
   -- Ensure each other participant stays pending until that email's owner signs
   -- in and claims it. Do not query auth.users here; that would let callers
@@ -2444,5 +2532,11 @@ $$;
 
 comment on function public.resolve_or_create_non_group_container(jsonb) is
   'Finds or creates the hidden non-group container for the canonical set of participant emails (caller + p_participants [{email, display_name}]), ensuring a trip_people row for each without probing auth.users for other participants. Idempotent by member_signature. Returns the container''s trip_people rows; the caller derives container_id from trip_id.';
+
+-- Privileges are granted here rather than in 17_privileges.sql because that
+-- file sorts before this one in the baseline build — a fresh database would
+-- fail on a revoke against a function that does not exist yet.
+revoke execute on function public.resolve_or_create_non_group_container(jsonb) from public, anon;
+grant  execute on function public.resolve_or_create_non_group_container(jsonb) to authenticated;
 
 -- <<< END 19_rpc_non_group.sql

@@ -79,7 +79,23 @@ begin
     set user_id = v_actor,
         display_name = excluded.display_name,
         joined_at = coalesce(public.trip_people.joined_at, clock_timestamp())
+    -- A claimed row never transfers to another account, and an account that
+    -- already holds a different row in this trip cannot absorb a second one.
+    where public.trip_people.user_id = v_actor
+       or (
+         public.trip_people.user_id is null
+         and not exists (
+           select 1 from public.trip_people other
+           where other.trip_id = excluded.trip_id
+             and other.user_id = v_actor
+         )
+       )
   returning public.trip_people.id into person_id;
+
+  if person_id is null then
+    raise exception 'Person row for % is already claimed by another account', v_email
+      using errcode = '42501';
+  end if;
 
   trip_id := p_trip_id;
   return next;

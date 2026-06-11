@@ -15,6 +15,7 @@ struct SettleUpFormView: View {
     @Query private var editingSettlements: [SettlementEntity]
 
     @State private var amountText: String = ""
+    @State private var isSaving = false
     @State private var fromPersonID: UUID?
     @State private var toPersonID: UUID?
     @State private var currency: String = CurrencyDefaults.initialCurrency
@@ -58,6 +59,7 @@ struct SettleUpFormView: View {
             && toPersonID != nil
             && fromPersonID != toPersonID
             && auth.currentUser != nil
+            && !isSaving
     }
 
     private var currentPersonID: UUID? {
@@ -115,7 +117,7 @@ struct SettleUpFormView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .onAppear { prepopulate() }
         .onChange(of: currency) {
-            amountText = sanitizeAmount(amountText)
+            amountText = MoneyFormatter.convertAmountText(amountText, to: currency)
             updateAmountForPair()
         }
     }
@@ -437,6 +439,8 @@ struct SettleUpFormView: View {
     // MARK: - Save
 
     private func save() {
+        guard !isSaving else { return }   // block a double tap during dismiss
+        isSaving = true
         if isEditing {
             guard let settlement = editingSettlement, settlement.deletedAt == nil else { return }
             saveEdit(settlement)
@@ -463,8 +467,6 @@ struct SettleUpFormView: View {
         context.insert(settlement)
 
         trip.lastActivityAt = .now
-        trip.updatedAt = .now
-        trip.writeID = UUID()
 
         try? context.save()
         CurrencyDefaults.remember(currency)
@@ -488,8 +490,6 @@ struct SettleUpFormView: View {
         settlement.writeID = UUID()
 
         trip.lastActivityAt = .now
-        trip.updatedAt = .now
-        trip.writeID = UUID()
 
         try? context.save()
         CurrencyDefaults.remember(currency)

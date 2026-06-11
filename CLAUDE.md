@@ -67,7 +67,8 @@ The iOS app target will be added later under `Apps/` (or root) and depends on `T
 - After editing `supabase/sql/*.sql`, run `./supabase/scripts/build_schema.sh --write` and `bash supabase/tests/00_sql_assembly.sh` so the generated baseline stays in sync.
 - Migration strategy is baseline-first: rewrite/squash `supabase/migrations/20260518000000_baseline.sql` via the build script; do not create incremental migration chains unless the user explicitly asks.
 - For agents with Supabase MCP access, use MCP for remote destructive DB work. Prefer `apply_migration` with the current baseline/destructive SQL; use `reset_branch` for disposable Supabase development branches.
-- CLI fallback/human reset command: `./supabase/scripts/recreate_db.sh` (uses `supabase db reset` non-interactively).
+- CLI fallback/human reset command: `./supabase/scripts/recreate_db.sh` (builds the schema from `supabase/sql/*.sql`, then applies `destructive_teardown.sql` + the generated schema via `supabase db query` against the linked DB or `SUPABASE_DB_URL`).
+- Run the pgTAP suites with `./supabase/scripts/run_db_tests.sh` (every `supabase/tests/[0-9]*.sql` against the linked DB; each is transactional and rolls back).
 - Receipt storage objects/buckets cannot be deleted with raw SQL. Use `./supabase/scripts/clear_receipts_storage.sh`; pass `SUPABASE_SERVICE_ROLE_KEY` and `--delete-bucket` to delete the bucket itself.
 - Remote DB resets do not clear local SwiftData. If stale trips still appear in the app, uninstall the app from the simulator/device or reset simulator content.
 - DB tests live in `supabase/tests/` as pgTAP `.sql` files.

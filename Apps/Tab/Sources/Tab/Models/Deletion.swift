@@ -13,7 +13,6 @@ enum Deletion {
         expense.writeID = UUID()
         if let trip = expense.trip {
             trip.lastActivityAt = now
-            trip.updatedAt = now
         }
         try? context.save()
     }
@@ -25,7 +24,6 @@ enum Deletion {
         settlement.writeID = UUID()
         if let trip = settlement.trip {
             trip.lastActivityAt = now
-            trip.updatedAt = now
         }
         try? context.save()
     }

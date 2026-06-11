@@ -122,7 +122,11 @@ public enum TripAnalytics {
             .map { CategorySpend(categoryID: $0.key, total: $0.value) }
             .sorted {
                 if $0.total != $1.total { return $0.total > $1.total }
-                return ($0.categoryID?.uuidString ?? "") < ($1.categoryID?.uuidString ?? "")
+                switch ($0.categoryID, $1.categoryID) {
+                case (nil, _): return false
+                case (_, nil): return true
+                case let (lhs?, rhs?): return lhs.uuidString < rhs.uuidString
+                }
             }
     }
 }

@@ -77,4 +77,53 @@ struct ConflictResolverTests {
         #expect(ConflictResolver.resolve(a, b).value == "b")
         #expect(ConflictResolver.resolve(b, a).value == "b")
     }
+
+    // MARK: merge (sync pull decisions)
+
+    @Test("merge: clean local row always takes the remote version")
+    func mergeCleanLocalAppliesRemote() {
+        // Local is clean (no pending push) but the server moved on — even an
+        // older-looking remote stamp must apply, because a clean row has no
+        // local change worth preserving.
+        let local = WriteStamp(updatedAt: t0.addingTimeInterval(60), deletedAt: nil, writeID: higherWriteID)
+        let remote = WriteStamp(updatedAt: t0, deletedAt: nil, writeID: lowerWriteID)
+        #expect(ConflictResolver.merge(local: local, localIsDirty: false, remote: remote) == .applyRemote)
+    }
+
+    @Test("merge: dirty local edit newer than remote survives the pull")
+    func mergeDirtyNewerLocalSurvives() {
+        // The offline-edit-then-foreground scenario: the local pending write is
+        // newer than the stale server row the pull returns. It must NOT be clobbered.
+        let local = WriteStamp(updatedAt: t0.addingTimeInterval(60), deletedAt: nil, writeID: lowerWriteID)
+        let remote = WriteStamp(updatedAt: t0, deletedAt: nil, writeID: higherWriteID)
+        #expect(ConflictResolver.merge(local: local, localIsDirty: true, remote: remote) == .keepLocal)
+    }
+
+    @Test("merge: dirty local edit older than remote yields to the newer remote write")
+    func mergeDirtyOlderLocalYields() {
+        let local = WriteStamp(updatedAt: t0, deletedAt: nil, writeID: higherWriteID)
+        let remote = WriteStamp(updatedAt: t0.addingTimeInterval(60), deletedAt: nil, writeID: lowerWriteID)
+        #expect(ConflictResolver.merge(local: local, localIsDirty: true, remote: remote) == .applyRemote)
+    }
+
+    @Test("merge: remote delete beats a dirty local edit (delete-wins)")
+    func mergeRemoteDeleteBeatsDirtyEdit() {
+        let local = WriteStamp(updatedAt: t0.addingTimeInterval(3600), deletedAt: nil, writeID: higherWriteID)
+        let remote = WriteStamp(updatedAt: t0, deletedAt: t0, writeID: lowerWriteID)
+        #expect(ConflictResolver.merge(local: local, localIsDirty: true, remote: remote) == .applyRemote)
+    }
+
+    @Test("merge: dirty local delete beats a newer remote edit (delete-wins)")
+    func mergeLocalDeleteBeatsNewerRemoteEdit() {
+        let local = WriteStamp(updatedAt: t0, deletedAt: t0, writeID: lowerWriteID)
+        let remote = WriteStamp(updatedAt: t0.addingTimeInterval(3600), deletedAt: nil, writeID: higherWriteID)
+        #expect(ConflictResolver.merge(local: local, localIsDirty: true, remote: remote) == .keepLocal)
+    }
+
+    @Test("merge: identical writeIDs are already converged — keep local even when dirty-flagged")
+    func mergeSameWriteIDKeepsLocal() {
+        let local = WriteStamp(updatedAt: t0, deletedAt: nil, writeID: lowerWriteID)
+        let remote = WriteStamp(updatedAt: t0.addingTimeInterval(60), deletedAt: nil, writeID: lowerWriteID)
+        #expect(ConflictResolver.merge(local: local, localIsDirty: true, remote: remote) == .keepLocal)
+    }
 }

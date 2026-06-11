@@ -46,8 +46,8 @@ revoke execute on function public.suggest_trip_people(text, int) from public, an
 grant  execute on function public.suggest_trip_people(text, int) to authenticated;
 revoke execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) from public, anon;
 grant  execute on function public.create_expense_with_payments_and_splits(jsonb, jsonb, jsonb) to authenticated;
-revoke execute on function public.resolve_or_create_non_group_container(jsonb) from public, anon;
-grant  execute on function public.resolve_or_create_non_group_container(jsonb) to authenticated;
+-- resolve_or_create_non_group_container privileges live in 19_rpc_non_group.sql:
+-- the function is defined there, and this file sorts before it in the build.
 revoke execute on function public.mark_activity_seen() from public, anon;
 grant  execute on function public.mark_activity_seen() to authenticated;
 

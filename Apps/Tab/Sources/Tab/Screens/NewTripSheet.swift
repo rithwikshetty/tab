@@ -8,10 +8,11 @@ struct NewTripSheet: View {
     @Environment(SyncService.self) private var sync
 
     @State private var name: String = ""
+    @State private var isSaving = false
     @FocusState private var nameFocused: Bool
 
     private var canCreate: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty && auth.currentUser != nil
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && auth.currentUser != nil && !isSaving
     }
 
     var body: some View {
@@ -85,6 +86,7 @@ struct NewTripSheet: View {
 
     private func save() {
         guard canCreate, let user = auth.currentUser else { return }
+        isSaving = true   // block a double tap during the dismiss transition
         let trimmed = name.trimmingCharacters(in: .whitespaces)
 
         let trip = TripEntity(name: trimmed, createdByID: user.id)

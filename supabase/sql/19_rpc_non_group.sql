@@ -42,7 +42,8 @@ begin
   v_emails := array[v_email];
   for v_row in select * from jsonb_array_elements(p_participants) loop
     v_p_email := private.normalized_email(v_row->>'email');
-    if v_p_email is null or v_p_email = '' or v_p_email not like '%@%' or char_length(v_p_email) > 320 then
+    if v_p_email is null or v_p_email = '' or v_p_email not like '%@%' or char_length(v_p_email) > 320
+       or position('|' in v_p_email) > 0 then
       raise exception 'A valid participant email is required' using errcode = '22023';
     end if;
     if not (v_p_email = any (v_emails)) then
@@ -93,7 +94,18 @@ begin
   values (gen_random_uuid(), v_container, v_actor, v_email, v_self_name, v_actor, clock_timestamp())
   on conflict on constraint trip_people_email_unique do update
     set user_id   = v_actor,
-        joined_at = coalesce(public.trip_people.joined_at, clock_timestamp());
+        joined_at = coalesce(public.trip_people.joined_at, clock_timestamp())
+    -- A claimed row never transfers to another account.
+    where public.trip_people.user_id is null
+       or public.trip_people.user_id = v_actor;
+
+  if not exists (
+    select 1 from public.trip_people
+    where trip_id = v_container and email = v_email and user_id = v_actor
+  ) then
+    raise exception 'This email is already claimed by another account in this group'
+      using errcode = '42501';
+  end if;
 
   -- Ensure each other participant stays pending until that email's owner signs
   -- in and claims it. Do not query auth.users here; that would let callers
@@ -121,3 +133,9 @@ $$;
 
 comment on function public.resolve_or_create_non_group_container(jsonb) is
   'Finds or creates the hidden non-group container for the canonical set of participant emails (caller + p_participants [{email, display_name}]), ensuring a trip_people row for each without probing auth.users for other participants. Idempotent by member_signature. Returns the container''s trip_people rows; the caller derives container_id from trip_id.';
+
+-- Privileges are granted here rather than in 17_privileges.sql because that
+-- file sorts before this one in the baseline build — a fresh database would
+-- fail on a revoke against a function that does not exist yet.
+revoke execute on function public.resolve_or_create_non_group_container(jsonb) from public, anon;
+grant  execute on function public.resolve_or_create_non_group_container(jsonb) to authenticated;

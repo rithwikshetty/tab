@@ -532,6 +532,109 @@ struct BalanceEngineTests {
         #expect(charlieBob?.amount == -20)
     }
 
+    // MARK: minor-unit quantization
+
+    @Test("multi-payer shares with non-terminating ratios stay in minor units and sum exactly per debtor")
+    func multiPayerSharesAreQuantized() throws {
+        let dave = UUID(uuidString: "00000000-0000-0000-0000-00000000000D")!
+        // €30. Alice paid €20, Bob paid €10. Exact splits: Charlie owes €10, Dave owes €20.
+        // Nets: Alice +20, Bob +10 (creditors); Charlie −10, Dave −20 (debtors).
+        // Raw proportional shares are non-terminating (10×20/30 = 6.666…).
+        let expense = makeExpense(
+            payments: [
+                Payment(payerID: alice, amountPaid: 20, paymentMode: .exact),
+                Payment(payerID: bob, amountPaid: 10, paymentMode: .exact),
+            ],
+            amount: 30, currency: "EUR",
+            splits: [
+                ExpenseSplit(participantID: charlie, amountOwed: 10, splitType: .exact),
+                ExpenseSplit(participantID: dave, amountOwed: 20, splitType: .exact),
+            ],
+            createdBy: alice
+        )
+        let balances = BalanceEngine.compute(expenses: [expense], settlements: [])
+
+        // Every emitted amount must be representable in EUR minor units.
+        for balance in balances {
+            #expect(
+                CurrencyCatalog.hasValidPrecision(balance.amount, currency: "EUR"),
+                "non-minor-unit balance \(balance.amount) for \(balance.forUser)"
+            )
+        }
+
+        // Each debtor's distributed debt must sum exactly to their shortfall.
+        let charlieTotal = balances
+            .filter { $0.forUser == charlie }
+            .reduce(Decimal(0)) { $0 + $1.amount }
+        let daveTotal = balances
+            .filter { $0.forUser == dave }
+            .reduce(Decimal(0)) { $0 + $1.amount }
+        #expect(charlieTotal == -10)
+        #expect(daveTotal == -20)
+
+        // Largest-remainder, lowest-UUID tiebreak: C→A 6.67, C→B 3.33, D→A 13.33, D→B 6.67.
+        #expect(balances.first { $0.forUser == charlie && $0.withUser == alice }?.amount == Decimal(string: "-6.67"))
+        #expect(balances.first { $0.forUser == charlie && $0.withUser == bob }?.amount == Decimal(string: "-3.33"))
+        #expect(balances.first { $0.forUser == dave && $0.withUser == alice }?.amount == Decimal(string: "-13.33"))
+        #expect(balances.first { $0.forUser == dave && $0.withUser == bob }?.amount == Decimal(string: "-6.67"))
+    }
+
+    @Test("settling each displayed pair amount zeroes all balances (no dust)")
+    func settlingDisplayedAmountsZeroesBalances() throws {
+        let dave = UUID(uuidString: "00000000-0000-0000-0000-00000000000D")!
+        let expense = makeExpense(
+            payments: [
+                Payment(payerID: alice, amountPaid: 20, paymentMode: .exact),
+                Payment(payerID: bob, amountPaid: 10, paymentMode: .exact),
+            ],
+            amount: 30, currency: "EUR",
+            splits: [
+                ExpenseSplit(participantID: charlie, amountOwed: 10, splitType: .exact),
+                ExpenseSplit(participantID: dave, amountOwed: 20, splitType: .exact),
+            ],
+            createdBy: alice
+        )
+        let balances = BalanceEngine.compute(expenses: [expense], settlements: [])
+
+        // Settle exactly what each debtor's rows display.
+        let settlements = balances
+            .filter { $0.amount < 0 }
+            .map { makeSettlement(from: $0.forUser, to: $0.withUser, amount: -$0.amount, currency: $0.currency) }
+        let after = BalanceEngine.compute(expenses: [expense], settlements: settlements)
+        #expect(after.isEmpty)
+    }
+
+    @Test("multi-payer JPY distributes whole yen only")
+    func multiPayerZeroDecimalCurrency() {
+        let dave = UUID(uuidString: "00000000-0000-0000-0000-00000000000D")!
+        // ¥1000. Alice paid ¥700, Bob paid ¥300. Charlie owes ¥450, Dave owes ¥550.
+        // Raw shares: C→A 315, C→B 135, D→A 385, D→B 165 — but with a non-divisible
+        // variant (¥100 → 70/30 of C's ¥45) fractions appear; assert whole-yen output.
+        let expense = makeExpense(
+            payments: [
+                Payment(payerID: alice, amountPaid: 700, paymentMode: .exact),
+                Payment(payerID: bob, amountPaid: 300, paymentMode: .exact),
+            ],
+            amount: 1000, currency: "JPY",
+            splits: [
+                ExpenseSplit(participantID: charlie, amountOwed: 451, splitType: .exact),
+                ExpenseSplit(participantID: dave, amountOwed: 549, splitType: .exact),
+            ],
+            createdBy: alice
+        )
+        let balances = BalanceEngine.compute(expenses: [expense], settlements: [])
+        for balance in balances {
+            #expect(
+                CurrencyCatalog.hasValidPrecision(balance.amount, currency: "JPY"),
+                "non-whole-yen balance \(balance.amount)"
+            )
+        }
+        let charlieTotal = balances.filter { $0.forUser == charlie }.reduce(Decimal(0)) { $0 + $1.amount }
+        let daveTotal = balances.filter { $0.forUser == dave }.reduce(Decimal(0)) { $0 + $1.amount }
+        #expect(charlieTotal == -451)
+        #expect(daveTotal == -549)
+    }
+
     // MARK: helpers
 
     private func makeExpense(

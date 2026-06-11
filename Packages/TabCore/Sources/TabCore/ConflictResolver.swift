@@ -14,6 +14,20 @@ public struct Versioned<T>: Sendable where T: Sendable {
     }
 }
 
+/// Write metadata without a payload — what sync needs to decide a merge.
+public typealias WriteStamp = Versioned<Void>
+
+extension Versioned where T == Void {
+    public init(updatedAt: Date, deletedAt: Date?, writeID: UUID) {
+        self.init(value: (), updatedAt: updatedAt, deletedAt: deletedAt, writeID: writeID)
+    }
+}
+
+public enum MergeDecision: Sendable, Equatable {
+    case keepLocal
+    case applyRemote
+}
+
 public enum ConflictResolver {
     // Policy:
     // 1. If exactly one side is deleted, the deleted side wins.
@@ -37,6 +51,24 @@ public enum ConflictResolver {
             }
             return tiebreakByWriteID(a, b)
         }
+    }
+
+    /// Pull-merge decision for one synced row.
+    ///
+    /// A row whose local and remote writeIDs match is already converged. A
+    /// clean local row (no pending push) always takes the remote version —
+    /// the server is authoritative for rows without local changes. A dirty
+    /// local row goes through `resolve` (LWW + delete-wins + writeID
+    /// tiebreaker); the local side only survives when it wins outright.
+    public static func merge(
+        local: WriteStamp,
+        localIsDirty: Bool,
+        remote: WriteStamp
+    ) -> MergeDecision {
+        if local.writeID == remote.writeID { return .keepLocal }
+        guard localIsDirty else { return .applyRemote }
+        let winner = resolve(local, remote)
+        return winner.writeID == remote.writeID ? .applyRemote : .keepLocal
     }
 
     private static func tiebreakByWriteID<T>(_ a: Versioned<T>, _ b: Versioned<T>) -> Versioned<T> {

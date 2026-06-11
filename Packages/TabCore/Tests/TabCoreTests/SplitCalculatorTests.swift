@@ -237,4 +237,33 @@ struct SplitCalculatorTests {
             )
         }
     }
+
+    // MARK: duplicate participants
+
+    @Test("equal split: duplicate participant throws")
+    func equalSplitDuplicateParticipantThrows() {
+        #expect(throws: SplitCalculatorError.duplicateParticipant(alice)) {
+            _ = try SplitCalculator.calculate(
+                totalAmount: 100,
+                currency: "EUR",
+                participants: [alice, alice, bob],
+                splitType: .equal
+            )
+        }
+    }
+
+    @Test("exact split: duplicate participant throws instead of double-counting")
+    func exactSplitDuplicateParticipantThrows() {
+        // Without the guard, [A, A, B] with amounts A:50 B:50 passes the
+        // set-based validation but emits splits totalling 150.
+        #expect(throws: SplitCalculatorError.duplicateParticipant(alice)) {
+            _ = try SplitCalculator.calculate(
+                totalAmount: 100,
+                currency: "EUR",
+                participants: [alice, alice, bob],
+                splitType: .exact,
+                exactAmounts: [alice: 50, bob: 50]
+            )
+        }
+    }
 }

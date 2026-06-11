@@ -96,15 +96,49 @@ public enum BalanceEngine {
         creditors.sort { $0.id.uuidString < $1.id.uuidString }
         debtors.sort { $0.id.uuidString < $1.id.uuidString }
 
+        // Shares are quantized to the expense currency's minor units so every
+        // emitted balance is settleable: raw proportional shares are floored,
+        // then the leftover minor units are distributed largest-fractional-
+        // remainder first (lowest creditor UUID on ties), keeping each debtor's
+        // distributed total exactly equal to their shortfall.
+        let multiplier = CurrencyCatalog.minorUnitMultiplier(for: expense.amount.currency)
+
         var result: [(pair: (creditor: UUID, debtor: UUID), amount: Decimal)] = []
         for debtor in debtors {
-            for creditor in creditors {
-                let share = debtor.shortfall * creditor.surplus / totalSurplus
-                if share != 0 {
-                    result.append((pair: (creditor: creditor.id, debtor: debtor.id), amount: share))
-                }
+            var sharesMinor: [Decimal] = []
+            var fractions: [(index: Int, fraction: Decimal)] = []
+            var allocatedMinor = Decimal(0)
+            for (index, creditor) in creditors.enumerated() {
+                let rawMinor = debtor.shortfall * creditor.surplus * multiplier / totalSurplus
+                let floored = floorToInteger(rawMinor)
+                sharesMinor.append(floored)
+                allocatedMinor += floored
+                fractions.append((index, rawMinor - floored))
+            }
+
+            var leftover = floorToInteger(debtor.shortfall * multiplier) - allocatedMinor
+            let distributionOrder = fractions.sorted { lhs, rhs in
+                if lhs.fraction != rhs.fraction { return lhs.fraction > rhs.fraction }
+                return creditors[lhs.index].id.uuidString < creditors[rhs.index].id.uuidString
+            }
+            var next = 0
+            while leftover > 0 {
+                sharesMinor[distributionOrder[next % distributionOrder.count].index] += 1
+                leftover -= 1
+                next += 1
+            }
+
+            for (index, creditor) in creditors.enumerated() where sharesMinor[index] != 0 {
+                result.append((pair: (creditor: creditor.id, debtor: debtor.id), amount: sharesMinor[index] / multiplier))
             }
         }
+        return result
+    }
+
+    private static func floorToInteger(_ value: Decimal) -> Decimal {
+        var input = value
+        var result = Decimal()
+        NSDecimalRound(&result, &input, 0, .down)
         return result
     }
 }

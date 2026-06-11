@@ -137,6 +137,23 @@ struct TripAnalyticsTests {
         ])
     }
 
+    @Test("per-category ties: uncategorized sorts last")
+    func perCategoryTieUncategorizedLast() throws {
+        let expenses = [
+            makeExpense(amount: 50, currency: "EUR", category: nil,
+                        payments: [Payment(payerID: alice, amountPaid: 50, paymentMode: .equal)],
+                        splits: [split(alice, 50)]),
+            makeExpense(amount: 50, currency: "EUR", category: food,
+                        payments: [Payment(payerID: alice, amountPaid: 50, paymentMode: .equal)],
+                        splits: [split(alice, 50)]),
+        ]
+        let s = try #require(TripAnalytics.summarize(expenses: expenses).first)
+        #expect(s.perCategory == [
+            CategorySpend(categoryID: food, total: 50),
+            CategorySpend(categoryID: nil, total: 50),
+        ])
+    }
+
     // MARK: per-day
 
     @Test("per-day buckets by expense date, ascending, each with its category breakdown")

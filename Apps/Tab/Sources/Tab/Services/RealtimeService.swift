@@ -71,6 +71,15 @@ final class RealtimeService {
         self.subscribedTripID = nil
     }
 
+    /// Scoped unsubscribe: only tears down if we are still subscribed to
+    /// `tripID`. A view that pushed a child screen (and fired its own
+    /// `onDisappear`) must not unsubscribe a subscription a newer trip already
+    /// replaced. No-op when the subscription has moved on.
+    func unsubscribe(from tripID: UUID) async {
+        guard subscribedTripID == tripID else { return }
+        await unsubscribe()
+    }
+
     private func handleChange() async {
         realtimeLog.info("realtime change — pulling")
         await sync.pullAll()

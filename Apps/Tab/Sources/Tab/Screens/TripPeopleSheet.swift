@@ -31,7 +31,7 @@ struct TripPeopleSheet: View {
     }
 
     private var canAdd: Bool {
-        normalizedEmail.contains("@") && !existingEmails.contains(normalizedEmail) && !isAdding
+        EmailValidator.isValid(normalizedEmail) && !existingEmails.contains(normalizedEmail) && !isAdding
     }
 
     private var existingEmails: Set<String> {
@@ -76,10 +76,9 @@ struct TripPeopleSheet: View {
             }
             .toolbarBackground(Sage.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            .task { await refreshSuggestions() }
-            .onChange(of: emailText) { _, _ in
-                Task { await refreshSuggestions() }
-            }
+            // Keyed on the query so SwiftUI cancels the in-flight fetch when the
+            // text changes — a slow earlier response can't overwrite a newer one.
+            .task(id: normalizedEmail) { await refreshSuggestions() }
         }
     }
 

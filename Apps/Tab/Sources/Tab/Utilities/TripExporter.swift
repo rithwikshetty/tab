@@ -38,7 +38,7 @@ enum TripExporter {
         let payerName: String
         let currency: String
         let amountPaid: Decimal
-        let paymentMethod: String
+        let paymentMode: String
     }
 
     struct ExpenseSplitRow: Sendable {
@@ -148,7 +148,7 @@ enum TripExporter {
                     payerName: personName(payment.tripPersonID, peopleByID: peopleByID),
                     currency: expense.currency,
                     amountPaid: payment.amountPaid,
-                    paymentMethod: payment.paymentModeRaw
+                    paymentMode: payment.paymentModeRaw
                 ))
             }
 
@@ -192,7 +192,7 @@ enum TripExporter {
                 paidByDetail: paidByDetails.joined(separator: "; "),
                 splitBetween: splitNames.joined(separator: ", "),
                 splitDetail: splitDetails.joined(separator: "; "),
-                paymentMethod: sortedPayments.map(\.paymentModeRaw).uniqueSorted().joined(separator: ", "),
+                paymentMethod: expense.paymentMethodRaw,
                 createdBy: createdByName,
                 createdAt: timestampFormatter.string(from: expense.createdAt),
                 lastEditedBy: lastEditedByName,
@@ -381,12 +381,12 @@ enum TripExporter {
     private static func buildExpensePaymentRows(_ rows: [ExpensePaymentRow]) -> [[WorkbookCell]] {
         var sheetRows: [[WorkbookCell]] = [[
             .string("Expense ID"), .string("Date"), .string("Description"), .string("Payer ID"),
-            .string("Payer Name"), .string("Currency"), .string("Amount Paid"), .string("Payment Method"),
+            .string("Payer Name"), .string("Currency"), .string("Amount Paid"), .string("Payment Mode"),
         ]]
         sheetRows += rows.map { row in
             [
                 .string(row.expenseID), .string(row.date), .string(row.description), .string(row.payerID),
-                .string(row.payerName), .string(row.currency), .number(row.amountPaid), .string(row.paymentMethod),
+                .string(row.payerName), .string(row.currency), .number(row.amountPaid), .string(row.paymentMode),
             ]
         }
         return sheetRows
@@ -763,12 +763,6 @@ private extension Data {
         Swift.withUnsafeBytes(of: &littleEndian) { buffer in
             append(contentsOf: buffer)
         }
-    }
-}
-
-private extension Sequence where Element == String {
-    func uniqueSorted() -> [String] {
-        Array(Set(self)).sorted()
     }
 }
 

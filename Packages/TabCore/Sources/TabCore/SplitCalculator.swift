@@ -2,6 +2,7 @@ import Foundation
 
 public enum SplitCalculatorError: Error, Equatable, Sendable {
     case emptyParticipants
+    case duplicateParticipant(UUID)
     case unsupportedSplitType(SplitType)
     case exactAmountsRequired
     case missingAmountForParticipant(UUID)
@@ -20,6 +21,11 @@ public enum SplitCalculator {
     ) throws -> [ExpenseSplit] {
         guard !participants.isEmpty else {
             throw SplitCalculatorError.emptyParticipants
+        }
+
+        var seen = Set<UUID>()
+        for participant in participants where !seen.insert(participant).inserted {
+            throw SplitCalculatorError.duplicateParticipant(participant)
         }
 
         try validatePrecision(totalAmount, currency: currency)

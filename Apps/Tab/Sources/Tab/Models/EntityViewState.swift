@@ -144,62 +144,6 @@ enum TripPresenter {
 }
 
 @MainActor
-enum ExpenseListPresenter {
-    static func days(
-        expenses: [ExpenseEntity],
-        currentPersonID: UUID,
-        personFor: (UUID) -> TripPersonEntity?,
-        categoryFor: (UUID?) -> CategoryEntity?
-    ) -> [ExpenseDay] {
-        let calendar = Calendar.current
-        let grouped = Dictionary(grouping: expenses) {
-            calendar.startOfDay(for: $0.expenseDate)
-        }
-
-        let labelFormatter = DateFormatter()
-        labelFormatter.dateFormat = "MMM d"
-
-        return grouped.keys.sorted(by: >).map { day -> ExpenseDay in
-            let dayExpenses = (grouped[day] ?? []).sorted { $0.createdAt > $1.createdAt }
-            let items = dayExpenses.map { e -> ExpenseRowItem in
-                let category = categoryFor(e.categoryID)
-                let payerName: String
-                let payerIsYou: Bool
-                if e.payments.count > 1 {
-                    payerName = "\(e.payments.count) people"
-                    payerIsYou = false
-                } else if let firstPayer = e.primaryPayerID {
-                    payerIsYou = firstPayer == currentPersonID
-                    payerName = payerIsYou
-                        ? "you"
-                        : (personFor(firstPayer)?.displayName ?? "Member")
-                } else {
-                    payerName = "—"
-                    payerIsYou = false
-                }
-                let yourShare = e.splits
-                    .first(where: { $0.tripPersonID == currentPersonID })?.amountOwed ?? 0
-                return ExpenseRowItem(
-                    id: e.id,
-                    categoryID: category?.id ?? e.categoryID,
-                    icon: category?.icon ?? "tag",
-                    name: e.descriptionText,
-                    payerName: payerName,
-                    payerIsYou: payerIsYou,
-                    yourShare: MoneyFormatter.format(yourShare, currency: e.currency),
-                    totalAmount: MoneyFormatter.format(e.amount, currency: e.currency)
-                )
-            }
-            return ExpenseDay(
-                id: ISO8601DateFormatter().string(from: day),
-                dateLabel: labelFormatter.string(from: day),
-                expenses: items
-            )
-        }
-    }
-}
-
-@MainActor
 enum BalancePresenter {
     /// One BalanceSummary per currency with non-zero net for the current user.
     static func summaries(

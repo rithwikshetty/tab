@@ -57,8 +57,19 @@ final class AuthService {
     private(set) var phase: Phase = .loading
     private(set) var currentUser: CurrentUser?
 
+    /// Invoked just before the phase flips to `.signedOut`, so the owner can
+    /// clear local state (SwiftData) before the previous user's session ends.
+    var onSignedOut: (@MainActor () async -> Void)?
+
     private let client = SupabaseClientProvider.shared
     private let pendingEmailNamePrefix = "auth.pendingEmailSignInName."
+
+    /// Clears local user state, runs the sign-out hook, then publishes signedOut.
+    private func enterSignedOut() async {
+        currentUser = nil
+        await onSignedOut?()
+        phase = .signedOut
+    }
 
     init() {
         #if DEBUG
@@ -117,8 +128,7 @@ final class AuthService {
 
                 await setSignedIn(from: session.user)
             } else {
-                currentUser = nil
-                phase = .signedOut
+                await enterSignedOut()
             }
         }
     }
@@ -128,8 +138,7 @@ final class AuthService {
             let session = try await client.auth.session
             await setSignedIn(from: session.user)
         } catch {
-            currentUser = nil
-            phase = .signedOut
+            await enterSignedOut()
         }
     }
 
@@ -223,6 +232,10 @@ final class AuthService {
 
     func signOut() async {
         try? await client.auth.signOut()
+        // Mock auth has no real session, so authStateChanges never fires the
+        // signedOut transition — drive it (and the local wipe) directly. For
+        // real sessions this is idempotent with the observer.
+        await enterSignedOut()
     }
 
     private func applyingPendingEmailProfileIfNeeded(to user: User) async -> User {

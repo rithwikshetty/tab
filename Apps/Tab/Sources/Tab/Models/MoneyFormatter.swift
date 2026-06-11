@@ -12,25 +12,59 @@ enum MoneyFormatter {
 
     static func sanitizeAmountInput(_ input: String, currency: String) -> String {
         let fractionDigits = CurrencyCatalog.fractionDigits(for: currency)
-        let normalized = input.replacingOccurrences(of: ",", with: ".")
+        let kept = input.filter { $0.isNumber || $0 == "." || $0 == "," }
+        let dots = kept.filter { $0 == "." }.count
+        let commas = kept.filter { $0 == "," }.count
+
+        // Pasted formatted numbers carry grouping separators; strip them before
+        // the keystroke pass so "1,234.56" stays 1234.56 instead of becoming 1.23.
+        let normalized: String
+        if dots > 0, commas > 0 {
+            // Mixed separators: the one appearing last is the decimal point.
+            let decimalIsDot = kept.lastIndex(of: ".")! > kept.lastIndex(of: ",")!
+            let grouping: Character = decimalIsDot ? "," : "."
+            normalized = kept
+                .filter { $0 != grouping }
+                .replacingOccurrences(of: ",", with: ".")
+        } else if dots > 1 {
+            normalized = kept.filter { $0 != "." }
+        } else if commas > 1 {
+            normalized = kept.filter { $0 != "," }
+        } else {
+            normalized = kept.replacingOccurrences(of: ",", with: ".")
+        }
+
         var output = ""
         var hasDecimalSeparator = false
         var fractionCount = 0
-
         for character in normalized {
             if character.isNumber {
                 if hasDecimalSeparator {
-                    guard fractionCount < fractionDigits else { continue }
+                    // Truncate beyond the currency's precision — appending would
+                    // silently scale the amount.
+                    guard fractionCount < fractionDigits else { break }
                     fractionCount += 1
                 }
                 output.append(character)
-            } else if character == ".", fractionDigits > 0, !hasDecimalSeparator {
+            } else if character == "." {
+                // A decimal point a zero-decimal currency can't represent ends
+                // the number; anything after it is dropped, not concatenated.
+                guard fractionDigits > 0, !hasDecimalSeparator else { break }
                 hasDecimalSeparator = true
                 output.append(character)
             }
         }
-
         return output
+    }
+
+    /// Re-renders a committed amount string for a different currency,
+    /// preserving the numeric value (rounded to the new precision) instead of
+    /// re-sanitizing digits — switching USD "123.45" to JPY must give 123,
+    /// not 12345.
+    static func convertAmountText(_ input: String, to currency: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, let value = decimal(from: trimmed) else { return "" }
+        return plainAmountString(value, currency: currency)
     }
 
     static func decimal(from input: String) -> Decimal? {

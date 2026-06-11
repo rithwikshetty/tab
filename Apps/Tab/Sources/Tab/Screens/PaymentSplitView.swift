@@ -581,8 +581,12 @@ final class PaymentSplitDraft: @unchecked Sendable {
             guard selectedPayerIDs.count > 1 else { return }
             selectedPayerIDs.remove(uid)
             exactPayerAmountText.removeValue(forKey: uid)
-            if payerMode == .exact, !payerEdited {
-                seedPayerExact(totalAmount: totalAmount, currency: currency, overwrite: true)
+            if payerMode == .exact {
+                // Down to one payer, the exact-amount field/footer/mode pill are
+                // all hidden, so the user can't fix a stale total — reseed the
+                // lone payer to the full amount even if they had edited values.
+                let overwrite = !payerEdited || selectedPayerIDs.count == 1
+                seedPayerExact(totalAmount: totalAmount, currency: currency, overwrite: overwrite)
             }
         } else {
             selectedPayerIDs.insert(uid)
