@@ -244,8 +244,29 @@ final class SyncService {
 
     // MARK: - Pull
 
+    private var pullInFlight = false
+    private var pullQueued = false
+
+    /// Coalesces overlapping pull requests: launch, foreground, realtime events
+    /// and pull-to-refresh can all fire close together, and each full pull
+    /// merges every table on the main context. While one pull runs, further
+    /// requests collapse into a single trailing pull (so a change that arrives
+    /// mid-pull is still picked up) instead of stacking redundant full pulls.
     func pullAll() async {
         guard hasRealSession else { return }
+        if pullInFlight {
+            pullQueued = true
+            return
+        }
+        pullInFlight = true
+        defer { pullInFlight = false }
+        repeat {
+            pullQueued = false
+            await performPullAll()
+        } while pullQueued
+    }
+
+    private func performPullAll() async {
         phase = .pulling
 
         // Pull each table independently so a failure in one (e.g. a single
@@ -436,12 +457,10 @@ final class SyncService {
             .value
 
         let ctx = container.mainContext
+        // One batched ID fetch instead of an existence query per pulled row.
+        let existingIDs = Set(try ctx.fetch(FetchDescriptor<ActivityEntity>()).map(\.id))
         for dto in rows {
-            let id = dto.id
-            let exists = try ctx.fetch(FetchDescriptor<ActivityEntity>(
-                predicate: #Predicate { $0.id == id }
-            )).first != nil
-            if exists { continue }  // activity_log is append-only / immutable
+            if existingIDs.contains(dto.id) { continue }  // activity_log is append-only / immutable
             let snapshotData = dto.snapshot.flatMap { try? JSONEncoder().encode($0) }
             ctx.insert(ActivityEntity(
                 id: dto.id,
@@ -786,9 +805,10 @@ final class SyncService {
         let ctx = container.mainContext
         do {
             let paths = try Set(
-                ctx.fetch(FetchDescriptor<ExpenseEntity>())
-                    .filter { $0.deletedAt == nil }
-                    .compactMap(\.receiptStoragePath)
+                ctx.fetch(FetchDescriptor<ExpenseEntity>(
+                    predicate: #Predicate { $0.deletedAt == nil && $0.receiptStoragePath != nil }
+                ))
+                .compactMap(\.receiptStoragePath)
             )
             for path in paths {
                 do {

@@ -11,6 +11,9 @@ struct CurrencyPickerSheet: View {
     }
 
     var body: some View {
+        // Normalized once per render instead of once per row.
+        let normalizedSelection = CurrencyCatalog.normalizedCode(selection)
+
         NavigationStack {
             List(currencies) { currency in
                 Button {
@@ -19,7 +22,7 @@ struct CurrencyPickerSheet: View {
                 } label: {
                     CurrencyPickerRow(
                         currency: currency,
-                        isSelected: currency.code == CurrencyCatalog.normalizedCode(selection)
+                        isSelected: currency.code == normalizedSelection
                     )
                 }
                 .buttonStyle(.plain)

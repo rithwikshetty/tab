@@ -136,10 +136,14 @@ enum TripPresenter {
         )
     }
 
+    private static let monthYearFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM yyyy"
+        return f
+    }()
+
     private static func monthYear(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM yyyy"
-        return formatter.string(from: date)
+        monthYearFormatter.string(from: date)
     }
 }
 
@@ -242,6 +246,14 @@ enum SettleUpPresenter {
 
 @MainActor
 enum TimelinePresenter {
+    private static let dayIDFormatter = ISO8601DateFormatter()
+
+    private static let dayLabelFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
     static func days(
         expenses: [ExpenseEntity],
         settlements: [SettlementEntity],
@@ -250,8 +262,6 @@ enum TimelinePresenter {
         categoryFor: (UUID?) -> CategoryEntity?
     ) -> [TimelineDay] {
         let calendar = Calendar.current
-        let labelFormatter = DateFormatter()
-        labelFormatter.dateFormat = "MMM d"
 
         let activeExpenses = expenses.filter { $0.deletedAt == nil }
         let activeSettlements = settlements.filter { $0.deletedAt == nil }
@@ -321,8 +331,8 @@ enum TimelinePresenter {
                 .sorted { $0.created > $1.created }
                 .map(\.item)
             return TimelineDay(
-                id: ISO8601DateFormatter().string(from: day),
-                dateLabel: labelFormatter.string(from: day),
+                id: dayIDFormatter.string(from: day),
+                dateLabel: dayLabelFormatter.string(from: day),
                 items: dayItems
             )
         }

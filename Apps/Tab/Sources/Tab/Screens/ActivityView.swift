@@ -40,6 +40,9 @@ struct ActivityView: View {
     }
 
     var body: some View {
+        // Hoisted so the feed presenter runs once per render, not once per access.
+        let sections = self.sections
+
         ScrollView {
             LargeTitle(title: "Activity")
 

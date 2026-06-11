@@ -54,32 +54,34 @@ struct SplashView: View {
         }
     }
 
+    // The splash gates every launch, so the choreography is kept tight (~1.5s
+    // to handoff): same word → dot → curve → dot sequence, compressed.
     private func runAnimation() {
         Task { @MainActor in
-            withAnimation(.easeOut(duration: 0.6)) {
+            withAnimation(.easeOut(duration: 0.45)) {
                 wordOpacity = 1
                 wordOffset = 0
             }
 
-            try? await Task.sleep(for: .seconds(0.4))
-            withAnimation(.easeOut(duration: 0.4)) {
+            try? await Task.sleep(for: .seconds(0.25))
+            withAnimation(.easeOut(duration: 0.3)) {
                 startOpacity = 1
                 startScale = 1
             }
 
-            try? await Task.sleep(for: .seconds(0.35))
+            try? await Task.sleep(for: .seconds(0.2))
             curveOpacity = 1
-            withAnimation(.easeOut(duration: 1.25)) {
+            withAnimation(.easeOut(duration: 0.8)) {
                 curveProgress = 1
             }
 
-            try? await Task.sleep(for: .seconds(1.15))
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.55)) {
+            try? await Task.sleep(for: .seconds(0.7))
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) {
                 endOpacity = 1
                 endScale = 1
             }
 
-            try? await Task.sleep(for: .seconds(0.5))
+            try? await Task.sleep(for: .seconds(0.35))
             onAnimationComplete()
         }
     }

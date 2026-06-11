@@ -61,7 +61,7 @@ enum OverviewPresenter {
             let maxDay = summary.perDay.map(\.total).max() ?? 0
             let days = summary.perDay.map { d -> OverviewDayBar in
                 OverviewDayBar(
-                    id: ISO8601DateFormatter().string(from: d.date),
+                    id: dayIDFormatter.string(from: d.date),
                     label: dayLabel(d.date),
                     heightFraction: ratio(d.total, of: maxDay),
                     segments: d.byCategory.map {
@@ -96,9 +96,16 @@ enum OverviewPresenter {
         return ((part / whole) as NSDecimalNumber).doubleValue
     }
 
+    // Formatters are cached — creating one per day bar re-runs on every render.
+    private static let dayIDFormatter = ISO8601DateFormatter()
+
+    private static let dayLabelFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "d"
+        return f
+    }()
+
     private static func dayLabel(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d"
-        return formatter.string(from: date)
+        dayLabelFormatter.string(from: date)
     }
 }

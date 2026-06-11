@@ -2,6 +2,28 @@ import Foundation
 import TabCore
 
 enum MoneyFormatter {
+    // NumberFormatter is expensive to create and these functions run per row in
+    // every list render, so formatters are built once per fraction-digit count
+    // and reused (NumberFormatter is thread-safe for formatting).
+    private static let plainFormatters: [NumberFormatter] = makeFormatters(grouping: false, posix: true)
+    private static let groupedFormatters: [NumberFormatter] = makeFormatters(grouping: true, posix: false)
+
+    private static func makeFormatters(grouping: Bool, posix: Bool) -> [NumberFormatter] {
+        (0...CurrencyCatalog.maximumSupportedFractionDigits).map { digits in
+            let formatter = NumberFormatter()
+            if posix { formatter.locale = Locale(identifier: "en_US_POSIX") }
+            formatter.numberStyle = .decimal
+            formatter.minimumFractionDigits = digits
+            formatter.maximumFractionDigits = digits
+            formatter.usesGroupingSeparator = grouping
+            return formatter
+        }
+    }
+
+    private static func formatter(in cache: [NumberFormatter], fractionDigits: Int) -> NumberFormatter {
+        cache[min(max(fractionDigits, 0), CurrencyCatalog.maximumSupportedFractionDigits)]
+    }
+
     static func currencySymbol(_ code: String) -> String {
         CurrencyCatalog.displayMetadata(for: code).symbol
     }
@@ -72,22 +94,13 @@ enum MoneyFormatter {
     }
 
     static func plainAmountString(_ amount: Decimal, currency: String) -> String {
-        let formatter = NumberFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = CurrencyCatalog.fractionDigits(for: currency)
-        formatter.maximumFractionDigits = CurrencyCatalog.fractionDigits(for: currency)
-        formatter.usesGroupingSeparator = false
+        let formatter = formatter(in: plainFormatters, fractionDigits: CurrencyCatalog.fractionDigits(for: currency))
         return formatter.string(from: amount as NSDecimalNumber) ?? NSDecimalNumber(decimal: amount).stringValue
     }
 
     static func format(_ amount: Decimal, currency: String) -> String {
         let metadata = CurrencyCatalog.displayMetadata(for: currency)
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = metadata.fractionDigits
-        formatter.maximumFractionDigits = metadata.fractionDigits
-        formatter.usesGroupingSeparator = true
+        let formatter = formatter(in: groupedFormatters, fractionDigits: metadata.fractionDigits)
         let value = formatter.string(from: amount as NSDecimalNumber) ?? plainAmountString(amount, currency: currency)
 
         guard metadata.symbol.uppercased() != metadata.code else {
@@ -106,11 +119,7 @@ enum MoneyFormatter {
     /// currency has no distinct symbol, so disambiguation is never fully lost.
     static func formatSymbol(_ amount: Decimal, currency: String) -> String {
         let metadata = CurrencyCatalog.displayMetadata(for: currency)
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = metadata.fractionDigits
-        formatter.maximumFractionDigits = metadata.fractionDigits
-        formatter.usesGroupingSeparator = true
+        let formatter = formatter(in: groupedFormatters, fractionDigits: metadata.fractionDigits)
         let value = formatter.string(from: amount as NSDecimalNumber) ?? plainAmountString(amount, currency: currency)
 
         guard metadata.symbol.uppercased() != metadata.code else {

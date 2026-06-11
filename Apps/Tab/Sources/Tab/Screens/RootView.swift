@@ -44,6 +44,7 @@ struct RootView: View {
     @State private var friendsPath: [Route] = []
     @State private var tripsPath: [Route] = []
     @State private var activityPath: [Route] = []
+    @State private var wasBackgrounded = false
 
     @Query private var activities: [ActivityEntity]
     @Query private var profiles: [ProfileEntity]
@@ -71,6 +72,7 @@ struct RootView: View {
                     )
                     .navigationDestination(for: Route.self) { destination($0, path: $friendsPath) }
                 }
+                .toolbar(tabBarVisibility(for: friendsPath), for: .tabBar)
             }
 
             Tab("Trips", systemImage: "suitcase", value: RootTab.trips) {
@@ -81,6 +83,7 @@ struct RootView: View {
                     )
                         .navigationDestination(for: Route.self) { destination($0, path: $tripsPath) }
                 }
+                .toolbar(tabBarVisibility(for: tripsPath), for: .tabBar)
             }
 
             Tab("Activity", systemImage: "bell", value: RootTab.activity) {
@@ -88,6 +91,7 @@ struct RootView: View {
                     ActivityView { target in open(target, into: $activityPath) }
                         .navigationDestination(for: Route.self) { destination($0, path: $activityPath) }
                 }
+                .toolbar(tabBarVisibility(for: activityPath), for: .tabBar)
             }
             .badge(unreadCount)
 
@@ -144,7 +148,18 @@ struct RootView: View {
             Task { await push.setBadgeCount(count) }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await sync.pullAll() } }
+            // Only a real return from the background warrants a catch-up pull.
+            // Cold launch is already covered by the .task above, and
+            // inactive→active flickers (app switcher, notification shade)
+            // shouldn't each trigger a full sync. Foregrounding passes through
+            // .inactive (background → inactive → active), so a "was backgrounded"
+            // flag is needed — comparing against the previous phase on the
+            // .active transition would only ever see .inactive.
+            if phase == .background { wasBackgrounded = true }
+            if phase == .active && wasBackgrounded {
+                wasBackgrounded = false
+                Task { await sync.pullAll() }
+            }
         }
         .onAppear {
             Task { await push.setBadgeCount(unreadCount) }
@@ -152,6 +167,21 @@ struct RootView: View {
     }
 
     // MARK: - Navigation
+
+    /// Tab bar visibility is driven by the navigation path, not by a
+    /// `.toolbar(.hidden, for: .tabBar)` on each pushed screen: visibility tied
+    /// to the pushed view's lifecycle only restores the bar *after* the pop
+    /// transition finishes, which reads as the bar blinking back in late.
+    /// Top-level lists and trip/friend detail keep the bar; deeper editor and
+    /// detail screens hide it.
+    private func tabBarVisibility(for path: [Route]) -> Visibility {
+        switch path.last {
+        case nil, .trip, .friend:
+            return .visible
+        default:
+            return .hidden
+        }
+    }
 
     @ViewBuilder
     private func destination(_ route: Route, path: Binding<[Route]>) -> some View {
@@ -173,16 +203,13 @@ struct RootView: View {
             )
         case .newExpense(let tripID):
             ExpenseEntryView(tripID: tripID)
-                .toolbar(.hidden, for: .tabBar)
         case .newNonGroupExpense:
             NonGroupExpenseFlowView(
                 // Swap the picker for the expense form so saving returns to the tab root.
                 onResolved: { containerID in path.wrappedValue = [.newExpense(containerID)] }
             )
-            .toolbar(.hidden, for: .tabBar)
         case .editExpense(let tripID, let expenseID):
             ExpenseEntryView(tripID: tripID, editingExpenseID: expenseID)
-                .toolbar(.hidden, for: .tabBar)
         case .expense(let expenseID):
             ExpenseDetailView(
                 expenseID: expenseID,
@@ -190,13 +217,10 @@ struct RootView: View {
                     path.wrappedValue.append(.editExpense(tripID: tripID, expenseID: expenseID))
                 }
             )
-            .toolbar(.hidden, for: .tabBar)
         case .settleUp(let tripID):
             SettleUpFormView(tripID: tripID)
-                .toolbar(.hidden, for: .tabBar)
         case .editSettlement(let tripID, let settlementID):
             SettleUpFormView(tripID: tripID, editingSettlementID: settlementID)
-                .toolbar(.hidden, for: .tabBar)
         case .settlement(let settlementID):
             SettlementDetailView(
                 settlementID: settlementID,
@@ -204,7 +228,6 @@ struct RootView: View {
                     path.wrappedValue.append(.editSettlement(tripID: tripID, settlementID: settlementID))
                 }
             )
-            .toolbar(.hidden, for: .tabBar)
         }
     }
 

@@ -862,13 +862,19 @@ private final class SheetBuilder: @unchecked Sendable {
         return result
     }
 
-    private func formatDecimalForXML(_ value: Decimal) -> String {
+    // One formatter for the whole workbook — building one per numeric cell adds
+    // seconds to large exports.
+    private static let xmlDecimalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         formatter.minimumFractionDigits = 2
         formatter.maximumFractionDigits = 10
         formatter.usesGroupingSeparator = false
         formatter.decimalSeparator = "."
-        return formatter.string(from: value as NSDecimalNumber) ?? "0.00"
+        return formatter
+    }()
+
+    private func formatDecimalForXML(_ value: Decimal) -> String {
+        Self.xmlDecimalFormatter.string(from: value as NSDecimalNumber) ?? "0.00"
     }
 }

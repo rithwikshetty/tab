@@ -35,10 +35,13 @@ struct TripListView: View {
         Dictionary(uniqueKeysWithValues: trips.map { ($0.id, $0) })
     }
 
-    private var activeCards: [TripCard]    { cards.filter { !$0.isCompleted } }
-    private var completedCards: [TripCard] { cards.filter {  $0.isCompleted } }
-
     var body: some View {
+        // Hoisted so the per-trip balance computation in `cards` runs once per
+        // render instead of once per section access.
+        let cards = self.cards
+        let activeCards = cards.filter { !$0.isCompleted }
+        let completedCards = cards.filter { $0.isCompleted }
+
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 header

@@ -108,25 +108,15 @@ struct TripDetailView: View {
             }
             return MemberCard(id: person.id, displayName: person.displayName)
         }
+        // Summaries feed the always-visible balance card. The timeline and
+        // overview are built inside their segment branches below, so only the
+        // visible tab's presenter runs on each render.
         let summaries = BalancePresenter.summaries(
             expenses: trip.expenses,
             settlements: trip.settlements,
             people: trip.people,
             currentPersonID: currentPersonID,
             personFor: { id in peopleByID[id] }
-        )
-        let days = TimelinePresenter.days(
-            expenses: trip.expenses,
-            settlements: trip.settlements,
-            currentPersonID: currentPersonID,
-            personFor: { id in peopleByID[id] },
-            categoryFor: { id in id.flatMap { categoriesByID[$0] } }
-        )
-        let overview = OverviewPresenter.overview(
-            expenses: trip.expenses,
-            currentPersonID: currentPersonID,
-            personName: { id in peopleByID[id]?.displayName ?? "Member" },
-            categoryName: { id in id.flatMap { categoriesByID[$0]?.name } ?? "Other" }
         )
 
         ZStack(alignment: .bottomTrailing) {
@@ -167,13 +157,13 @@ struct TripDetailView: View {
 
                 ZStack {
                     if segment == 0 {
-                        timelineSection(days: days)
+                        timelineSection(days: timelineDays(for: trip, currentPersonID: currentPersonID, peopleByID: peopleByID))
                             .transition(.opacity)
                     } else if segment == 1 {
                         balancesSection(summaries: summaries)
                             .transition(.opacity)
                     } else {
-                        OverviewView(state: overview)
+                        OverviewView(state: overviewState(for: trip, currentPersonID: currentPersonID, peopleByID: peopleByID))
                             .transition(.opacity)
                     }
                 }
@@ -239,6 +229,33 @@ struct TripDetailView: View {
                 .accessibilityIdentifier("tripDetail.actionsButton")
             }
         }
+    }
+
+    private func timelineDays(
+        for trip: TripEntity,
+        currentPersonID: UUID,
+        peopleByID: [UUID: TripPersonEntity]
+    ) -> [TimelineDay] {
+        TimelinePresenter.days(
+            expenses: trip.expenses,
+            settlements: trip.settlements,
+            currentPersonID: currentPersonID,
+            personFor: { id in peopleByID[id] },
+            categoryFor: { id in id.flatMap { categoriesByID[$0] } }
+        )
+    }
+
+    private func overviewState(
+        for trip: TripEntity,
+        currentPersonID: UUID,
+        peopleByID: [UUID: TripPersonEntity]
+    ) -> OverviewState {
+        OverviewPresenter.overview(
+            expenses: trip.expenses,
+            currentPersonID: currentPersonID,
+            personName: { id in peopleByID[id]?.displayName ?? "Member" },
+            categoryName: { id in id.flatMap { categoriesByID[$0]?.name } ?? "Other" }
+        )
     }
 
     @ViewBuilder

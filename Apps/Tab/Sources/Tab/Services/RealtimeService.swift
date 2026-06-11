@@ -14,6 +14,7 @@ final class RealtimeService {
     private(set) var subscribedTripID: UUID?
     private var channel: RealtimeChannelV2?
     private var streamTasks: [Task<Void, Never>] = []
+    private var pullDebounce: Task<Void, Never>?
 
     init(sync: SyncService) {
         self.sync = sync
@@ -80,8 +81,16 @@ final class RealtimeService {
         await unsubscribe()
     }
 
+    /// Debounced: another device pushing several rows lands as a burst of
+    /// events, and each pull refetches every table — coalesce the burst into
+    /// one pull instead of pulling per event.
     private func handleChange() async {
-        realtimeLog.info("realtime change — pulling")
-        await sync.pullAll()
+        pullDebounce?.cancel()
+        pullDebounce = Task { [sync] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            realtimeLog.info("realtime change — pulling")
+            await sync.pullAll()
+        }
     }
 }

@@ -172,21 +172,41 @@ enum ActivityPresenter {
 
     // MARK: - Dates
 
+    // DateFormatter creation is expensive and these run per row/section on every
+    // feed render, so the formatters are built once and reused.
+    private static let sameYearDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = .current
+        f.dateFormat = "EEEE, MMM d"
+        return f
+    }()
+
+    private static let otherYearDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = .current
+        f.dateFormat = "MMM d, yyyy"
+        return f
+    }()
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = .current
+        f.timeStyle = .short
+        f.dateStyle = .none
+        return f
+    }()
+
     private static func dateLabel(for day: Date, calendar: Calendar, now: Date) -> String {
         if calendar.isDateInToday(day) { return "Today" }
         if calendar.isDateInYesterday(day) { return "Yesterday" }
-        let formatter = DateFormatter()
-        formatter.locale = .current
-        formatter.dateFormat = calendar.isDate(day, equalTo: now, toGranularity: .year) ? "EEEE, MMM d" : "MMM d, yyyy"
+        let formatter = calendar.isDate(day, equalTo: now, toGranularity: .year)
+            ? sameYearDayFormatter
+            : otherYearDayFormatter
         return formatter.string(from: day)
     }
 
     private static func timeText(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = .current
-        formatter.timeStyle = .short
-        formatter.dateStyle = .none
-        return formatter.string(from: date)
+        timeFormatter.string(from: date)
     }
 }
 

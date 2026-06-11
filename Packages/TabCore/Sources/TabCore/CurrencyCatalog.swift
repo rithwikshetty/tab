@@ -63,16 +63,22 @@ public enum CurrencyCatalog {
         return scaled == roundedToInteger(scaled)
     }
 
+    /// Names pre-folded once — folding every currency name on each keystroke is
+    /// what made search-as-you-type drag.
+    private static let foldedNames: [String] = supported.map {
+        $0.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
+
     public static func search(_ query: String) -> [CurrencyMetadata] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return supported }
 
         let folded = trimmed.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        return supported.filter { currency in
+        return supported.enumerated().filter { index, currency in
             currency.code.localizedCaseInsensitiveContains(trimmed)
                 || currency.symbol.localizedCaseInsensitiveContains(trimmed)
-                || currency.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current).contains(folded)
-        }
+                || foldedNames[index].contains(folded)
+        }.map(\.element)
     }
 
     private static func metadata(forNormalizedCode code: String) -> CurrencyMetadata {
