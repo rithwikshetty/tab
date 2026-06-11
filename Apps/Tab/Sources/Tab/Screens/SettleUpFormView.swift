@@ -439,10 +439,14 @@ struct SettleUpFormView: View {
     // MARK: - Save
 
     private func save() {
-        guard !isSaving else { return }   // block a double tap during dismiss
+        // canSave includes !isSaving, so this also rejects a second tap during dismiss.
+        guard canSave else { return }
         isSaving = true
         if isEditing {
-            guard let settlement = editingSettlement, settlement.deletedAt == nil else { return }
+            guard let settlement = editingSettlement, settlement.deletedAt == nil else {
+                isSaving = false
+                return
+            }
             saveEdit(settlement)
         } else {
             saveNew()
@@ -450,8 +454,11 @@ struct SettleUpFormView: View {
     }
 
     private func saveNew() {
-        guard canSave, let trip, let user = auth.currentUser else { return }
-        guard let from = fromPersonID, let to = toPersonID else { return }
+        guard let trip, let user = auth.currentUser,
+              let from = fromPersonID, let to = toPersonID else {
+            isSaving = false
+            return
+        }
 
         let settlement = SettlementEntity(
             id: UUID(),
@@ -476,9 +483,10 @@ struct SettleUpFormView: View {
     }
 
     private func saveEdit(_ settlement: SettlementEntity) {
-        guard canSave, let trip, let user = auth.currentUser else { return }
-        guard let from = fromPersonID, let to = toPersonID else { return }
-        _ = user
+        guard let trip, let from = fromPersonID, let to = toPersonID else {
+            isSaving = false
+            return
+        }
 
         settlement.fromPersonID = from
         settlement.toPersonID = to

@@ -924,12 +924,15 @@ struct ExpenseEntryView: View {
     }
 
     private func save() {
-        // Guard against a second tap landing during the dismiss transition,
-        // which would insert a duplicate expense (each saveNew mints a new UUID).
-        guard !isSaving else { return }
+        // canSave includes !isSaving, so this also rejects a second tap landing
+        // during the dismiss transition (each saveNew mints a new UUID).
+        guard canSave else { return }
         isSaving = true
         if isEditing {
-            guard let expense = editingExpense, expense.deletedAt == nil else { return }
+            guard let expense = editingExpense, expense.deletedAt == nil else {
+                isSaving = false
+                return
+            }
             saveEdit(expense)
         } else {
             saveNew()
@@ -937,9 +940,12 @@ struct ExpenseEntryView: View {
     }
 
     private func saveNew() {
-        guard canSave, let trip, let user = auth.currentUser else { return }
-        guard let currentPersonID = trip.people.first(where: { $0.userID == user.id })?.id else { return }
-        guard let splits = computedSplits else { return }
+        guard let trip, let user = auth.currentUser,
+              let currentPersonID = trip.people.first(where: { $0.userID == user.id })?.id,
+              let splits = computedSplits else {
+            isSaving = false
+            return
+        }
 
         let expenseID = UUID()
         let tripID = trip.id
@@ -1010,9 +1016,12 @@ struct ExpenseEntryView: View {
     }
 
     private func saveEdit(_ expense: ExpenseEntity) {
-        guard canSave, let trip, let user = auth.currentUser else { return }
-        guard let currentPersonID = trip.people.first(where: { $0.userID == user.id })?.id else { return }
-        guard let splits = computedSplits else { return }
+        guard let trip, let user = auth.currentUser,
+              let currentPersonID = trip.people.first(where: { $0.userID == user.id })?.id,
+              let splits = computedSplits else {
+            isSaving = false
+            return
+        }
 
         let receiptPath: String?
         if let receiptJPEG {
