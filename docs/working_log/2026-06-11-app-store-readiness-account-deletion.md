@@ -257,3 +257,9 @@ SUCCEEDED.
   - Lowered rate_limit_email_sent 100 → 20/hr (the non-Turnstile half of task #5).
 - Wrote docs/app-store/metadata.md: name/subtitle/promo/description/keywords (all within ASC char limits, plain-writing compliant, no competitor trademarks), URLs, categories (Finance + Travel), age rating 4+, screenshot spec (6.9" 1320×2868), and App Review sign-in notes (no demo account; Apple sign-in path).
 - Note for the internal rename sweep: bundle id stays com.rithwikshetty.tab for now (changing it would mean redoing the Apple App ID, push entitlements, and Sign in with Apple config for zero user-visible gain). Scheme/target/TabCore names are cosmetic and can move whenever.
+
+## 2026-06-12 — fix: debug fixture people contaminated real-auth trips
+
+- User bug report: trip created under Google sign-in lost its expense after re-signing-in with Apple. Diagnosis: cross-provider linking was fine (one auth user, google+apple identities). The culprit was NewTripSheet's DEBUG fixture, which auto-inserted local-only "Alex"/"Sam" into every new trip, on by default even under real auth. The server forbids direct trip_people inserts and sync never pushes people, so the expense's splits referenced members that didn't exist remotely and its push failed forever; the Apple re-login just pulled the server truth (bare trip).
+- Fix: fixture now requires mock auth (auth.isUsingMockAuth && !TAB_DISABLE_DEBUG_PEOPLE). Real-auth debug builds behave like production. Removed the dead TAB_UI_TEST_SEED_PEOPLE launch env from PaidByFlowUITests (app never read it).
+- Verified: FriendsFlowUITests + PaidByFlowUITests, 6/6 passed on the sim.

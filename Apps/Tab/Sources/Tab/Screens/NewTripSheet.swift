@@ -124,8 +124,12 @@ struct NewTripSheet: View {
     }
 
     #if DEBUG
+    /// Fixture people are local-only and can never sync (the server forbids
+    /// direct trip_people inserts), so they're restricted to mock auth where
+    /// no real session exists. Under real auth they'd strand every expense
+    /// that includes them in a permanent push failure.
     private var shouldSeedDebugPeople: Bool {
-        ProcessInfo.processInfo.environment["TAB_DISABLE_DEBUG_PEOPLE"] != "1"
+        auth.isUsingMockAuth && ProcessInfo.processInfo.environment["TAB_DISABLE_DEBUG_PEOPLE"] != "1"
     }
 
     private func insertDebugPeopleIfRequested(into trip: TripEntity, invitedByID: UUID) {

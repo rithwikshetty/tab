@@ -14,7 +14,6 @@ final class PaidByFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
         app.launchEnvironment["TAB_SKIP_PUSH_PROMPT"] = "1"
-        app.launchEnvironment["TAB_UI_TEST_SEED_PEOPLE"] = "1"
         app.launchArguments.append("-ApplePersistenceIgnoreState")
         app.launchArguments.append("YES")
         app.launch()
@@ -127,7 +126,6 @@ final class PaidByFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
         app.launchEnvironment["TAB_SKIP_PUSH_PROMPT"] = "1"
-        app.launchEnvironment["TAB_UI_TEST_SEED_PEOPLE"] = "1"
         app.launchArguments.append("-ApplePersistenceIgnoreState")
         app.launchArguments.append("YES")
         app.launch()
@@ -175,7 +173,6 @@ final class PaidByFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
         app.launchEnvironment["TAB_SKIP_PUSH_PROMPT"] = "1"
-        app.launchEnvironment["TAB_UI_TEST_SEED_PEOPLE"] = "1"
         app.launchArguments.append("-ApplePersistenceIgnoreState")
         app.launchArguments.append("YES")
         app.launch()
