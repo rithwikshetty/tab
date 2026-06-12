@@ -263,3 +263,10 @@ SUCCEEDED.
 - User bug report: trip created under Google sign-in lost its expense after re-signing-in with Apple. Diagnosis: cross-provider linking was fine (one auth user, google+apple identities). The culprit was NewTripSheet's DEBUG fixture, which auto-inserted local-only "Alex"/"Sam" into every new trip, on by default even under real auth. The server forbids direct trip_people inserts and sync never pushes people, so the expense's splits referenced members that didn't exist remotely and its push failed forever; the Apple re-login just pulled the server truth (bare trip).
 - Fix: fixture now requires mock auth (auth.isUsingMockAuth && !TAB_DISABLE_DEBUG_PEOPLE). Real-auth debug builds behave like production. Removed the dead TAB_UI_TEST_SEED_PEOPLE launch env from PaidByFlowUITests (app never read it).
 - Verified: FriendsFlowUITests + PaidByFlowUITests, 6/6 passed on the sim.
+
+## 2026-06-12 — landing page mobile pass
+
+- Verified at 390 and 320 px in Playwright (local server; file:// blocked): zero horizontal overflow at both widths, all sections screenshot-checked.
+- Fixes: h1 floor 40px → clamp(32px, 8.5vw, 66px) so the headline fits 360-class phones; ≤600px query stacks the header (brand above nav, centered), tightens wrap padding/hero/board/notes spacing, shrinks the two Gochi CTAs; fixed pre-existing ≤840px glitch where .reveal.in.p2 kept its translateY(22px) offset after scroll-reveal.
+- Extras: brand link "/" → "index.html" (same file:// issue as the privacy page had), theme-color #F3EEE2 for mobile browser chrome, loading=lazy + decoding=async on the three polaroid screenshots.
+- Deployed; live page confirmed to carry the 600px query and lazy attrs.
