@@ -31,7 +31,7 @@ add features in 1.1+. Update this file as items complete.
       keywords, URLs, categories, copyright, age rating)
 - [ ] App Privacy section: answer from `docs/legal/app-store-privacy-labels.md`,
       privacy policy URL https://tab-it.app/privacy
-- [ ] Upload 6.9" screenshots (ask the agent to generate, or take manually at
+- [ ] Upload 6.9" screenshots from docs/app-store/screenshots/ (generated at
       1320×2868 on an iPhone 16 Pro Max class simulator)
 - [ ] Real-device account-deletion test (Settings → Delete account, then sign
       back in)

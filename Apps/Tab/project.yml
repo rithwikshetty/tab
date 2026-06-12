@@ -37,12 +37,12 @@ targets:
       path: Sources/Tab/Info.plist
       properties:
         CFBundleDisplayName: tab-it
-        CFBundleShortVersionString: "0.1.0"
+        CFBundleShortVersionString: "1.0.0"
         CFBundleURLTypes:
           - CFBundleURLName: $(TAB_AUTH_CALLBACK_SCHEME).auth
             CFBundleURLSchemes:
               - $(TAB_AUTH_CALLBACK_SCHEME)
-        CFBundleVersion: "10"
+        CFBundleVersion: "13"
         TABSupabaseURL: $(TAB_SUPABASE_URL)
         TABSupabasePublishableKey: $(TAB_SUPABASE_PUBLISHABLE_KEY)
         TABAuthCallbackScheme: $(TAB_AUTH_CALLBACK_SCHEME)
