@@ -238,6 +238,25 @@ final class AuthService {
         await enterSignedOut()
     }
 
+    /// Permanently deletes the account via the delete-account edge function
+    /// (server purges data + auth user), then tears down the local session.
+    func deleteAccount() async throws {
+        #if DEBUG
+        if isUsingMockAuth {
+            await enterSignedOut()
+            return
+        }
+        #endif
+        try requireSupabaseConfig()
+
+        try await client.functions.invoke("delete-account")
+
+        // The auth user no longer exists server-side; sign-out is local
+        // cleanup and may fail harmlessly against the dead session.
+        try? await client.auth.signOut()
+        await enterSignedOut()
+    }
+
     private func applyingPendingEmailProfileIfNeeded(to user: User) async -> User {
         guard
             let email = Self.normalizedEmail(user.email),

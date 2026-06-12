@@ -1,8 +1,11 @@
 -- 3. profiles
 -- ============================================================================
 
+-- No FK to auth.users: account deletion removes the auth user but keeps an
+-- anonymized "ghost" profile so shared-trip ledger rows (which restrict-reference
+-- profiles) stay intact. Rows are created by trg_on_auth_user_created.
 create table public.profiles (
-  id           uuid primary key references auth.users(id) on delete cascade,
+  id           uuid primary key,
   display_name text not null check (
     char_length(trim(display_name)) > 0 and char_length(display_name) <= 60
   ),
@@ -10,8 +13,12 @@ create table public.profiles (
   activity_last_seen_at timestamptz,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
+  deleted_at   timestamptz,
   write_id     uuid not null default gen_random_uuid()
 );
+
+comment on column public.profiles.deleted_at is
+  'Set when the account is deleted. The row remains as an anonymized ghost so shared-trip ledger references stay valid; the auth.users row is gone.';
 
 comment on column public.profiles.activity_last_seen_at is
   'Per-user read cursor for the Activity feed. Unread = activity_log rows newer than this. Advanced by mark_activity_seen().';

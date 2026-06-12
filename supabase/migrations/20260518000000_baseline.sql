@@ -281,8 +281,11 @@ comment on function private.can_write_receipt_object(text) is
 -- 3. profiles
 -- ============================================================================
 
+-- No FK to auth.users: account deletion removes the auth user but keeps an
+-- anonymized "ghost" profile so shared-trip ledger rows (which restrict-reference
+-- profiles) stay intact. Rows are created by trg_on_auth_user_created.
 create table public.profiles (
-  id           uuid primary key references auth.users(id) on delete cascade,
+  id           uuid primary key,
   display_name text not null check (
     char_length(trim(display_name)) > 0 and char_length(display_name) <= 60
   ),
@@ -290,8 +293,12 @@ create table public.profiles (
   activity_last_seen_at timestamptz,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
+  deleted_at   timestamptz,
   write_id     uuid not null default gen_random_uuid()
 );
+
+comment on column public.profiles.deleted_at is
+  'Set when the account is deleted. The row remains as an anonymized ghost so shared-trip ledger references stay valid; the auth.users row is gone.';
 
 comment on column public.profiles.activity_last_seen_at is
   'Per-user read cursor for the Activity feed. Unread = activity_log rows newer than this. Advanced by mark_activity_seen().';
@@ -2540,3 +2547,87 @@ revoke execute on function public.resolve_or_create_non_group_container(jsonb) f
 grant  execute on function public.resolve_or_create_non_group_container(jsonb) to authenticated;
 
 -- <<< END 19_rpc_non_group.sql
+
+-- >>> BEGIN 20_account_deletion.sql
+
+-- 20. Account deletion (App Store 5.1.1(v))
+-- ============================================================================
+-- Called by the delete-account edge function with the service role, before it
+-- deletes the auth.users row via the admin API. Hard-deletes everything only
+-- the user could see, anonymizes their identity in shared trips, and returns
+-- receipt storage paths for the edge function to remove (storage objects
+-- cannot be deleted from SQL).
+
+create or replace function public.delete_account_data(p_user uuid)
+returns table (receipt_path text)
+language plpgsql
+security definer
+set search_path = public, private
+as $$
+declare
+  v_sole_trips uuid[];
+begin
+  if p_user is null then
+    raise exception 'p_user is required';
+  end if;
+
+  -- Trips where the user is a claimed member and nobody else ever claimed one:
+  -- invisible to everyone else, so they go entirely (regardless of soft-delete
+  -- state). Pending email-only people cannot see a trip.
+  select coalesce(array_agg(t.id), '{}') into v_sole_trips
+  from public.trips t
+  where exists (
+          select 1 from public.trip_people tp
+          where tp.trip_id = t.id and tp.user_id = p_user
+        )
+    and not exists (
+          select 1 from public.trip_people tp
+          where tp.trip_id = t.id and tp.user_id is not null and tp.user_id <> p_user
+        );
+
+  -- Surface receipt paths before the expense rows go.
+  return query
+    select e.receipt_storage_path
+    from public.expenses e
+    where e.trip_id = any (v_sole_trips)
+      and e.receipt_storage_path is not null;
+
+  -- Order matters: payments/splits cascade from expenses, settlements
+  -- restrict-reference trip_people, and the member-left activity trigger
+  -- inserts a row referencing the trip — so people go before trips.
+  delete from public.expenses    where trip_id = any (v_sole_trips);
+  delete from public.settlements where trip_id = any (v_sole_trips);
+  delete from public.trip_people where trip_id = any (v_sole_trips);
+  delete from public.trips       where id      = any (v_sole_trips);
+
+  -- Shared trips keep their ledger rows (they are the group's data). The
+  -- user's claimed identity rows lose the personal email; the trip-scoped
+  -- display name stays as the ledger label.
+  update public.trip_people tp
+  set email = 'deleted-' || tp.id || '@account-deleted.invalid'
+  where tp.user_id = p_user;
+
+  delete from public.push_devices    where user_id = p_user;
+  delete from public.trip_mute_prefs where user_id = p_user;
+
+  -- Ghost the profile: shared-trip ledger rows restrict-reference it, so it
+  -- stays — anonymized and no longer tied to any auth identity.
+  update public.profiles
+  set display_name = 'Deleted user',
+      avatar_url = null,
+      activity_last_seen_at = null,
+      deleted_at = now()
+  where id = p_user;
+end;
+$$;
+
+comment on function public.delete_account_data(uuid) is
+  'Account-deletion purge: hard-deletes sole-member trips, scrubs identity from shared trips, ghosts the profile. Service-role only; the edge function deletes the auth user afterwards.';
+
+revoke execute on function public.delete_account_data(uuid) from public, anon, authenticated;
+grant  execute on function public.delete_account_data(uuid) to service_role;
+
+
+-- ============================================================================
+
+-- <<< END 20_account_deletion.sql

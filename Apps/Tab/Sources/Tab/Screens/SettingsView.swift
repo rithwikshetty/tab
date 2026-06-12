@@ -6,6 +6,10 @@ struct SettingsView: View {
     @Environment(AuthService.self) private var auth
     @Environment(PushService.self) private var push
 
+    @State private var showDeleteConfirmation = false
+    @State private var isDeletingAccount = false
+    @State private var deleteError: String?
+
     var body: some View {
         ScrollView {
             LargeTitle(title: "Settings")
@@ -43,12 +47,62 @@ struct SettingsView: View {
                     .padding(.vertical, 16)
             }
             .padding(.top, 24)
+            .disabled(isDeletingAccount)
+
+            Button {
+                deleteError = nil
+                showDeleteConfirmation = true
+            } label: {
+                Group {
+                    if isDeletingAccount {
+                        ProgressView()
+                            .tint(Sage.warning)
+                    } else {
+                        Text("Delete account")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Sage.warning)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+            }
+            .disabled(isDeletingAccount)
+
+            if let deleteError {
+                Text(deleteError)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Sage.warning)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
 
             Spacer(minLength: 120)
         }
         .scrollIndicators(.hidden)
         .background(Sage.bg.ignoresSafeArea())
         .task { await push.refreshAuthorizationStatus() }
+        .confirmationDialog(
+            "Delete your account?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete account", role: .destructive) {
+                Task { await deleteAccount() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your account. Trips only you joined are erased, including their expenses. In shared trips, expenses stay visible to other members, but your email and profile are removed. This cannot be undone.")
+        }
+    }
+
+    private func deleteAccount() async {
+        isDeletingAccount = true
+        defer { isDeletingAccount = false }
+        do {
+            try await auth.deleteAccount()
+        } catch {
+            deleteError = "Couldn't delete your account. Check your connection and try again."
+        }
     }
 }
 
@@ -103,7 +157,7 @@ private struct NotificationStatusRow: View {
         case .authorized: "On"
         case .provisional: "Quiet delivery"
         case .ephemeral: "Limited"
-        case .denied: "Off — enable in iOS Settings"
+        case .denied: "Off. Enable it in iOS Settings"
         case .notDetermined: "Not set up yet"
         @unknown default: "Unknown"
         }
