@@ -36,7 +36,7 @@ targets:
     info:
       path: Sources/Tab/Info.plist
       properties:
-        CFBundleDisplayName: tab
+        CFBundleDisplayName: tab-it
         CFBundleShortVersionString: "0.1.0"
         CFBundleURLTypes:
           - CFBundleURLName: $(TAB_AUTH_CALLBACK_SCHEME).auth
@@ -46,6 +46,7 @@ targets:
         TABSupabaseURL: $(TAB_SUPABASE_URL)
         TABSupabasePublishableKey: $(TAB_SUPABASE_PUBLISHABLE_KEY)
         TABAuthCallbackScheme: $(TAB_AUTH_CALLBACK_SCHEME)
+        TABTurnstileSiteKey: $(TAB_TURNSTILE_SITE_KEY)
         UILaunchScreen: {}
         UIRequiresFullScreen: false
         UISupportedInterfaceOrientations:

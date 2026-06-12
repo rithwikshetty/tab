@@ -173,7 +173,11 @@ final class AuthService {
     }
 
     @discardableResult
-    func sendEmailCode(email rawEmail: String, fullName rawFullName: String) async throws -> String {
+    func sendEmailCode(
+        email rawEmail: String,
+        fullName rawFullName: String,
+        captchaToken: String? = nil
+    ) async throws -> String {
         try requireSupabaseConfig()
 
         guard let displayName = Self.normalizedDisplayName(rawFullName) else {
@@ -187,7 +191,8 @@ final class AuthService {
             email: email,
             redirectTo: SupabaseConfig.authCallbackURL,
             shouldCreateUser: true,
-            data: Self.displayNameMetadata(displayName)
+            data: Self.displayNameMetadata(displayName),
+            captchaToken: captchaToken
         )
 
         UserDefaults.standard.set(displayName, forKey: pendingNameKey(for: email))

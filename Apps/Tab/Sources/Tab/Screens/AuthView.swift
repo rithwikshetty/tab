@@ -10,6 +10,15 @@ struct AuthView: View {
     @State private var email = ""
     @State private var pendingEmail: String?
     @State private var verificationCode = ""
+    @State private var captchaRequest: CaptchaRequest?
+
+    /// A pending email-code send waiting on a Turnstile token. Tokens are
+    /// single-use, so every send and resend runs the check again.
+    struct CaptchaRequest: Identifiable {
+        let id = UUID()
+        let email: String
+        let successMessage: String
+    }
 
     enum Status: Equatable {
         case idle
@@ -81,6 +90,25 @@ struct AuthView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(Sage.bg.ignoresSafeArea())
+        .sheet(item: $captchaRequest) { request in
+            TurnstileChallengeSheet(
+                siteKey: SupabaseConfig.turnstileSiteKey ?? "",
+                onToken: { token in
+                    captchaRequest = nil
+                    Task {
+                        await sendCode(
+                            to: request.email,
+                            successMessage: request.successMessage,
+                            captchaToken: token
+                        )
+                    }
+                },
+                onCancel: {
+                    captchaRequest = nil
+                    status = .idle
+                }
+            )
+        }
     }
 
     private var appleSignInButton: some View {
@@ -280,18 +308,32 @@ struct AuthView: View {
     }
 
     private func sendEmailCode() async {
-        await sendCode(to: email, successMessage: "Code sent. Check your email and enter it here.")
+        await requestCode(to: email, successMessage: "Code sent. Check your email and enter it here.")
     }
 
     private func resendEmailCode() async {
         guard let pendingEmail else { return }
-        await sendCode(to: pendingEmail, successMessage: "New code sent.")
+        await requestCode(to: pendingEmail, successMessage: "New code sent.")
     }
 
-    private func sendCode(to address: String, successMessage: String) async {
+    /// Runs the Turnstile check first when a site key is configured; the
+    /// sheet's token callback performs the actual send.
+    private func requestCode(to address: String, successMessage: String) async {
+        if SupabaseConfig.turnstileSiteKey != nil {
+            captchaRequest = CaptchaRequest(email: address, successMessage: successMessage)
+        } else {
+            await sendCode(to: address, successMessage: successMessage, captchaToken: nil)
+        }
+    }
+
+    private func sendCode(to address: String, successMessage: String, captchaToken: String?) async {
         status = .sendingCode
         do {
-            pendingEmail = try await auth.sendEmailCode(email: address, fullName: fullName)
+            pendingEmail = try await auth.sendEmailCode(
+                email: address,
+                fullName: fullName,
+                captchaToken: captchaToken
+            )
             verificationCode = ""
             status = .sent(successMessage)
         } catch {

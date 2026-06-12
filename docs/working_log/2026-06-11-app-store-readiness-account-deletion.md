@@ -270,3 +270,14 @@ SUCCEEDED.
 - Fixes: h1 floor 40px → clamp(32px, 8.5vw, 66px) so the headline fits 360-class phones; ≤600px query stacks the header (brand above nav, centered), tightens wrap padding/hero/board/notes spacing, shrinks the two Gochi CTAs; fixed pre-existing ≤840px glitch where .reveal.in.p2 kept its translateY(22px) offset after scroll-reveal.
 - Extras: brand link "/" → "index.html" (same file:// issue as the privacy page had), theme-color #F3EEE2 for mobile browser chrome, loading=lazy + decoding=async on the three polaroid screenshots.
 - Deployed; live page confirmed to carry the 600px query and lazy attrs.
+
+## 2026-06-12 — Turnstile CAPTCHA on email sign-in (task #5 complete)
+
+- User created the Cloudflare Turnstile widget (Managed mode, hostname tab-it.app) and supplied keys.
+- Server: security_captcha_enabled=true, provider=turnstile, secret set via Management API. Verified: POST /auth/v1/otp without a token now returns 400 captcha_failed. Apple (id_token grant) and Google (OAuth authorize) are not captcha-gated, and /verify needs no token.
+- App: TurnstileChallengeView (WKWebView, widget HTML anchored to https://tab-it.app so the hostname allowlist matches, JS bridge posts token/error) + TurnstileChallengeSheet (230pt detent, cancel, error fallback). AuthView routes Send Email Code and Resend through the sheet; tokens are single-use so every send re-runs the check. AuthService.sendEmailCode gains captchaToken passed to signInWithOTP.
+- Config: TAB_TURNSTILE_SITE_KEY via Base.xcconfig (empty default, skips the sheet) / Secrets.xcconfig (real key, gitignored) / Info.plist TABTurnstileSiteKey; SupabaseConfig.turnstileSiteKey. Caught that appending the empty default after Base's #include? of Secrets would have overridden the real key; moved it above the include.
+- New file registered in pbxproj manually. build_sim SUCCEEDED, zero warnings.
+- Combined with the 20/hr email rate limit set earlier today, abuse protection (task #5) is done. Remaining test: real-device email sign-in to see the widget pass end to end.
+
+- Correction discovered while committing: Tab.xcodeproj and Info.plist are GENERATED (XcodeGen, project.yml is source of truth; both gitignored). The earlier plutil display-name edit and the manual pbxproj registration would have been reverted by the next xcodegen run. Moved both into project.yml (CFBundleDisplayName: tab-it, TABTurnstileSiteKey: $(TAB_TURNSTILE_SITE_KEY)); new sources are picked up by the Sources/Tab glob automatically. Regenerated with xcodegen and rebuilt clean. This also closes the "Info.plist is gitignored, can a fresh clone build?" worry from earlier: yes, xcodegen generates it.

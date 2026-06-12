@@ -11,6 +11,10 @@ enum SupabaseConfig {
     static let authCallbackScheme = infoString("TABAuthCallbackScheme") ?? fallbackAuthCallbackScheme
     static let authCallbackURL = URL(string: "\(authCallbackScheme)://auth-callback")!
 
+    /// Cloudflare Turnstile site key. nil when unset, in which case the email
+    /// flow skips the CAPTCHA (server will reject if it requires one).
+    static let turnstileSiteKey = infoString("TABTurnstileSiteKey")
+
     static var isConfigured: Bool {
         url.absoluteString != fallbackURLString && publishableKey != fallbackPublishableKey
     }
