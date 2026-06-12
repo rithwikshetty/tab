@@ -107,3 +107,78 @@ final class FriendsFlowUITests: XCTestCase {
         return element.isHittable
     }
 }
+
+/// Walks the demo-seeded app and captures full-screen marketing screenshots as
+/// keep-always attachments. Not a regression test — run on demand:
+///   xcodebuild test … -only-testing:TabUITests/ScreenshotTourUITests
+@MainActor
+final class ScreenshotTourUITests: XCTestCase {
+    func testCaptureMarketingScreenshots() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["TAB_MOCK_AUTH"] = "1"
+        app.launchEnvironment["TAB_SKIP_PUSH_PROMPT"] = "1"
+        app.launchEnvironment["TAB_SEED_DEMO"] = "1"
+        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Trips"].waitForExistence(timeout: 8))
+        let lisbon = row(app, containing: "Lisbon Long Weekend")
+        XCTAssertTrue(lisbon.waitForExistence(timeout: 8), "seeded trip should be listed")
+        snap(app, "01-trips")
+
+        lisbon.tap()
+        let airbnb = row(app, containing: "Airbnb in Alfama")
+        XCTAssertTrue(airbnb.waitForExistence(timeout: 8))
+        snap(app, "02-trip-detail")
+
+        airbnb.tap()
+        XCTAssertTrue(app.otherElements.firstMatch.waitForExistence(timeout: 8))
+        snap(app, "03-expense-detail")
+
+        // Pop back to the root so the tab bar is visible again.
+        app.navigationBars.buttons.firstMatch.tap()
+        sleepBriefly()
+        app.navigationBars.buttons.firstMatch.tap()
+
+        switchTab(app, "Friends")
+        snap(app, "04-friends")
+
+        switchTab(app, "Activity")
+        snap(app, "05-activity")
+    }
+
+    /// iOS 18 SwiftUI tab bars don't always vend a TabBar element; fall back
+    /// to a plain button match.
+    private func switchTab(_ app: XCUIApplication, _ name: String) {
+        let inBar = app.tabBars.buttons[name]
+        let plain = app.buttons[name]
+        let target = inBar.waitForExistence(timeout: 2) ? inBar : plain
+        XCTAssertTrue(target.waitForExistence(timeout: 5), "tab \(name) should exist")
+        target.tap()
+        XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 8))
+        sleepBriefly()
+    }
+
+    /// Rows render as Buttons whose child Texts collapse into the label; fall
+    /// back to a StaticText match for plain rows.
+    private func row(_ app: XCUIApplication, containing text: String) -> XCUIElement {
+        let predicate = NSPredicate(format: "label CONTAINS[c] %@", text)
+        let button = app.buttons.matching(predicate).firstMatch
+        if button.exists { return button }
+        let staticText = app.staticTexts.matching(predicate).firstMatch
+        return staticText.exists ? staticText : button
+    }
+
+    private func snap(_ app: XCUIApplication, _ name: String) {
+        sleepBriefly()
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// Let in-flight transitions and async images settle before capturing.
+    private func sleepBriefly() {
+        RunLoop.current.run(until: Date().addingTimeInterval(1.2))
+    }
+}

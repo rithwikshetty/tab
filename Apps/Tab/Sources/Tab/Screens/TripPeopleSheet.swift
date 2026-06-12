@@ -1,3 +1,4 @@
+import ContactsUI
 import SwiftUI
 import SwiftData
 
@@ -15,6 +16,7 @@ struct TripPeopleSheet: View {
     @State private var suggestions: [TripPersonSuggestionDTO] = []
     @State private var isAdding = false
     @State private var errorMessage: String?
+    @State private var showContactPicker = false
 
     @FocusState private var emailFocused: Bool
 
@@ -79,6 +81,13 @@ struct TripPeopleSheet: View {
             // Keyed on the query so SwiftUI cancels the in-flight fetch when the
             // text changes — a slow earlier response can't overwrite a newer one.
             .task(id: normalizedEmail) { await refreshSuggestions() }
+            .sheet(isPresented: $showContactPicker) {
+                ContactEmailPicker { name, email in
+                    emailText = email
+                    addEmail(displayName: name)
+                }
+                .ignoresSafeArea()
+            }
         }
     }
 
@@ -113,6 +122,21 @@ struct TripPeopleSheet: View {
                     .submitLabel(.done)
                     .onSubmit { addEmail() }
             }
+
+            Button {
+                emailFocused = false
+                showContactPicker = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 14, weight: .medium))
+                    Text("Choose from contacts")
+                        .font(.system(size: 13.5, weight: .medium))
+                }
+                .foregroundStyle(Sage.accent)
+            }
+            .buttonStyle(.plain)
+            .disabled(isAdding)
 
             if let errorMessage {
                 Text(errorMessage)
@@ -223,7 +247,7 @@ struct TripPeopleSheet: View {
         return user.presentableEmail ?? fallback
     }
 
-    private func addEmail() {
+    private func addEmail(displayName: String? = nil) {
         guard canAdd else { return }
         let email = normalizedEmail
         isAdding = true
@@ -231,7 +255,7 @@ struct TripPeopleSheet: View {
 
         Task {
             do {
-                try await sync.addTripPerson(tripID: tripID, email: email)
+                try await sync.addTripPerson(tripID: tripID, email: email, displayName: displayName)
                 await sync.pullAll()
                 await MainActor.run {
                     emailText = ""
@@ -268,5 +292,60 @@ struct TripPeopleSheet: View {
             .padding(.top, 18)
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// System contact picker scoped to email selection. Runs out-of-process, so it
+/// needs no Contacts permission and the app only ever receives the one email
+/// property the user taps (plus the contact's name when available).
+private struct ContactEmailPicker: UIViewControllerRepresentable {
+    @Environment(\.dismiss) private var dismiss
+    let onPick: (_ displayName: String?, _ email: String) -> Void
+
+    func makeUIViewController(context: Context) -> CNContactPickerViewController {
+        let picker = CNContactPickerViewController()
+        picker.delegate = context.coordinator
+        picker.predicateForEnablingContact = NSPredicate(format: "emailAddresses.@count > 0")
+        picker.displayedPropertyKeys = [CNContactEmailAddressesKey]
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: CNContactPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick, dismiss: { dismiss() })
+    }
+
+    final class Coordinator: NSObject, CNContactPickerDelegate {
+        private let onPick: (String?, String) -> Void
+        private let dismiss: () -> Void
+
+        init(onPick: @escaping (String?, String) -> Void, dismiss: @escaping () -> Void) {
+            self.onPick = onPick
+            self.dismiss = dismiss
+        }
+
+        func contactPicker(_ picker: CNContactPickerViewController, didSelect contactProperty: CNContactProperty) {
+            defer { dismiss() }
+            guard let email = (contactProperty.value as? NSString).map(String.init) else { return }
+            onPick(Self.name(of: contactProperty.contact), email.lowercased())
+        }
+
+        func contactPickerDidCancel(_ picker: CNContactPickerViewController) {
+            dismiss()
+        }
+
+        /// The picker is only guaranteed to fetch the displayed property keys.
+        private static func name(of contact: CNContact) -> String? {
+            var parts: [String] = []
+            if contact.isKeyAvailable(CNContactGivenNameKey) {
+                parts.append(contact.givenName)
+            }
+            if contact.isKeyAvailable(CNContactFamilyNameKey) {
+                parts.append(contact.familyName)
+            }
+            let name = parts.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            return name.isEmpty ? nil : name
+        }
     }
 }
