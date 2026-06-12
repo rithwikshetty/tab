@@ -30,7 +30,7 @@ interface PushTarget {
 function composeAlert(event: ActivityEvent): { title: string; body: string } {
   const s = event.snapshot ?? {};
   const actor = s.actor_name ?? "Someone";
-  const title = s.trip_name ?? "Tab";
+  const title = s.trip_name ?? "tab-it";
   const money = s.amount && s.currency ? ` ${s.currency} ${s.amount}` : "";
   const desc = s.description ?? "an expense";
 

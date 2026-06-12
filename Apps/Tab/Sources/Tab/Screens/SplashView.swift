@@ -38,7 +38,7 @@ struct SplashView: View {
             }
             .frame(width: 340, height: 80)
 
-            Text("tab")
+            Text("tab-it")
                 .font(.system(size: 44, weight: .medium))
                 .tracking(-1.9)
                 .foregroundStyle(Sage.text)

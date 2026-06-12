@@ -45,11 +45,11 @@ struct AuthView: View {
                 Spacer(minLength: 72)
 
                 VStack(spacing: 6) {
-                    Text("tab")
+                    Text("tab-it")
                         .font(.system(size: 44, weight: .semibold))
                         .tracking(-1.4)
                         .foregroundStyle(Sage.text)
-                    Text("trip expenses, no friction")
+                    Text("keep track of shared expenses")
                         .font(.system(size: 14))
                         .foregroundStyle(Sage.textSecondary)
                 }
@@ -129,7 +129,7 @@ struct AuthView: View {
             emailFields
             sendCodeButton
 
-            Text("We'll email you a secure \(AuthService.emailVerificationCodeLength)-digit code. No password needed.")
+            Text("We'll email you an \(AuthService.emailVerificationCodeLength)-digit code to sign in. No password needed.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Sage.textSecondary)
                 .multilineTextAlignment(.center)
