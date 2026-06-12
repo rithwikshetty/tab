@@ -85,3 +85,5 @@ node_modules/
 
 # OS
 Thumbs.db
+.vercel/
+.playwright-mcp/

@@ -4,7 +4,7 @@ Project guidance for Claude Code. Read this before changing anything.
 
 ## What tab is
 
-A Splitwise replacement for tracking expenses on group trips. Private friend-group use, no monetisation, no ads. iOS-first (iOS 18+).
+A Splitwise replacement for tracking expenses on group trips. Headed for a public App Store release; no monetisation, no ads. iOS-first (iOS 18+). App Store name: tab-it; domain: tab-it.app. The "pre-launch, no real users" database conventions below hold until launch, then flip to compatibility-preserving migrations.
 
 Pain points being solved: Splitwise's paywall, ads, and aggressive upsells.
 
