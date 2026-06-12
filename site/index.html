@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tab-it · keep track of who paid for what</title>
+<meta name="description" content="tab-it is a free iOS app for tracking shared expenses on group trips. Add expenses as they happen and see who owes who.">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gochi+Hand&family=Fraunces:opsz,wght@9..144,400..700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cork: #F3EEE2;
+    --card: #FFFEF9;
+    --ink: #33402F;
+    --soft: #6E7A64;
+    --sage: #5C7560;
+    --tape: rgba(232, 200, 124, 0.5);
+    --red: #C2563A;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--cork);
+    background-image: radial-gradient(rgba(92, 117, 96, 0.09) 1px, transparent 1.4px);
+    background-size: 22px 22px;
+    color: var(--ink); font-family: "Fraunces", serif; line-height: 1.65; overflow-x: hidden;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 26px; }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 26px 0; }
+  .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+  .logo { width: 40px; height: 40px; transform: rotate(-4deg); }
+  .logo circle { transform-box: fill-box; transform-origin: center; animation: pop .45s cubic-bezier(.3,1.6,.5,1) both; }
+  .logo .d1 { animation-delay: .15s; }
+  .logo .d2 { animation-delay: .3s; }
+  .logo .d3 { animation-delay: .45s; }
+  .logo .d4 { animation-delay: .6s; }
+  @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+  .wordmark {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 28px; font-weight: 600; letter-spacing: -0.9px; color: var(--sage);
+  }
+  header nav { display: flex; align-items: baseline; gap: 22px; }
+  header nav a { font-size: 14.5px; color: var(--soft); text-decoration: none; font-weight: 500; }
+  header nav a:hover { color: var(--red); }
+  .gh-mark { width: 1.1em; height: 1.1em; vertical-align: -0.18em; fill: currentColor; margin-right: 5px; }
+
+  .hero { text-align: center; padding: 64px 0 40px; position: relative; }
+  h1 { font-weight: 700; font-size: clamp(40px, 5.8vw, 66px); line-height: 1.12; letter-spacing: -1px; }
+  h1 .scribble { font-family: "Gochi Hand", cursive; color: var(--sage); font-weight: 400; }
+  .lede { max-width: 52ch; margin: 22px auto 0; color: var(--soft); font-size: 17.5px; }
+  .cta-row { display: flex; justify-content: center; align-items: center; gap: 18px; flex-wrap: wrap; margin-top: 32px; }
+  .cta {
+    display: inline-block; background: var(--sage); color: #fff;
+    font-family: "Gochi Hand", cursive; font-size: 22px; padding: 14px 34px;
+    border-radius: 14px; transform: rotate(-1.5deg);
+    box-shadow: 4px 5px 0 rgba(51, 64, 47, 0.25); transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .cta:hover { transform: rotate(0.5deg) translateY(-2px); box-shadow: 6px 8px 0 rgba(51, 64, 47, 0.22); }
+  .cta-gh {
+    display: inline-flex; align-items: center; gap: 10px; background: var(--card); color: var(--ink);
+    font-family: "Gochi Hand", cursive; font-size: 22px; padding: 14px 28px;
+    border: 2px solid var(--ink); border-radius: 14px; text-decoration: none; transform: rotate(1.2deg);
+    box-shadow: 4px 5px 0 rgba(51, 64, 47, 0.25); transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .cta-gh:hover { transform: rotate(-0.5deg) translateY(-2px); box-shadow: 6px 8px 0 rgba(51, 64, 47, 0.22); }
+  .cta-gh .gh-mark { width: 22px; height: 22px; margin-right: 0; }
+  .annotation {
+    font-family: "Gochi Hand", cursive; color: var(--red); font-size: 19px; display: inline-block;
+  }
+  .rise { opacity: 0; transform: translateY(18px); animation: rise .7s cubic-bezier(.2,.7,.3,1) both; }
+  .hero .r1 { animation-delay: .1s; } .hero .r2 { animation-delay: .25s; }
+  .hero .r3 { animation-delay: .4s; } .hero .r4 { animation-delay: .55s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  .board { position: relative; padding: 60px 0 30px; display: flex; justify-content: center; gap: 44px; flex-wrap: wrap; }
+  .polaroid {
+    background: var(--card); padding: 12px 12px 50px; width: 252px; position: relative;
+    box-shadow: 0 14px 30px rgba(51, 64, 47, 0.18);
+    transition: transform .35s cubic-bezier(.2,.8,.3,1.2);
+  }
+  .polaroid img { width: 100%; display: block; }
+  .polaroid .cap {
+    font-family: "Gochi Hand", cursive; font-size: 19px; text-align: center;
+    position: absolute; bottom: 10px; left: 0; right: 0; color: var(--ink);
+  }
+  .polaroid::before {
+    content: ""; position: absolute; top: -14px; left: 50%; transform: translateX(-50%) rotate(-3deg);
+    width: 110px; height: 30px; background: var(--tape);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  }
+  .p1 { transform: rotate(-3.4deg); } .p2 { transform: rotate(1.8deg) translateY(22px); } .p3 { transform: rotate(3.6deg); }
+  .p1:hover, .p2:hover, .p3:hover { transform: rotate(0deg) scale(1.05); z-index: 3; }
+
+  .notes { padding: 90px 0 60px; }
+  h2 { font-size: clamp(30px, 4vw, 42px); text-align: center; font-weight: 700; }
+  h2 .scribble { font-family: "Gochi Hand", cursive; color: var(--sage); }
+  .note-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; margin-top: 56px; }
+  .sticky {
+    background: #FBF6DF; padding: 28px 24px 32px; position: relative;
+    box-shadow: 0 10px 22px rgba(51,64,47,.14);
+    transition: transform .3s ease;
+  }
+  .sticky:nth-child(1) { transform: rotate(-1.6deg); background: #FBF6DF; }
+  .sticky:nth-child(2) { transform: rotate(1.2deg); background: #EDF3E4; }
+  .sticky:nth-child(3) { transform: rotate(-0.8deg); background: #F8EFE2; }
+  .sticky:hover { transform: rotate(0) translateY(-6px); }
+  .sticky::before {
+    content: ""; position: absolute; top: -12px; left: 26px; width: 84px; height: 26px;
+    background: var(--tape); transform: rotate(-2deg);
+  }
+  .sticky h3 { font-family: "Gochi Hand", cursive; font-size: 25px; color: var(--ink); margin-bottom: 10px; }
+  .sticky p { font-size: 15px; color: var(--soft); }
+
+  footer { text-align: center; padding: 40px 0 70px; color: var(--soft); font-size: 14px; }
+  footer a { color: var(--sage); }
+  footer .logo { width: 30px; height: 30px; margin-bottom: 10px; }
+  footer .logo circle { animation: none; }
+
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.3,1); }
+  .reveal.in { opacity: 1; transform: none; }
+  .reveal.in.p1 { transform: rotate(-3.4deg); } .reveal.in.p2 { transform: rotate(1.8deg) translateY(22px); } .reveal.in.p3 { transform: rotate(3.6deg); }
+  .reveal.in.p1:hover, .reveal.in.p2:hover, .reveal.in.p3:hover { transform: rotate(0deg) scale(1.05); }
+
+  @media (max-width: 840px) {
+    .note-row { grid-template-columns: 1fr; }
+    .p2 { transform: rotate(1.8deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rise, .logo circle { animation: none; opacity: 1; transform: none; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+</style>
+</head>
+<body>
+<svg style="display:none" aria-hidden="true"><symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol></svg>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/">
+      <svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true">
+        <circle class="d1" cx="232" cy="809" r="82" stroke="#4F7549" stroke-width="33" fill="none"/>
+        <circle class="d2" cx="430" cy="594" r="34" fill="#4F7549"/>
+        <circle class="d3" cx="611" cy="413" r="34" fill="#4F7549"/>
+        <circle class="d4" cx="809" cy="232" r="82" fill="#B97047"/>
+      </svg>
+      <span class="wordmark">tab-it</span>
+    </a>
+    <nav>
+      <a href="#notes">Why tab-it</a>
+      <a class="nav-gh" href="https://github.com/rithwikshetty/tab-it" target="_blank" rel="noopener"><svg class="gh-mark"><use href="#gh"/></svg>GitHub</a>
+      <a href="privacy.html">Privacy</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <h1 class="rise r1">Keep track of who<br>paid for what<br><span class="scribble">without the spreadsheet</span></h1>
+    <p class="lede rise r2">Add the dinners, the cable cars and the taxis as they happen. tab-it adds it all up and shows who owes who.</p>
+    <div class="cta-row rise r3">
+      <span class="cta">Coming soon to the App Store</span>
+      <a class="cta-gh" href="https://github.com/rithwikshetty/tab-it" target="_blank" rel="noopener"><svg class="gh-mark"><use href="#gh"/></svg>See the code</a>
+    </div>
+    <span class="annotation rise r4" style="margin-top: 14px;">↑ it's free, promise. open source too</span>
+  </section>
+
+  <section class="board">
+    <div class="polaroid p1 reveal">
+      <img src="assets/01-trips.png" alt="Trips list">
+      <div class="cap">all our trips ☻</div>
+    </div>
+    <div class="polaroid p2 reveal" style="transition-delay:.12s">
+      <img src="assets/02-trip-detail.png" alt="Lisbon trip detail">
+      <div class="cap">lisbon, all square</div>
+    </div>
+    <div class="polaroid p3 reveal" style="transition-delay:.24s">
+      <img src="assets/04-friends.png" alt="Friends balances">
+      <div class="cap">who owes who</div>
+    </div>
+  </section>
+
+  <section class="notes" id="notes">
+    <h2>Questions you can <span class="scribble">stop asking</span></h2>
+    <div class="note-row">
+      <div class="sticky reveal">
+        <h3>"who paid for the villa?"</h3>
+        <p>Open the trip and it's there: €420, paid by you, split four ways. Two people paying one bill works too.</p>
+      </div>
+      <div class="sticky reveal" style="transition-delay:.12s">
+        <h3>"is that in yen or euros??"</h3>
+        <p>Both. Each currency keeps its own balance, so you owe what was actually spent.</p>
+      </div>
+      <div class="sticky reveal" style="transition-delay:.24s">
+        <h3>"I'll get you back at home"</h3>
+        <p>One screen shows the total across everything you share. When they pay you back, tick it off.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true">
+      <circle cx="232" cy="809" r="82" stroke="#4F7549" stroke-width="33" fill="none"/>
+      <circle cx="430" cy="594" r="34" fill="#4F7549"/>
+      <circle cx="611" cy="413" r="34" fill="#4F7549"/>
+      <circle cx="809" cy="232" r="82" fill="#B97047"/>
+    </svg>
+    <br>
+    © 2026 tab-it · <a href="privacy.html">Privacy Policy</a> · <a href="mailto:support@tab-it.app">support@tab-it.app</a>
+  </footer>
+</div>
+<script>
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+  }, { threshold: 0.18 });
+  document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+</script>
+</body>
+</html>
