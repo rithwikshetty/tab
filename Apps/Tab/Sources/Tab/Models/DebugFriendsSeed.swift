@@ -104,4 +104,149 @@ enum DebugFriendsSeed {
         try? context.save()
     }
 }
+
+/// Seeds polished, realistic demo data for marketing screenshots under mock auth.
+/// Gated behind `TAB_SEED_DEMO=1`. Three trips (EUR city break, JPY ski trip,
+/// GBP flatshare), five friends, balanced multi-payer expenses across all
+/// categories, a settlement, and a believable activity feed.
+enum DemoScreenshotSeed {
+    static func seedIfRequested(in context: ModelContext, currentUserID: UUID?) {
+        guard ProcessInfo.processInfo.environment["TAB_SEED_DEMO"] == "1" else { return }
+        guard let me = currentUserID else { return }
+        guard (try? context.fetch(FetchDescriptor<TripEntity>()))?.isEmpty == true else { return }
+
+        let now = Date()
+        let day = TimeInterval(86_400)
+        let hour = TimeInterval(3_600)
+
+        func trip(_ name: String, lastActivity: Date) -> TripEntity {
+            let w = UUID()
+            let t = TripEntity(
+                id: UUID(), name: name, kind: "trip", memberSignature: nil, createdByID: me,
+                lastActivityAt: lastActivity, writeID: w, pushedWriteID: w
+            )
+            context.insert(t)
+            return t
+        }
+
+        func person(_ userID: UUID?, _ email: String, _ name: String, _ trip: TripEntity) -> TripPersonEntity {
+            let w = UUID()
+            let p = TripPersonEntity(
+                id: UUID(), userID: userID, email: email, displayName: name,
+                invitedByID: me, trip: trip, joinedAt: userID == nil ? nil : now,
+                writeID: w, pushedWriteID: w
+            )
+            context.insert(p)
+            return p
+        }
+
+        func expense(_ trip: TripEntity, _ amount: Decimal, _ currency: String, _ desc: String,
+                     category: UUID, daysAgo: Double, payer: TripPersonEntity,
+                     among people: [TripPersonEntity], share: Decimal) {
+            let w = UUID()
+            let date = now.addingTimeInterval(-daysAgo * day)
+            let e = ExpenseEntity(
+                id: UUID(), amount: amount, currency: currency, categoryID: category,
+                descriptionText: desc, expenseDate: date,
+                createdByID: payer.userID ?? me, trip: trip,
+                createdAt: date, writeID: w, pushedWriteID: w
+            )
+            context.insert(e)
+            context.insert(PaymentEntity(tripPersonID: payer.id, amountPaid: amount, paymentModeRaw: "equal", expense: e))
+            for sp in people {
+                context.insert(ExpenseSplitEntity(tripPersonID: sp.id, amountOwed: share, splitTypeRaw: "equal", expense: e))
+            }
+        }
+
+        func activity(_ trip: TripEntity, _ actorID: UUID, _ action: String, _ entityType: String,
+                      hoursAgo: Double, _ snapshot: [String: String]) {
+            var snap = snapshot
+            snap["trip_name"] = trip.name
+            context.insert(ActivityEntity(
+                id: UUID(), tripID: trip.id, actorID: actorID, action: action,
+                entityType: entityType, entityID: UUID(),
+                timestamp: now.addingTimeInterval(-hoursAgo * hour),
+                snapshotData: try? JSONEncoder().encode(snap)
+            ))
+        }
+
+        let mayaID  = UUID(uuidString: "DEB0DEB0-0000-0000-0000-000000000001")!
+        let danID   = UUID(uuidString: "DEB0DEB0-0000-0000-0000-000000000002")!
+        let priyaID = UUID(uuidString: "DEB0DEB0-0000-0000-0000-000000000003")!
+        let tomID   = UUID(uuidString: "DEB0DEB0-0000-0000-0000-000000000004")!
+        let leoID   = UUID(uuidString: "DEB0DEB0-0000-0000-0000-000000000005")!
+        let anaID   = UUID(uuidString: "DEB0DEB0-0000-0000-0000-000000000006")!
+        let jessID  = UUID(uuidString: "DEB0DEB0-0000-0000-0000-000000000007")!
+        let omarID  = UUID(uuidString: "DEB0DEB0-0000-0000-0000-000000000008")!
+
+        // ── Lisbon Long Weekend (EUR): me, Maya, Dan, Priya.
+        let lisbon = trip("Lisbon Long Weekend", lastActivity: now.addingTimeInterval(-2 * hour))
+        let liMe = person(me, "mock@tab.local", "You", lisbon)
+        let liMaya = person(mayaID, "maya@tab.local", "Maya", lisbon)
+        let liDan = person(danID, "dan@tab.local", "Dan", lisbon)
+        let liPriya = person(priyaID, "priya@tab.local", "Priya", lisbon)
+        let liAll = [liMe, liMaya, liDan, liPriya]
+        expense(lisbon, 420.00, "EUR", "Airbnb in Alfama", category: DefaultCategories.lodging.id,
+                daysAgo: 3.4, payer: liMe, among: liAll, share: 105.00)
+        expense(lisbon, 140.00, "EUR", "Surf lesson, Caparica", category: DefaultCategories.activities.id,
+                daysAgo: 2.3, payer: liMe, among: liAll, share: 35.00)
+        expense(lisbon, 86.40, "EUR", "Dinner in Bairro Alto", category: DefaultCategories.food.id,
+                daysAgo: 1.9, payer: liDan, among: liAll, share: 21.60)
+        expense(lisbon, 25.20, "EUR", "Tram 28 day passes", category: DefaultCategories.transport.id,
+                daysAgo: 1.2, payer: liMaya, among: liAll, share: 6.30)
+        expense(lisbon, 12.80, "EUR", "Pastéis de Belém", category: DefaultCategories.food.id,
+                daysAgo: 0.9, payer: liPriya, among: liAll, share: 3.20)
+        context.insert(SettlementEntity(
+            fromPersonID: liDan.id, toPersonID: liMe.id, amount: 60.00, currency: "EUR",
+            note: "Revolut", settledAt: now.addingTimeInterval(-1.1 * day), createdByID: danID,
+            trip: lisbon
+        ))
+
+        // ── Japan Ski Cabin (JPY): me, Tom, Maya, Leo, Ana.
+        let japan = trip("Japan Ski Cabin", lastActivity: now.addingTimeInterval(-19 * day))
+        let jpMe = person(me, "mock@tab.local", "You", japan)
+        let jpTom = person(tomID, "tom@tab.local", "Tom", japan)
+        let jpMaya = person(mayaID, "maya@tab.local", "Maya", japan)
+        let jpLeo = person(leoID, "leo@tab.local", "Leo", japan)
+        let jpAna = person(anaID, "ana@tab.local", "Ana", japan)
+        let jpAll = [jpMe, jpTom, jpMaya, jpLeo, jpAna]
+        expense(japan, 182_000, "JPY", "Cabin in Niseko", category: DefaultCategories.lodging.id,
+                daysAgo: 24, payer: jpTom, among: jpAll, share: 36_400)
+        expense(japan, 58_500, "JPY", "Lift passes", category: DefaultCategories.activities.id,
+                daysAgo: 23, payer: jpMe, among: jpAll, share: 11_700)
+        expense(japan, 31_200, "JPY", "Snow gear rental", category: DefaultCategories.shopping.id,
+                daysAgo: 22.5, payer: jpAna, among: jpAll, share: 6_240)
+        expense(japan, 23_400, "JPY", "Izakaya night", category: DefaultCategories.food.id,
+                daysAgo: 21.8, payer: jpLeo, among: jpAll, share: 4_680)
+
+        // ── Flat 23 (GBP): me, Jess, Omar.
+        let flat = trip("Flat 23", lastActivity: now.addingTimeInterval(-7 * hour))
+        let flMe = person(me, "mock@tab.local", "You", flat)
+        let flJess = person(jessID, "jess@tab.local", "Jess", flat)
+        let flOmar = person(omarID, "omar@tab.local", "Omar", flat)
+        let flAll = [flMe, flJess, flOmar]
+        expense(flat, 64.20, "GBP", "Big shop", category: DefaultCategories.food.id,
+                daysAgo: 0.3, payer: flJess, among: flAll, share: 21.40)
+        expense(flat, 33.00, "GBP", "Internet", category: DefaultCategories.other.id,
+                daysAgo: 4.0, payer: flMe, among: flAll, share: 11.00)
+        expense(flat, 18.75, "GBP", "Cleaning supplies", category: DefaultCategories.shopping.id,
+                daysAgo: 5.5, payer: flOmar, among: flAll, share: 6.25)
+
+        // ── Activity feed.
+        activity(lisbon, mayaID, "expense_created", "expense", hoursAgo: 2,
+                 ["actor_name": "Maya", "description": "Tram 28 day passes", "amount": "25.20", "currency": "EUR"])
+        activity(flat, jessID, "expense_created", "expense", hoursAgo: 7,
+                 ["actor_name": "Jess", "description": "Big shop", "amount": "64.20", "currency": "GBP"])
+        activity(lisbon, priyaID, "expense_created", "expense", hoursAgo: 22,
+                 ["actor_name": "Priya", "description": "Pastéis de Belém", "amount": "12.80", "currency": "EUR"])
+        activity(lisbon, danID, "settlement_created", "settlement", hoursAgo: 26,
+                 ["actor_name": "Dan", "from_name": "Dan", "to_name": "You", "amount": "60.00", "currency": "EUR"])
+        activity(lisbon, danID, "expense_created", "expense", hoursAgo: 46,
+                 ["actor_name": "Dan", "description": "Dinner in Bairro Alto", "amount": "86.40", "currency": "EUR"])
+        activity(japan, anaID, "member_joined", "member", hoursAgo: 600,
+                 ["actor_name": "Tom", "member_name": "Ana"])
+
+        try? context.save()
+    }
+}
 #endif

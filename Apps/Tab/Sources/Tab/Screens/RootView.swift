@@ -110,6 +110,7 @@ struct RootView: View {
             #if DEBUG
             DebugFriendsSeed.seedIfRequested(in: context, currentUserID: currentUserID)
             DebugActivitySeed.seedIfRequested(in: context, currentUserID: currentUserID)
+            DemoScreenshotSeed.seedIfRequested(in: context, currentUserID: currentUserID)
             #endif
             await sync.pushPending()
             await sync.claimTripPeopleForCurrentEmail()
